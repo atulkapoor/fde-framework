@@ -1,0 +1,29 @@
+# Raw, unsanitized material. Nothing here is ever committed.
+inbox/
+
+# Working notes and research. Not part of the product.
+docs/
+
+# Client engagement workspaces. Never committed.
+engagements/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+dist/
+build/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
