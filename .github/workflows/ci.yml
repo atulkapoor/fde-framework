@@ -11,3 +11,5 @@ jobs:
       - run: pip install -e ".[dev]"
       - run: ruff check src tests
       - run: pytest -q
+      # Nothing supplied or researched may reach a public repo.
+      - run: pytest tests/test_sanitisation.py -q

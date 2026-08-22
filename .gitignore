@@ -30,3 +30,6 @@ build/
 
 # Supplied material and derived seed. Re-expressed as framework/ templates; never committed raw.
 seed/
+
+# Sanitisation denylist. Contains the names it exists to keep out.
+.sanitisation-denylist
