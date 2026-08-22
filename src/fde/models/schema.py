@@ -25,9 +25,62 @@ from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
-from fde.models.base import DimensionKind, Evidence
+from fde.models.base import Confidence, DimensionKind, Evidence
 
 NO_FRAMEWORK = "plain-python"
+
+
+class Reversibility(StrEnum):
+    """What it costs to undo this choice.
+
+    Not the same axis as cost or quality. A reranker is cheap to swap because it
+    drops in without touching the index; an embedding model is expensive because
+    changing it means reindexing everything. And sending data to a third party is
+    a different category again -- you cannot un-send it.
+
+    The framework uses this to decide how much confidence a decision needs before
+    it may be made.
+    """
+
+    CHEAP = "cheap"  # swap in an afternoon, no migration
+    MODERATE = "moderate"  # needs re-tuning or a partial rebuild
+    EXPENSIVE = "expensive"  # full reindex, migration or retraining
+    ONE_WAY = "one_way"  # cannot be undone at all
+
+
+# How sure you must be before a decision of each kind may be made. Cheap choices
+# are worth trying on a hunch; one-way choices are not.
+_REQUIRED_CONFIDENCE: dict[Reversibility, list[Confidence]] = {
+    Reversibility.CHEAP: [Confidence.LOW, Confidence.MEDIUM, Confidence.HIGH],
+    Reversibility.MODERATE: [Confidence.LOW, Confidence.MEDIUM, Confidence.HIGH],
+    Reversibility.EXPENSIVE: [Confidence.MEDIUM, Confidence.HIGH],
+    Reversibility.ONE_WAY: [Confidence.HIGH],
+}
+
+
+def confidence_sufficient(reversibility: Reversibility, confidence: Confidence) -> bool:
+    """True if this much confidence justifies a decision this hard to undo."""
+    return confidence in _REQUIRED_CONFIDENCE[reversibility]
+
+
+def earliest_cap(component_id: str, components: dict[str, Component]) -> str:
+    """The earliest component whose quality bounds this one.
+
+    Quality flows one direction: a badly parsed table caps retrieval and
+    generation alike, and no reranker recovers what ingestion threw away. So
+    when an answer is wrong, this is where to look first -- and when quality is
+    capped, this is where to invest.
+    """
+    seen: set[str] = set()
+    current = component_id
+    while True:
+        if current in seen:
+            raise ValueError(f"cap cycle through {current!r}")
+        seen.add(current)
+        upstream = [c.id for c in components.values() if current in c.caps]
+        if not upstream:
+            return current
+        current = upstream[0]
 
 
 class ValueType(StrEnum):
@@ -87,6 +140,10 @@ class Stack(BaseModel):
     provides: dict[str, Maturity] = Field(default_factory=dict)
     supersedes: list[str] = Field(default_factory=list)
     evidence: Evidence | None = None
+
+    # Defaults to MODERATE, never CHEAP: assuming a choice is easy to undo is
+    # how teams discover in month four that it is not.
+    reversibility: Reversibility = Reversibility.MODERATE
 
 
 class Realization(BaseModel):
@@ -190,6 +247,16 @@ class Component(BaseModel):
     id: str
     name: str
     required_when: list[str] = Field(default_factory=list)
+
+    # Components whose quality this one bounds. Ingestion caps everything
+    # downstream of it; nothing downstream recovers what it lost.
+    caps: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check_caps(self) -> Component:
+        if self.id in self.caps:
+            raise ValueError(f"{self.id}: a component cannot cap itself")
+        return self
 
 
 class Case(BaseModel):
