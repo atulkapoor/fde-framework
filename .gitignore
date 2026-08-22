@@ -27,3 +27,6 @@ build/
 .DS_Store
 *.swp
 .idea/
+
+# Supplied material and derived seed. Re-expressed as framework/ templates; never committed raw.
+seed/
