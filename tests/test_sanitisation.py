@@ -33,6 +33,9 @@ ALLOWED = (
     ".gitignore",
     "README.md",
     "LICENSE",
+    "CONTRIBUTING.md",
+    "CODE_OF_CONDUCT.md",
+    "SECURITY.md",
 )
 
 SECRET_PATTERNS = {
