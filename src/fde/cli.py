@@ -14,7 +14,7 @@ import typer
 
 from fde.factlog import load_engagement, start_engagement
 from fde.graph import find_gaps, validate_links
-from fde.registry import RegistryError, load_registry
+from fde.registry import KINDS, RegistryError, load_registry
 
 app = typer.Typer(help="Take an engagement from problem statement to a runnable project.")
 kb = typer.Typer(help="Inspect the knowledge base in framework/.")
@@ -43,8 +43,8 @@ def kb_validate(
 
     counts = ", ".join(
         f"{len(getattr(registry, kind))} {kind}"
-        for kind in ("approaches", "patterns", "stacks", "cases")
-        if getattr(registry, kind)
+        for kind in KINDS
+        if getattr(registry, kind, None)
     )
     typer.echo(f"loaded {counts or 'nothing'}")
 
