@@ -117,6 +117,29 @@ class Dimension(BaseModel):
     # value -> {other_dimension: [values it removes]}
     prunes: dict[str, dict[str, list[str]]] = Field(default_factory=dict)
 
+    # How prose is recognised. Held here rather than in the parser so that
+    # teaching the framework a new phrasing is a content change, not a code one.
+    recognises: dict[str, list[str]] = Field(default_factory=dict)  # value -> phrases
+    recognises_near: list[str] = Field(default_factory=list)  # words that name a quantity
+
+    @model_validator(mode="before")
+    @classmethod
+    def _catch_yaml_booleans(cls, data):
+        """YAML reads yes/no/on/off as booleans, which silently mangles enums.
+
+        Coercing cannot recover the author's intent -- True stringifies to
+        "True", not "yes" -- so this refuses and says how to fix it.
+        """
+        if isinstance(data, dict) and isinstance(data.get("values"), list):
+            bools = [v for v in data["values"] if isinstance(v, bool)]
+            if bools:
+                raise ValueError(
+                    f"{data.get('id', '<dimension>')}: values {bools} were read as "
+                    f"booleans. YAML treats yes/no/on/off/y/n that way -- quote them: "
+                    f'values: ["yes", "no"]'
+                )
+        return data
+
     @model_validator(mode="after")
     def _check_values(self) -> Dimension:
         if self.type is ValueType.ENUM and not self.values:

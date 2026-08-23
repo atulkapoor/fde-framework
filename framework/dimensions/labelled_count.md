@@ -1,0 +1,12 @@
+---
+id: labelled_count
+type: count
+kind: requirement
+asks: "How many are verified or labelled?"
+recognises_near: [verified, labelled, labeled, annotated, reviewed, confirmed, ground truth]
+---
+The number that decides whether supervised approaches are on the table.
+
+The gap between this and `corpus_size` is an asset rather than a shortfall:
+unverified items cannot train a model but can be mined label-free into a
+prioritised queue of what to have a human verify next.
