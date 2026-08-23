@@ -16,6 +16,7 @@ prunes:
     embeddings: [managed]
   on-prem:
     inference: [hosted-api]
+ask_role: ['admin']
 ---
 Where the compute sits. Three topologies, one architecture -- the shape does not
 change between them, only placement does.

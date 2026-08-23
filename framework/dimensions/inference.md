@@ -10,6 +10,7 @@ recognises:
 prunes:
   self-hosted:
     embeddings: [managed]
+ask_role: ['admin']
 ---
 API or your own weights.
 

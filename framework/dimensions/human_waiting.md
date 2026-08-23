@@ -19,6 +19,7 @@ recognises:
     - real-time
   "mixed":
     - both interactive and batch
+ask_role: ['user', 'sponsor']
 ---
 Decides how inference is paid for. A person waiting makes a cold start a user
 experience problem; nobody waiting makes it an infrastructure detail, and

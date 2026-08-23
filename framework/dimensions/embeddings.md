@@ -4,6 +4,7 @@ type: enum
 kind: requirement
 asks: "Where are embeddings computed?"
 values: [managed, local]
+ask_role: ['admin']
 ---
 The least reversible decision in most retrieval systems: changing the embedding
 model means reindexing the whole corpus. Decide it late, with evidence.

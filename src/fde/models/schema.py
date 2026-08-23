@@ -122,6 +122,10 @@ class Dimension(BaseModel):
     recognises: dict[str, list[str]] = Field(default_factory=dict)  # value -> phrases
     recognises_near: list[str] = Field(default_factory=list)  # words that name a quantity
 
+    # Who can actually answer this. Absence means never ask that role -- one
+    # source of truth, rather than an ask/never pair that drifts apart.
+    ask_role: list[str] = Field(default_factory=list)
+
     @model_validator(mode="before")
     @classmethod
     def _catch_yaml_booleans(cls, data):

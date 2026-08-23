@@ -21,6 +21,7 @@ recognises:
 prunes:
   cannot_leave:
     hosting: [public-saas, managed-api]
+ask_role: ['admin', 'sponsor']
 ---
 The single most decisive dimension in most engagements: it prunes more of the
 space than anything else, and it is the one an FDE should raise unprompted

@@ -4,6 +4,7 @@ type: count
 kind: requirement
 asks: "How many are verified or labelled?"
 recognises_near: [verified, labelled, labeled, annotated, reviewed, confirmed, ground truth]
+ask_role: ['eval_owner', 'admin']
 ---
 The number that decides whether supervised approaches are on the table.
 
