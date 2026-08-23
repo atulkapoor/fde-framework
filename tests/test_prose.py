@@ -163,3 +163,60 @@ def test_parsing_is_deterministic(reg):
 def test_parsing_needs_no_model(reg):
     """The air-gap requirement. There is nothing to call."""
     assert parse_prose(DOC_EXTRACTION, reg, model=None)
+
+
+# --- refusing to guess ---------------------------------------------------
+#
+# Silence is a safe failure: the interview picks the question up. A confident
+# wrong answer is not, because it carries artifact provenance and will outrank
+# the correction that arrives later. Everything below asserts silence.
+
+
+def test_a_negated_phrase_is_not_read_as_the_phrase(reg):
+    """'It is not the case that data cannot leave' is not a residency
+    constraint. A matcher cannot tell which value the negation selects, so it
+    must decline rather than pick one."""
+    assert "data_residency" not in dims(
+        parse_prose("It is not the case that data cannot leave.", reg)
+    )
+
+
+def test_a_plainly_stated_constraint_still_reads(reg):
+    """The negation guard must not silence ordinary sentences."""
+    assert dims(parse_prose("Data cannot leave the client environment.", reg))[
+        "data_residency"
+    ] == "cannot_leave"
+
+
+def test_two_values_of_one_dimension_in_the_same_text_are_refused(reg):
+    """'Cannot leave for EU, may leave for US' is a real requirement the
+    framework cannot yet express. Picking whichever matched first would hide
+    that behind a confident answer."""
+    text = "Data cannot leave for EU clients, though data may leave for US ones."
+    assert "data_residency" not in dims(parse_prose(text, reg))
+
+
+def test_a_quantity_does_not_borrow_a_word_from_another_sentence(reg):
+    """'We handle 200,000 cases. Separately, documents are archived.' -- the
+    number and the word that would name it are about different things."""
+    text = "We handle 200,000 cases. Separately, documents are archived."
+    assert "corpus_size" not in dims(parse_prose(text, reg))
+
+
+def test_a_quantity_and_its_unit_in_one_sentence_still_read(reg):
+    assert dims(parse_prose("We hold 200,000 documents.", reg))["corpus_size"] == 200_000
+
+
+def test_a_range_is_refused_rather_than_split_across_dimensions(reg):
+    """'Between 8,000 and 12,000 documents are verified' is one quantity, and
+    reading it as two different measurements is worse than reading neither."""
+    text = "Between 8,000 and 12,000 documents are verified."
+    got = dims(parse_prose(text, reg))
+    assert "corpus_size" not in got
+    assert "labelled_count" not in got
+
+
+def test_scripts_the_parser_cannot_read_produce_silence_not_an_error(reg):
+    """Non-Latin scripts are a known gap. Silence is the correct failure until
+    it is closed -- it is recoverable, and the interview will ask."""
+    assert parse_prose("डेटा क्लाइंट के वातावरण से बाहर नहीं जा सकता।", reg) == []

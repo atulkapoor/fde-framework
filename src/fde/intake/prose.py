@@ -44,6 +44,21 @@ TO_MS = {
 # How far either side of a number to look for the word that identifies it.
 NEAR = 40
 
+# Sentence ends. Crude, and enough: the point is only to stop a number in one
+# sentence borrowing a word from the next.
+SENTENCE = re.compile(r"(?<=[.!?])\s+")
+
+# Cues that invert or qualify a matched phrase. A matcher cannot work out which
+# value a negation selects, so on seeing one it declines rather than guesses.
+NEGATIONS = re.compile(
+    r"\b(not|never|no longer|untrue|false|isn't|is not|wasn't|doesn't|don't)\b", re.I
+)
+LOOKBACK = 60
+
+# "between 8,000 and 12,000" is one quantity written two ways, not two
+# measurements. Which end is meant is a question for a person.
+RANGE = re.compile(r"\b(between|from)\b|\b\d[\d,]*\s*(?:-|--|to)\s*\d", re.I)
+
 
 def parse_prose(
     text: str,
@@ -81,13 +96,20 @@ def _read_quantities(registry: Registry, text: str, source: str | None) -> list[
     if not quantitative:
         return []
 
-    lowered = text.lower()
+    # Confined to a sentence: a number in one sentence must not borrow the word
+    # that names it from the next.
     candidates: list[tuple[int, str, re.Match]] = []
-    for match in NUMBER.finditer(text):
-        for dimension in quantitative:
-            distance = _nearest_word_distance(lowered, match, _near_words(dimension))
-            if distance is not None:
-                candidates.append((distance, dimension.id, match))
+    for start, sentence in _sentences(text):
+        if RANGE.search(sentence):
+            continue  # one quantity written as two numbers; ask rather than guess
+        lowered = sentence.lower()
+        for match in NUMBER.finditer(sentence):
+            for dimension in quantitative:
+                distance = _nearest_word_distance(lowered, match, _near_words(dimension))
+                if distance is not None:
+                    candidates.append(
+                        (distance, dimension.id, _shifted(match, start, text))
+                    )
 
     facts: list[Fact] = []
     claimed_numbers: set[tuple[int, int]] = set()
@@ -101,6 +123,21 @@ def _read_quantities(registry: Registry, text: str, source: str | None) -> list[
             _fact(registry.dimensions[dimension_id], _scaled(match), match.span(), source)
         )
     return facts
+
+
+def _sentences(text: str) -> list[tuple[int, str]]:
+    """Sentences with their offset into the original, so spans stay true."""
+    out, at = [], 0
+    for part in SENTENCE.split(text):
+        out.append((text.index(part, at), part))
+        at = out[-1][0] + len(part)
+    return out
+
+
+def _shifted(match: re.Match, offset: int, text: str) -> re.Match:
+    """Re-find the match against the whole text, so the recorded span points
+    into the document an FDE actually has in front of them."""
+    return NUMBER.search(text, match.start() + offset, match.end() + offset) or match
 
 
 def _nearest_word_distance(lowered: str, match: re.Match, words: list[str]) -> int | None:
@@ -127,17 +164,34 @@ def _scaled(match: re.Match) -> int:
 
 
 def _read_vocabulary(dimension: Dimension, text: str, source: str | None) -> list[Fact]:
-    """Match declared phrases. Phrases are anchored in the registry, not here,
-    so recognising more is a content change rather than a code change."""
+    """Match declared phrases, and decline when the match is not clean.
+
+    Phrases live in the registry, so recognising more is a content change. What
+    lives here is when *not* to trust a match: a negation nearby, or two values
+    of the same dimension both present.
+    """
     lowered = text.lower()
+    hits: dict[str, tuple[int, int]] = {}
+
     for value, phrases in _recognises(dimension).items():
         for phrase in phrases:
             at = lowered.find(phrase.lower())
-            if at >= 0:
-                return [
-                    _fact(dimension, _typed(dimension, value), (at, at + len(phrase)), source)
-                ]
-    return []
+            if at < 0:
+                continue
+            if NEGATIONS.search(lowered[max(0, at - LOOKBACK) : at]):
+                # Something inverts this. Which value it selects is beyond a
+                # matcher, and the interview will ask.
+                continue
+            hits.setdefault(value, (at, at + len(phrase)))
+            break
+
+    # Two values present is a real requirement -- different rules for different
+    # regions, say -- that the model cannot yet hold. Picking one would hide it.
+    if len(hits) != 1:
+        return []
+
+    value, span = next(iter(hits.items()))
+    return [_fact(dimension, _typed(dimension, value), span, source)]
 
 
 
