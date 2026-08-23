@@ -30,6 +30,10 @@ from fde.space import Space
 
 Outcome = Callable[[Space], Any]
 
+# Where an unscoreable question sits in the order: behind anything measured to
+# matter, ahead of anything measured not to.
+UNKNOWN_DIVERGENCE = 0.5
+
 
 @dataclass(frozen=True)
 class Question:
@@ -119,12 +123,17 @@ def remaining_questions(
             )
         )
 
-    # Unknown sorts above measured-irrelevant: a question we cannot score yet
-    # beats one we scored and found pointless. Note the explicit None check --
-    # `q.divergence or 1.0` would treat a measured 0.0 as unknown, which is the
-    # opposite of what it means.
-    return sorted(questions, key=lambda q: (-(1.0 if q.divergence is None else q.divergence),
-                                            q.resolves))
+    # Unknown sits between the two things we do know: below a question measured
+    # to change the answer, above one measured to change nothing. Treating it as
+    # maximum would put every unscoreable question ahead of the decisive ones.
+    #
+    # The explicit None check matters -- `q.divergence or UNKNOWN` would treat a
+    # measured 0.0 as unknown, which is the opposite of what it means.
+    return sorted(
+        questions,
+        key=lambda q: (-(UNKNOWN_DIVERGENCE if q.divergence is None else q.divergence),
+                       q.resolves),
+    )
 
 
 def next_question(

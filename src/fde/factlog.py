@@ -61,11 +61,20 @@ class Session:
                     "name": self.respondent.name,
                 },
                 "facts": [
+                    # span and source are what make "where did that come from"
+                    # answerable months later. Dropping them on write would
+                    # quietly break the property the whole log exists for.
                     {
-                        "dimension": f.dimension,
-                        "value": f.value,
-                        "provenance": str(f.provenance),
-                        "kind": str(f.kind),
+                        k: v
+                        for k, v in (
+                            ("dimension", f.dimension),
+                            ("value", f.value),
+                            ("provenance", str(f.provenance)),
+                            ("kind", str(f.kind)),
+                            ("span", list(f.span) if f.span else None),
+                            ("source", f.source),
+                        )
+                        if v is not None
                     }
                     for f in self.facts
                 ],
@@ -80,10 +89,17 @@ class Session:
             return cls(
                 session_id=raw.get("session_id", source),
                 respondent=Respondent(**raw["respondent"]),
-                facts=[Fact(**f) for f in raw.get("facts", [])],
+                facts=[Fact(**_span_as_tuple(f)) for f in raw.get("facts", [])],
             )
         except Exception as exc:  # noqa: BLE001 - the file name is the useful part
             raise ValueError(f"{source}: cannot read session file -- {exc}") from exc
+
+
+def _span_as_tuple(raw: dict[str, Any]) -> dict[str, Any]:
+    """YAML gives back a list; Fact wants the tuple it was written from."""
+    if isinstance(raw.get("span"), list):
+        raw = {**raw, "span": tuple(raw["span"])}
+    return raw
 
 
 @dataclass

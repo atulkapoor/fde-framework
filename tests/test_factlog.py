@@ -209,3 +209,18 @@ def test_session_order_on_disk_does_not_change_the_resolved_profile(tmp_path):
 def test_an_engagement_reports_where_it_lives(tmp_path):
     e: Engagement = start_engagement(tmp_path, "acme")
     assert e.root == tmp_path / "acme"
+
+
+def test_a_fact_still_points_at_its_source_after_a_reload(tmp_path):
+    """Traceability has to survive the round trip, or it is not traceability."""
+    e = start_engagement(tmp_path, "acme")
+    e.append(
+        Session(
+            "0001-frame",
+            Respondent(role="system"),
+            [Fact("corpus_size", 200000, Provenance.ARTIFACT, span=(10, 17), source="rfp.pdf")],
+        )
+    )
+    fact = load_engagement(tmp_path / "acme").profile.fact("corpus_size")
+    assert fact.span == (10, 17)
+    assert fact.source == "rfp.pdf"
