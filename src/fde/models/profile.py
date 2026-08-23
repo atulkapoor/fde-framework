@@ -52,6 +52,21 @@ class Profile:
     def __init__(self) -> None:
         self._history: dict[str, list[Fact]] = {}
 
+    def __eq__(self, other: object) -> bool:
+        """Same facts in the same order.
+
+        Deliberately stricter than "resolves to the same values": two profiles
+        that agree today but hold different evidence are not interchangeable,
+        because the next fact to arrive may resolve them differently.
+        """
+        if not isinstance(other, Profile):
+            return NotImplemented
+        return self._history == other._history
+
+    def __repr__(self) -> str:  # pragma: no cover - diagnostics only
+        resolved = len(self.values())
+        return f"<Profile {resolved} resolved / {len(self._history)} dimensions>"
+
     # -- writing ----------------------------------------------------------
 
     def ingest(self, facts: list[Fact]) -> None:
