@@ -62,6 +62,16 @@ class Decision:
 class Decisions(dict):
     """Component id -> Decision, with a stable identity for the whole set."""
 
+    def undecided(self) -> list[str]:
+        """Components in scope that nothing can currently fill."""
+        return sorted(c for c, d in self.items() if not d.approach)
+
+    def decided(self) -> Decisions:
+        return Decisions({c: d for c, d in self.items() if d.approach})
+
+    def decided_fingerprint(self) -> str:
+        return self.decided().fingerprint()
+
     def fingerprint(self) -> str:
         """One value standing for the whole architecture.
 
@@ -71,7 +81,7 @@ class Decisions(dict):
         correctly treated as the same answer.
         """
         payload = json.dumps(
-            sorted(d.as_tuple() for d in self.values()), separators=(",", ":")
+            sorted(d.as_tuple() for d in self.values() if d.approach), separators=(",", ":")
         )
         return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
@@ -151,12 +161,25 @@ def decide_component(
 def decide_all(
     values: Mapping[str, Any], registry: Registry, components: list[str] | None = None
 ) -> Decisions:
+    """Decide every component asked for -- including the ones we cannot.
+
+    A component decomposition put in scope but decision cannot fill does not
+    disappear. It stays, with no approach and a rationale saying why, because a
+    component that vanishes between "you need this" and "here is the design" is
+    a hole nobody notices until build time.
+    """
     wanted = components if components is not None else list(registry.components)
     decisions = Decisions()
     for component in wanted:
         decision = decide_component(component, values, registry)
-        if decision and decision.approach:
-            decisions[component] = decision
+        if decision is None:
+            decision = Decision(
+                component=component,
+                approach=None,
+                rationale="no approach in the registry serves this component",
+                considered=0,
+            )
+        decisions[component] = decision
     return decisions
 
 

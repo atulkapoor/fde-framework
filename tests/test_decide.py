@@ -87,13 +87,13 @@ def test_every_decision_names_what_it_rejected(reg):
     """A recommendation with no rejected alternatives has been assumed, not made
     -- unless the registry genuinely offers none, which is said out loud rather
     than left as silence a client would read as 'considered and dismissed'."""
-    for decision in decide_all(DOC_EXTRACTION, reg).values():
+    for decision in decide_all(DOC_EXTRACTION, reg).decided().values():
         assert decision.rejected or decision.uncontested
 
 
 def test_an_uncontested_decision_says_it_was_uncontested(reg):
     """One candidate is not the same as one winner."""
-    uncontested = [d for d in decide_all(DOC_EXTRACTION, reg).values() if d.uncontested]
+    uncontested = [d for d in decide_all(DOC_EXTRACTION, reg).decided().values() if d.uncontested]
     assert uncontested
     assert all("only approach registered" in d.rationale for d in uncontested)
 
@@ -106,7 +106,7 @@ def test_a_component_with_only_one_candidate_approach_is_a_registry_gap(reg):
 
 
 def test_every_rejection_states_a_reason(reg):
-    for decision in decide_all(DOC_EXTRACTION, reg).values():
+    for decision in decide_all(DOC_EXTRACTION, reg).decided().values():
         for rejection in decision.rejected:
             assert rejection.reason
 
@@ -121,13 +121,13 @@ def test_a_rejection_names_the_condition_that_ruled_it_out(reg):
 
 
 def test_every_decision_carries_evidence(reg):
-    for decision in decide_all(DOC_EXTRACTION, reg).values():
+    for decision in decide_all(DOC_EXTRACTION, reg).decided().values():
         assert decision.evidence is not None
 
 
 def test_confidence_must_clear_the_cost_of_being_wrong(reg):
     """A one-way choice on a hunch is the expensive mistake."""
-    for decision in decide_all(DOC_EXTRACTION, reg).values():
+    for decision in decide_all(DOC_EXTRACTION, reg).decided().values():
         if decision.reversibility is Reversibility.ONE_WAY:
             assert decision.confidence is Confidence.HIGH
 
@@ -159,6 +159,20 @@ def test_the_fingerprint_changes_when_a_decision_changes(reg):
     a = decide_all(DOC_EXTRACTION, reg).fingerprint()
     b = decide_all({**DOC_EXTRACTION, "output_shape": "freeform"}, reg).fingerprint()
     assert a != b
+
+
+def test_a_component_in_scope_that_cannot_be_filled_is_reported_not_dropped(reg):
+    """The hole has to be visible. A component that disappears between
+    "you need this" and "here is the design" is found at build time."""
+    decisions = decide_all(DOC_EXTRACTION, reg)
+    assert set(decisions) > set(decisions.decided())
+    assert decisions.undecided()
+
+
+def test_an_unfillable_component_does_not_change_the_fingerprint(reg):
+    """What cannot be built is not part of what gets built."""
+    once = decide_all(DOC_EXTRACTION, reg).fingerprint()
+    assert once == decide_all(DOC_EXTRACTION, reg).decided_fingerprint()
 
 
 def test_decisions_cover_the_components_that_were_decomposed(reg):
