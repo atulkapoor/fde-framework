@@ -91,18 +91,39 @@ def test_every_decision_names_what_it_rejected(reg):
         assert decision.rejected or decision.uncontested
 
 
-def test_an_uncontested_decision_says_it_was_uncontested(reg):
-    """One candidate is not the same as one winner."""
-    uncontested = [d for d in decide_all(DOC_EXTRACTION, reg).decided().values() if d.uncontested]
-    assert uncontested
-    assert all("only approach registered" in d.rationale for d in uncontested)
+def test_an_uncontested_decision_says_it_was_uncontested(lone_approach):
+    """One candidate is not the same as one winner. Tested against a registry
+    built to be thin, since the shipped one no longer is."""
+    decision = decide_component("widget", {"output_shape": "structured"}, lone_approach)
+    assert decision.uncontested
+    assert "only approach registered" in decision.rationale
 
 
-def test_a_component_with_only_one_candidate_approach_is_a_registry_gap(reg):
+def test_a_component_with_only_one_candidate_approach_is_a_registry_gap(lone_approach):
     """Nothing to weigh means the corpus is thin there, and gaps should say so."""
     from fde.graph import find_gaps
 
-    assert any(g.kind == "component_without_alternatives" for g in find_gaps(reg))
+    assert any(g.kind == "component_without_alternatives" for g in find_gaps(lone_approach))
+
+
+@pytest.fixture
+def lone_approach(tmp_path):
+    """A component served by exactly one approach."""
+    (tmp_path / "components").mkdir()
+    (tmp_path / "components" / "widget.md").write_text(
+        "---\nid: widget\nname: Widget\nrequired_when: [always]\n---\n"
+    )
+    (tmp_path / "dimensions").mkdir()
+    (tmp_path / "dimensions" / "output_shape.md").write_text(
+        "---\nid: output_shape\ntype: enum\nvalues: [structured, freeform]\n---\n"
+    )
+    (tmp_path / "approaches").mkdir()
+    (tmp_path / "approaches" / "only-one.md").write_text(
+        "---\nid: only-one\nname: Only one\ncomponents: [widget]\n"
+        "applies_when: [output_shape == structured]\n"
+        "avoid_when: [output_shape == freeform]\n---\n"
+    )
+    return load_registry(tmp_path)
 
 
 def test_every_rejection_states_a_reason(reg):

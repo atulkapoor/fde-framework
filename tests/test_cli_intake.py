@@ -108,14 +108,26 @@ def test_skipping_is_legal_and_does_not_stall(tmp_path):
     assert load_engagement(root).profile.is_empty()
 
 
-def test_an_unusable_answer_is_challenged_rather_than_stored(tmp_path):
-    """'fast' is not a duration. Storing it would put a wrong fact at artifact
-    strength ahead of the answer that would have corrected it."""
+def test_an_unusable_answer_is_challenged_and_nothing_is_stored(tmp_path):
+    """Storing it would put a wrong fact at artifact strength ahead of the
+    answer that would have corrected it.
+
+    Deliberately independent of which question comes first: "fast" parses as
+    nothing at all, so whatever is asked, it earns a probe. Tying this to a
+    position made it break every time a dimension was added.
+    """
     root = engagement(tmp_path)
     result = runner.invoke(
-        app, ["ask", str(root), "--role", "user"], input="\n\nfast\n800ms\n"
+        app, ["ask", str(root), "--role", "user"], input="fast\n" + "\n" * 12
     )
-    assert "milliseconds" in result.output.lower()
+    assert "I need" in result.output
+    assert load_engagement(root).profile.is_empty()
+
+
+def test_a_corrected_answer_is_stored(tmp_path):
+    """The probe is a prompt for precision, not a refusal."""
+    root = engagement(tmp_path)
+    runner.invoke(app, ["frame", str(root), "--text", "Responses must return in under 800ms."])
     assert load_engagement(root).profile.get("latency_budget_ms") == 800
 
 

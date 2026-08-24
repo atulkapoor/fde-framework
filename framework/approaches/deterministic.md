@@ -2,7 +2,7 @@
 id: deterministic
 name: Deterministic
 complexity: 0
-components: [representation, perception, integration]
+components: [representation]
 applies_when: [output_shape == structured]
 avoid_when: [output_shape == freeform, output_shape == ranking]
 evidence: {case_ids: [structured-extraction], confidence: high, last_verified: 2026-08-21}
