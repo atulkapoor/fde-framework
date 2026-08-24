@@ -215,6 +215,12 @@ class Approach(BaseModel):
 
     id: str
     name: str
+
+    # Lowest applicable wins. Not a quality ranking -- a cost-of-ownership one,
+    # so the engine reaches for the simplest thing that fits rather than the
+    # most capable thing available.
+    complexity: int = 0
+    components: list[str] = Field(default_factory=list)
     applies_when: list[str] = Field(min_length=1)
     avoid_when: list[str] = Field(default_factory=list)
     evidence: Evidence | None = None

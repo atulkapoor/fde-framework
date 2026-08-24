@@ -115,6 +115,19 @@ def find_gaps(registry: Registry, today: str | date | None = None) -> list[Gap]:
                 )
             )
 
+    serving: dict[str, int] = {}
+    for approach in registry.approaches.values():
+        for component in approach.components:
+            serving[component] = serving.get(component, 0) + 1
+    for component, count in serving.items():
+        if count == 1:
+            gaps.append(
+                Gap(
+                    kind="component_without_alternatives",
+                    detail=f"{component}: only one approach serves it, so nothing is weighed",
+                )
+            )
+
     covered = {p.component for p in registry.patterns.values()}
     for component in registry.components:
         if component not in covered:
