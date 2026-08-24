@@ -12,6 +12,9 @@ recognises:
   text: [emails, tickets, chat logs, transcripts, free text]
   images: [photographs, imagery, product images]
   streams: [events, telemetry, clickstream, sensor]
+refines:
+  scanned_documents: documents
+  images: documents
 ---
 Caps everything downstream, and is the most under-invested decision in most
 systems. A badly parsed table is not recovered by a better model.

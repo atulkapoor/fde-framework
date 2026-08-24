@@ -12,6 +12,8 @@ from typing import Annotated
 
 import typer
 
+from fde.architect import architect as build_architecture
+from fde.emit import BuildRefused, emit
 from fde.factlog import Session, load_engagement, start_engagement
 from fde.graph import find_gaps, validate_links
 from fde.intake.answers import parse_answer
@@ -262,6 +264,52 @@ def _with(profile: Profile, fact: Fact) -> Profile:
 def _next_session_id(engagement, label: str) -> str:
     existing = len(list(engagement.facts_dir.glob("*.yaml")))
     return f"{existing + 1:04d}-{label}"
+
+
+@app.command("architect")
+def architect_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    registry_root: Annotated[Path, typer.Option("--registry")] = DEFAULT_ROOT,
+) -> None:
+    """Decide the design, and say what is still open."""
+    registry = load_registry(registry_root)
+    architecture = build_architecture(load_engagement(root).profile, registry)
+
+    typer.echo(f"topology {architecture.topology}   [{architecture.fingerprint()}]\n")
+    for component, decision in sorted(architecture.decisions.decided().items()):
+        realization = architecture.realizations.get(component)
+        via = f" via {realization.stack}" if realization else ""
+        typer.echo(f"  {component:16} {decision.approach}{via}")
+
+    if architecture.decisions.undecided():
+        typer.echo(f"\nnot decided: {', '.join(architecture.decisions.undecided())}")
+    if architecture.disagreements:
+        typer.echo(f"\nunresolved: {', '.join(d.dimension for d in architecture.disagreements)}")
+    if architecture.copyleft_licences:
+        typer.echo(f"\ncopyleft: {', '.join(architecture.copyleft_licences)}")
+
+
+@app.command("build")
+def build_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    out: Annotated[Path, typer.Option(help="Where to write the project.")],
+    registry_root: Annotated[Path, typer.Option("--registry")] = DEFAULT_ROOT,
+) -> None:
+    """Emit the project. Refuses before writing anything if it would be unsound."""
+    registry = load_registry(registry_root)
+    architecture = build_architecture(load_engagement(root).profile, registry)
+    try:
+        emit(architecture, out)
+    except BuildRefused as exc:
+        typer.echo(f"refused: {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+    typer.echo(f"wrote {out}")
+    if architecture.decisions.undecided():
+        typer.echo(
+            f"  {len(architecture.decisions.undecided())} component(s) raise on use -- "
+            f"see ARCHITECTURE.md"
+        )
 
 
 @kb.command("gaps")

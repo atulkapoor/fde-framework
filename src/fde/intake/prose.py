@@ -185,8 +185,11 @@ def _read_vocabulary(dimension: Dimension, text: str, source: str | None) -> lis
             hits.setdefault(value, (at, at + len(phrase)))
             break
 
-    # Two values present is a real requirement -- different rules for different
-    # regions, say -- that the model cannot yet hold. Picking one would hide it.
+    hits = _most_specific(dimension, hits)
+
+    # Two values that do not refine each other is a real requirement -- different
+    # rules for different regions, say -- that the model cannot yet hold. Picking
+    # one would hide it behind a confident answer.
     if len(hits) != 1:
         return []
 
@@ -227,6 +230,18 @@ def restate(facts: list[Fact], registry: Registry) -> str:
 
 
 # --- helpers -------------------------------------------------------------
+
+
+def _most_specific(dimension: Dimension, hits: dict) -> dict:
+    """Drop any value that a more precise co-occurring value refines.
+
+    "Scanned supplier invoices" matches both scanned_documents and documents.
+    That is one answer stated precisely, not two competing ones, and refusing it
+    would send the framework asking what the brief already said.
+    """
+    refines = getattr(dimension, "refines", {}) or {}
+    broader = {refines[v] for v in hits if v in refines}
+    return {v: span for v, span in hits.items() if v not in broader}
 
 
 def _recognises(dimension: Dimension) -> dict[str, list[str]]:

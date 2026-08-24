@@ -220,3 +220,18 @@ def test_scripts_the_parser_cannot_read_produce_silence_not_an_error(reg):
     """Non-Latin scripts are a known gap. Silence is the correct failure until
     it is closed -- it is recoverable, and the interview will ask."""
     assert parse_prose("डेटा क्लाइंट के वातावरण से बाहर नहीं जा सकता।", reg) == []
+
+
+def test_a_more_specific_value_wins_over_the_one_it_refines(reg):
+    """'Scanned supplier invoices' matches both scanned_documents and
+    documents. That is not two answers competing, it is one answer stated
+    precisely -- and refusing it would send the framework asking a question the
+    brief already settled."""
+    got = dims(parse_prose("We process scanned supplier invoices.", reg))
+    assert got["input_format"] == "scanned_documents"
+
+
+def test_two_values_neither_refining_the_other_are_still_refused(reg):
+    """The refinement rule must not become a way of picking arbitrarily."""
+    text = "Data cannot leave for EU clients, though data may leave for US ones."
+    assert "data_residency" not in dims(parse_prose(text, reg))
