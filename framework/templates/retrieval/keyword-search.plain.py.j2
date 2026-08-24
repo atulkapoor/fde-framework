@@ -1,0 +1,104 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Two retrievers, because each fails exactly where the other works. Lexical
+matching finds part numbers, account references and names -- the tokens people
+actually search for -- and is blind to meaning. Semantic search handles a
+question phrased three different ways and fumbles an identifier. Running both
+and fusing them lifts recall well above either alone.
+
+**Fusion is on rank, not score.** Two retrievers do not produce comparable
+numbers, and averaging them is the thing that looks reasonable and quietly
+breaks: one retriever's 0.8 is not the other's. Reciprocal rank fusion needs no
+scores at all, which is what lets it combine retrievers that share nothing --
+including one that has no scores to give.
+
+A document both tiers found outranks one only either found. That is the whole
+mechanism, and it is why agreement is worth more than any single score.
+"""
+
+from __future__ import annotations
+
+import math
+import re
+from collections import Counter, defaultdict
+from typing import Any
+
+# Rank-fusion constant. Damps the top of each list so one retriever's first
+# result cannot dominate agreement between the others.
+RRF_K = 60
+
+TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*")
+
+
+def fuse(ranked: dict[str, list[str]], k: int = RRF_K) -> list[str]:
+    """Combine ranked lists using ranks alone.
+
+    Deliberately score-free. It works across retrievers with incompatible
+    scales, and it works when one of them has no score to offer.
+    """
+    totals: dict[str, float] = defaultdict(float)
+    for results in ranked.values():
+        for position, doc_id in enumerate(results):
+            totals[doc_id] += 1.0 / (k + position + 1)
+    return sorted(totals, key=lambda d: (-totals[d], d))
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(self) -> None:
+        self._documents: dict[str, str] = {}
+        self._frequencies: dict[str, Counter] = {}
+        self._document_frequency: Counter = Counter()
+
+    def index(self, documents: list[dict[str, Any]]) -> None:
+        for document in documents:
+            tokens = self._tokenise(document["text"])
+            self._documents[document["id"]] = document["text"]
+            self._frequencies[document["id"]] = Counter(tokens)
+            for token in set(tokens):
+                self._document_frequency[token] += 1
+
+    def retrieve(self, query: str, k: int = 5) -> list[dict[str, Any]]:
+        """Lexical results, ranked. Where a semantic tier exists, its ranking
+        is fused with this one rather than averaged against it."""
+        ranked = self._lexical(query)
+        return [
+            {"id": doc_id, "text": self._documents[doc_id], "rank": position + 1}
+            for position, doc_id in enumerate(ranked[:k])
+        ]
+
+    def run(self, payload: dict[str, Any]) -> Any:
+        return self.retrieve(payload["query"], k=payload.get("k", 5))
+
+    # -- lexical ----------------------------------------------------------
+
+    def _lexical(self, query: str) -> list[str]:
+        """Term frequency against inverse document frequency.
+
+        Unfashionable and hard to beat when the query contains the token the
+        answer contains -- which is most of the time in a document corpus.
+        """
+        total = len(self._documents) or 1
+        scores: dict[str, float] = defaultdict(float)
+        for token in self._tokenise(query):
+            appearing = self._document_frequency.get(token, 0)
+            if not appearing:
+                continue
+            rarity = math.log(1 + (total / appearing))
+            for doc_id, counts in self._frequencies.items():
+                if counts.get(token):
+                    scores[doc_id] += counts[token] * rarity
+        return sorted(scores, key=lambda d: (-scores[d], d))
+
+    @staticmethod
+    def _tokenise(text: str) -> list[str]:
+        # Identifiers are kept whole. Splitting SKU-99312 into two tokens is
+        # how a lexical tier loses the one thing it is better at.
+        return [t.lower() for t in TOKEN.findall(text)]

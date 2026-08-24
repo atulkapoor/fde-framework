@@ -1,0 +1,147 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+A memory that only grows is a slower context window. Two things go wrong as it
+does, and the second is the one that hurts.
+
+**Cost**, because carrying the whole history costs an order of magnitude more
+per turn than carrying what matters. And **attention dilution**, because
+retrieved context holding two answers to the same question does not produce a
+careful answer -- it produces an incoherent one. Consolidation is about
+coherence before it is about money.
+
+Four levers do the work: what is worth keeping, what merges into what, what
+fades without use, and what is dropped. Forgetting has three mechanisms in
+increasing order of difficulty -- expiry by time, decay by disuse, and detecting
+that something has simply stopped being true.
+
+**That last one is the open problem, and it is not solved by appending.**
+Someone changes employer and a memory that only accumulates keeps asserting the
+old one with full confidence. So facts here are held the way the framework holds
+its own: every version kept, the current one resolved, and what was superseded
+retained without being returned. Recall gives one answer per key, because two is
+worse than none.
+"""
+
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass, field
+from typing import Any
+
+# Unused and unimportant memories fade. Deliberately generous: forgetting
+# something a person mentioned once is cheap, forgetting something they rely on
+# is not.
+DECAY_AFTER_SECONDS = 30 * 24 * 3600
+KEEP_IF_USED_AT_LEAST = 3
+
+
+@dataclass
+class Remembered:
+    key: str
+    value: Any
+    because: str
+    at: float
+    superseded_at: float | None = None
+    uses: int = 0
+
+    @property
+    def current(self) -> bool:
+        return self.superseded_at is None
+
+
+@dataclass
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface: str = "{{ interface }}"
+    approach: str = "{{ approach }}"
+    stack: str = "{{ stack }}"
+
+    # Wiped with the task. A mistake here disappears; the same mistake promoted
+    # is permanent and will be recalled with confidence.
+    _scratch: dict[str, list[str]] = field(default_factory=dict)
+    _long_term: list[Remembered] = field(default_factory=list)
+
+    # -- the cheap tier ---------------------------------------------------
+
+    def note(self, session: str, observation: str) -> None:
+        """Working state. Kept for the task, promoted only on purpose."""
+        self._scratch.setdefault(session, []).append(observation)
+
+    def forget_session(self, session: str) -> None:
+        self._scratch.pop(session, None)
+
+    def promote(self, session: str, observation: str, because: str) -> None:
+        """Move something from working state into what is kept.
+
+        Explicit on purpose. Automatic promotion is how a passing remark becomes
+        a permanent belief about somebody.
+        """
+        if observation in self._scratch.get(session, []):
+            self.remember(observation, observation, because=because)
+
+    # -- what is kept -----------------------------------------------------
+
+    def remember(self, key: str, value: Any, because: str, now: float | None = None) -> None:
+        """Record a fact, superseding what it replaces.
+
+        Not an append. The previous value stops being current the moment this
+        one arrives, which is the difference between a memory that stays right
+        and one that accumulates contradictions.
+        """
+        stamp = now if now is not None else time.time()
+        for existing in self._long_term:
+            if existing.key == key and existing.current:
+                existing.superseded_at = stamp
+        self._long_term.append(Remembered(key=key, value=value, because=because, at=stamp))
+
+    def recall_long_term(self) -> list[dict[str, Any]]:
+        """One answer per key. Never two.
+
+        Returning both a superseded fact and its replacement is how retrieved
+        context stops producing a coherent answer.
+        """
+        out = []
+        for item in self._long_term:
+            if not item.current:
+                continue
+            item.uses += 1
+            out.append({"key": item.key, "value": item.value, "because": item.because,
+                        "at": item.at, "uses": item.uses})
+        return out
+
+    def history(self, key: str) -> list[dict[str, Any]]:
+        """Everything ever believed about this, including what is no longer true.
+
+        Kept rather than deleted: the audit question is not what we think now,
+        it is what we thought when we acted.
+        """
+        return [
+            {"value": i.value, "because": i.because, "at": i.at,
+             "superseded_at": i.superseded_at}
+            for i in self._long_term if i.key == key
+        ]
+
+    # -- forgetting -------------------------------------------------------
+
+    def sweep(self, now: float | None = None) -> list[str]:
+        """Drop what has faded, keep what gets used.
+
+        Use is the signal that survives disagreement about importance. Something
+        recalled repeatedly is load-bearing whatever anyone predicted.
+        """
+        stamp = now if now is not None else time.time()
+        keep, dropped = [], []
+        for item in self._long_term:
+            stale = (stamp - item.at) > DECAY_AFTER_SECONDS
+            if stale and item.uses < KEEP_IF_USED_AT_LEAST and item.current:
+                dropped.append(item.key)
+                continue
+            keep.append(item)
+        self._long_term = keep
+        return dropped
+
+    def run(self, payload: Any) -> Any:
+        return payload
