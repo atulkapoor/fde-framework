@@ -12,10 +12,7 @@ recognises:
   public-saas: [public saas, off the shelf saas]
 prunes:
   air-gapped:
-    inference: [hosted-api]
     embeddings: [managed]
-  on-prem:
-    inference: [hosted-api]
 ask_role: ['admin']
 ---
 Where the compute sits. Three topologies, one architecture -- the shape does not

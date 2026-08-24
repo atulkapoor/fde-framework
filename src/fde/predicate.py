@@ -34,6 +34,13 @@ def holds(predicate: str, profile: Profile, registry: Registry) -> bool:
     if predicate.strip() == ALWAYS:
         return True
 
+    # Conjunction only, deliberately. Real conditions are usually "this and
+    # that" -- nobody waiting *and* the volume is high. Adding `or` would let a
+    # condition express two unrelated reasons as one, which is what avoid_when
+    # lists already do, one line each, readably.
+    if " and " in predicate:
+        return all(holds(part, profile, registry) for part in predicate.split(" and "))
+
     match = COMPARISON.match(predicate) or TRUTHY.match(predicate)
     if not match:
         raise PredicateError(f"cannot read predicate {predicate!r}")

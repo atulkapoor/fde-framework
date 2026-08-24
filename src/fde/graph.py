@@ -128,6 +128,25 @@ def find_gaps(registry: Registry, today: str | date | None = None) -> list[Gap]:
                 )
             )
 
+    acted_on: set[str] = set()
+    for approach in registry.approaches.values():
+        for condition in [*approach.applies_when, *approach.avoid_when]:
+            acted_on.update(_dimensions_in(condition))
+    for component in registry.components.values():
+        for condition in component.required_when:
+            acted_on.update(_dimensions_in(condition))
+    for dimension in registry.dimensions:
+        if dimension not in acted_on:
+            gaps.append(
+                Gap(
+                    kind="inert_dimension",
+                    detail=(
+                        f"{dimension}: asked about, but no decision depends on it -- "
+                        f"a question whose answer changes nothing wastes the meeting"
+                    ),
+                )
+            )
+
     covered = {p.component for p in registry.patterns.values()}
     for component in registry.components:
         if component not in covered:
@@ -136,6 +155,15 @@ def find_gaps(registry: Registry, today: str | date | None = None) -> list[Gap]:
             )
 
     return gaps
+
+
+def _dimensions_in(condition: str) -> set[str]:
+    """The dimensions a predicate reads."""
+    return {
+        part.split()[0]
+        for part in condition.split(" and ")
+        if part.split() and part.split()[0] != "always"
+    }
 
 
 def _cited_cases(entry: object) -> list[str]:

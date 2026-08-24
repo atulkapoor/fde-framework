@@ -61,18 +61,31 @@ def test_answering_leaves_the_original_untouched(space):
     assert "public-saas" in space.surviving("hosting")
 
 
-def test_pruning_cascades_through_what_it_collapses(space):
-    """Air-gapped rules out a hosted API, which rules out managed embeddings.
-    Nobody stated the second consequence; it follows from the first."""
+def test_answering_one_thing_settles_another_nobody_stated(space):
+    """An air gap rules out managed embeddings. Nobody says so; it follows."""
     after = space.answer("hosting", "air-gapped")
-    assert after.surviving("inference") == {"self-hosted"}
-    assert "managed" not in after.surviving("embeddings")
+    assert after.surviving("embeddings") == {"local"}
+
+
+def test_consequences_run_to_a_fixed_point_not_a_single_pass(reg):
+    """A collapsed dimension prunes on its own account, which can collapse
+    another. Tested against a purpose-built registry so it checks the mechanism
+    rather than whatever the shipped content happens to chain today."""
+    import textwrap
+
+    from fde.registry import load_registry
+
+    root = _tiny_registry(textwrap.dedent)
+    chained = Space.from_registry(load_registry(root))
+    after = chained.answer("a", "x")
+    assert after.value("b") == "p"      # one hop
+    assert after.value("c") == "m"      # two hops, from b collapsing
 
 
 def test_a_dimension_down_to_one_value_is_resolved_without_being_asked(space):
     after = space.answer("hosting", "air-gapped")
-    assert after.resolved("inference")
-    assert after.value("inference") == "self-hosted"
+    assert after.resolved("embeddings")
+    assert after.value("embeddings") == "local"
 
 
 def test_pruning_is_order_independent(space):
@@ -150,7 +163,40 @@ def test_exploring_the_whole_space_stays_linear(space):
 
 def test_exploring_a_resolved_dimension_yields_the_one_case(space):
     after = space.answer("hosting", "air-gapped")
-    assert len(after.explore("inference")) == 1
+    assert len(after.explore("embeddings")) == 1
+
+
+def _tiny_registry(dedent):
+    """a=x prunes b to one value, which prunes c to one value."""
+    import tempfile
+    from pathlib import Path
+
+    root = Path(tempfile.mkdtemp()) / "dimensions"
+    root.mkdir(parents=True)
+    (root / "a.md").write_text(dedent("""\
+        ---
+        id: a
+        type: enum
+        values: [x, y]
+        prunes: {x: {b: [q]}}
+        ---
+        """))
+    (root / "b.md").write_text(dedent("""\
+        ---
+        id: b
+        type: enum
+        values: [p, q]
+        prunes: {p: {c: [n]}}
+        ---
+        """))
+    (root / "c.md").write_text(dedent("""\
+        ---
+        id: c
+        type: enum
+        values: [m, n]
+        ---
+        """))
+    return root.parent
 
 
 def _sponsor():
