@@ -2,7 +2,8 @@
 id: evaluation
 name: Evaluation
 caps: []
-required_when: ["always -- an unmeasured system cannot be improved or defended"]
+required_when:
+  - always
 ---
 Golden set, edge cases, adversarial set, error taxonomy, promotion gates.
 

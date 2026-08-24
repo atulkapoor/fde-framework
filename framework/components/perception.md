@@ -2,7 +2,8 @@
 id: perception
 name: Perception
 caps: [representation, retrieval, memory, planning, reasoning, integration]
-required_when: ["always -- something must arrive"]
+required_when:
+  - always
 ---
 Normalises whatever arrives -- prose, API calls, events, documents, scheduled
 triggers -- into something the rest of the system can act on.

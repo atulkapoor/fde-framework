@@ -2,7 +2,9 @@
 id: representation
 name: Representation
 caps: [retrieval, memory, reasoning]
-required_when: ["input must be mapped onto a schema or an embedding space"]
+required_when:
+  - labelled_count > 0
+  - corpus_size > 0
 ---
 How input becomes something searchable or comparable: schema mapping,
 chunking, embeddings, entity resolution.

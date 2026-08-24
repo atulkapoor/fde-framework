@@ -3,8 +3,8 @@ id: memory
 name: Memory
 caps: [planning, reasoning]
 required_when:
-  - state must persist across turns
-  - the system must not repeat work it already did
+  - human_waiting == mixed
+  - human_waiting == yes
 ---
 State the system accumulates from its own operation. Distinct from retrieval:
 retrieval reads a corpus somebody else wrote, memory writes what this system

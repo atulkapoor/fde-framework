@@ -2,7 +2,8 @@
 id: observability
 name: Observability
 caps: []
-required_when: ["always -- a loop cannot be debugged one node at a time"]
+required_when:
+  - always
 ---
 Traces, cost and latency attribution, trajectory capture.
 

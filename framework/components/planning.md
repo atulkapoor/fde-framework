@@ -3,8 +3,7 @@ id: planning
 name: Planning
 caps: [integration, reasoning]
 required_when:
-  - the goal does not fit in a single hop
-  - subtasks have an order that matters
+  - output_shape == decision
 ---
 Decomposing a goal into ordered subtasks.
 

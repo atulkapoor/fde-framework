@@ -113,7 +113,7 @@ def test_an_unusable_answer_is_challenged_rather_than_stored(tmp_path):
     strength ahead of the answer that would have corrected it."""
     root = engagement(tmp_path)
     result = runner.invoke(
-        app, ["ask", str(root), "--role", "user"], input="yes\nfast\n800ms\n"
+        app, ["ask", str(root), "--role", "user"], input="\n\nfast\n800ms\n"
     )
     assert "milliseconds" in result.output.lower()
     assert load_engagement(root).profile.get("latency_budget_ms") == 800

@@ -3,8 +3,8 @@ id: governance
 name: Governance
 caps: []
 required_when:
-  - data carries a sensitivity classification
-  - actions are taken on a person's behalf
+  - data_residency == cannot_leave
+  - interpretability_required == true
 ---
 Identity, delegated authority, guardrails, approval gates, audit and ledger.
 

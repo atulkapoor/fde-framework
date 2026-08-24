@@ -2,7 +2,9 @@
 id: reasoning
 name: Reasoning
 caps: [integration]
-required_when: ["a decision cannot be expressed as a rule"]
+required_when:
+  - output_shape == freeform
+  - output_shape == decision
 ---
 The model deciding what to do. Chain of thought, ReAct, plan-then-execute,
 reflection.

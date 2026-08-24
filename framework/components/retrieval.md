@@ -2,7 +2,9 @@
 id: retrieval
 name: Retrieval
 caps: [reasoning]
-required_when: ["answers must be grounded in a corpus the model was not trained on"]
+required_when:
+  - output_shape == freeform
+  - output_shape == ranking
 ---
 Finding the right context. Dense, sparse, hybrid, graph traversal, reranking.
 
