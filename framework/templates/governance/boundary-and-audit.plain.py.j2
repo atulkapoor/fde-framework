@@ -1,0 +1,142 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Three things, and the third is the one that gets missed.
+
+**Reversible steps run; irreversible ones stop.** The gate is not on the whole
+workflow, it is on the actions that cannot be taken back.
+
+**A repeated action happens once.** Exactly-once delivery does not exist at the
+transport layer, so the answer is at-least-once delivery with idempotent
+processing: a key derived from the action, a stored outcome returned on retry,
+and -- importantly -- the same key arriving with a *different* payload treated as
+an error rather than silently deduplicated. Two different actions sharing a key
+is a bug, and swallowing it hides the bug.
+
+**Autonomy is earned per action, and some actions never earn it.** Moving money,
+deleting production data and changing permissions stay gated however reliable
+the system has been: the downside of one bad case is catastrophic and the
+frequency is low enough that the checkpoint costs nothing.
+
+The subtle failure is the one to watch. A rising approval rate can mean the
+system got good, or it can mean the humans stopped reading -- and those look
+identical in the numbers unless you also watch how long approvals take. An edit
+rate falling to zero while decision time collapses is rubber-stamping, not
+earned trust, so graduation refuses on that signal rather than rewarding it.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from collections import defaultdict
+from typing import Any
+
+# Never graduates, whatever the record. The cost of the one bad case is not
+# recoverable, and these are rare enough that gating them costs almost nothing.
+NEVER_UNATTENDED = {"move_money", "delete_data", "change_permissions", "send_email"}
+
+# Enough observations to mean anything, and a failure rate low enough to trust.
+MIN_OBSERVATIONS = 100
+MAX_EDIT_RATE = 0.05
+
+# If approvals arrive faster than a person could have read the thing, the
+# approval is not evidence of anything.
+MIN_SECONDS_TO_READ = 2.0
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(self) -> None:
+        # In a real deployment these live beside the business transaction, so a
+        # key and its outcome commit or roll back together. Holding them apart
+        # is how a system records an action it did not take.
+        self._outcomes: dict[str, dict[str, Any]] = {}
+        self._payloads: dict[str, str] = {}
+        self._approvals: dict[str, list[dict[str, Any]]] = defaultdict(list)
+
+    def run(self, action: dict[str, Any]) -> dict[str, Any]:
+        """Perform an action, or refuse to."""
+        name = action["action"]
+        reversible = bool(action.get("reversible", False))
+        key = action.get("idempotency_key") or self.key_for(action)
+
+        if key in self._outcomes:
+            stored = self._payloads[key]
+            if stored != self._fingerprint(action):
+                # Two different actions under one key. Loudly, because silently
+                # returning the first outcome would report success for
+                # something that never happened.
+                raise ValueError(
+                    f"idempotency key {key} was already used for a different payload"
+                )
+            return {**self._outcomes[key], "duplicate": True}
+
+        if not reversible and not action.get("approved_by"):
+            raise PermissionError(
+                f"{name} cannot be taken back, and no approval was recorded"
+            )
+        if not reversible and not self.may_run_unattended(name):
+            if not action.get("approved_by"):
+                raise PermissionError(f"{name} requires approval")
+
+        outcome = {"action": name, "key": key, "duplicate": False, "performed": True}
+        self._outcomes[key] = outcome
+        self._payloads[key] = self._fingerprint(action)
+        return outcome
+
+    # -- earning autonomy -------------------------------------------------
+
+    def record_approval(self, action: str, edited: bool, seconds: float = 30.0) -> None:
+        """One human decision, kept so autonomy can be argued from evidence."""
+        self._approvals[action].append({"edited": edited, "seconds": seconds})
+
+    def may_run_unattended(self, action: str) -> bool:
+        """Whether this action has earned its way off the gate.
+
+        Deliberately conservative, and deliberately suspicious of a clean
+        record: a perfect approval history reached in two seconds a time is
+        evidence about the reviewer, not about the system.
+        """
+        if action in NEVER_UNATTENDED:
+            return False
+
+        history = self._approvals.get(action, [])
+        if len(history) < MIN_OBSERVATIONS:
+            return False
+
+        edit_rate = sum(1 for a in history if a["edited"]) / len(history)
+        if edit_rate > MAX_EDIT_RATE:
+            return False
+
+        median_seconds = sorted(a["seconds"] for a in history)[len(history) // 2]
+        if median_seconds < MIN_SECONDS_TO_READ:
+            # Approvals faster than reading. Nobody is checking, so the record
+            # says nothing about whether the system is right.
+            return False
+
+        return True
+
+    # -- keys -------------------------------------------------------------
+
+    def key_for(self, action: dict[str, Any]) -> str:
+        """Derived from what the action is, not from when it was sent.
+
+        A retry produces the same key and therefore the same outcome, without
+        the caller having to remember anything.
+        """
+        return hashlib.sha256(self._fingerprint(action).encode()).hexdigest()[:32]
+
+    @staticmethod
+    def _fingerprint(action: dict[str, Any]) -> str:
+        return json.dumps(
+            {k: v for k, v in action.items() if k not in ("idempotency_key", "approved_by")},
+            sort_keys=True,
+            separators=(",", ":"),
+        )

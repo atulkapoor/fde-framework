@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from jinja2 import Environment, FileSystemLoader, TemplateNotFound
+
 from fde.architect import Architecture
 from fde.moves import BoundaryViolation, assert_boundary
 from fde.registry import Registry
@@ -34,13 +36,26 @@ UNDECIDED_EXCEPTION = """class UndecidedComponent(RuntimeError):
 """
 
 
-def emit(architecture: Architecture, out: Path, registry: Registry | None = None) -> Path:
+TEMPLATES = Path(__file__).resolve().parents[2] / "framework" / "templates"
+
+
+def emit(
+    architecture: Architecture,
+    out: Path,
+    registry: Registry | None = None,
+    templates: Path | None = None,
+) -> Path:
     out = Path(out)
     _refuse_if_unsound(architecture, out)
+    env = Environment(
+        loader=FileSystemLoader(str(templates or TEMPLATES)),
+        keep_trailing_newline=True,
+        autoescape=False,  # noqa: S701 - emitting Python, not markup
+    )
 
     (out / "app" / "components").mkdir(parents=True, exist_ok=True)
     _write_package(architecture, out)
-    _write_components(architecture, out)
+    _write_components(architecture, out, env)
     _write_pipeline(architecture, out)
     if architecture.graph.sensitive_nodes():
         _write_boundary(architecture, out)
@@ -76,7 +91,7 @@ def _write_package(architecture: Architecture, out: Path) -> None:
     (out / "app" / "components" / "__init__.py").write_text("")
 
 
-def _write_components(architecture: Architecture, out: Path) -> None:
+def _write_components(architecture: Architecture, out: Path, env) -> None:
     for component, decision in sorted(architecture.decisions.items()):
         path = out / "app" / "components" / f"{component}.py"
         realization = architecture.realizations.get(component)
@@ -89,7 +104,7 @@ def _write_components(architecture: Architecture, out: Path) -> None:
                 _unfilled(component, architecture.unrealizable.get(component, "no realization"))
             )
             continue
-        path.write_text(_scaffold(component, decision, realization))
+        path.write_text(_implementation(component, decision, realization, env))
 
 
 def _unfilled(component: str, reason: str) -> str:
@@ -141,6 +156,29 @@ def _scaffold(component: str, decision, realization) -> str:
         f"            \"{component} is scaffolded as {decision.approach}; \"\n"
         f'            "implement run() against the {realization.provides} contract"\n'
         f"        )\n"
+    )
+
+
+def _implementation(component: str, decision, realization, env) -> str:
+    """The reference implementation if one exists, a scaffold otherwise.
+
+    A scaffold is the honest output when the framework knows what to build and
+    not yet how: it fixes the contract and says the body is yours. Emitting
+    something that looks finished would be worse.
+    """
+    try:
+        template = env.get_template(realization.template)
+    except TemplateNotFound:
+        return _scaffold(component, decision, realization)
+
+    return template.render(
+        component=component,
+        approach=decision.approach,
+        stack=realization.stack,
+        interface=realization.provides,
+        rationale=decision.rationale,
+        class_name=_class_name(component),
+        rejected=decision.rejected,
     )
 
 

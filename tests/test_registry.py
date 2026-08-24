@@ -212,3 +212,17 @@ def test_a_stale_stack_is_reported_as_a_gap(framework):
 def test_a_fresh_stack_is_not_reported_as_stale(framework):
     gaps = find_gaps(load_registry(framework), today="2026-08-22")
     assert not any(g.kind == "stale_stack" for g in gaps)
+
+
+def test_a_directory_holding_data_rather_than_entries_is_allowed(tmp_path):
+    """Templates are registry data but not registry entries. They are declared,
+    so the misspelled-directory guard keeps working for everything else."""
+    (tmp_path / "templates" / "evaluation").mkdir(parents=True)
+    (tmp_path / "templates" / "evaluation" / "x.py.j2").write_text("pass\n")
+    assert load_registry(tmp_path).stacks == {}
+
+
+def test_a_misspelled_entry_kind_still_fails(tmp_path):
+    write(tmp_path, "stackz", "pgvector", STACK)
+    with pytest.raises(RegistryError, match="stackz"):
+        load_registry(tmp_path)

@@ -1,0 +1,146 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Two jobs, and the second is the one teams skip.
+
+**Verified records are scored field by field.** One accuracy number says how
+often you fail; the breakdown says what to build next, so failures are
+classified by *how* they went wrong rather than merely counted.
+
+**Unverified records are mined without labels.** A corpus with a small verified
+subset is mostly unusable for training and entirely usable for finding out where
+the system is weak -- schema validity, completeness and self-consistency need no
+ground truth. What comes back is a queue of what to have a human verify next,
+ordered by how much verifying it would tell you.
+"""
+
+from __future__ import annotations
+
+import re
+from collections import defaultdict
+from typing import Any
+
+# How a field went wrong. The distribution across these is the finding: mostly
+# FORMAT means write a parser, mostly MISSING means fix extraction, mostly
+# SWAPPED means the layout handling is positional where it should not be.
+FORMAT = "format"        # right value, written differently -- 1,000 against 1000
+MISSING = "missing"      # not found at all
+UNEXPECTED = "unexpected"  # produced a value the source does not contain
+WRONG = "wrong"          # found something, and it is not that
+
+NUMERIC = re.compile(r"^-?[\d,]+\.?\d*$")
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Score actual output against verified expectations."""
+        expected = {r["id"]: r["fields"] for r in payload.get("expected", [])}
+        actual = {r["id"]: r["fields"] for r in payload.get("actual", [])}
+
+        per_field: dict[str, dict[str, int]] = defaultdict(
+            lambda: {"correct": 0, "total": 0}
+        )
+        errors: list[dict[str, Any]] = []
+
+        for record_id, wanted in expected.items():
+            got = actual.get(record_id, {})
+            for field, want in wanted.items():
+                have = got.get(field)
+                per_field[field]["total"] += 1
+                if self._matches(want, have):
+                    per_field[field]["correct"] += 1
+                else:
+                    errors.append({
+                        "id": record_id,
+                        "field": field,
+                        "kind": self._classify(want, have),
+                        "expected": want,
+                        "actual": have,
+                    })
+
+        for field in got_extra(expected, actual):
+            errors.append({"field": field, "kind": UNEXPECTED})
+
+        scored = sum(f["correct"] for f in per_field.values())
+        total = sum(f["total"] for f in per_field.values()) or 1
+        return {
+            "score": scored / total,
+            "per_field": dict(per_field),
+            "errors": errors,
+            # The shape of the failures, which is what decides the next move.
+            "by_kind": dict(count_by(errors, "kind")),
+        }
+
+    def mine(self, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Rank unverified records by how much verifying one would tell you.
+
+        No labels are needed for any of this. A record that is internally
+        consistent and complete teaches little; one that is neither is where the
+        system is probably failing, so it goes to the front of the queue.
+        """
+        scored = []
+        for record in records:
+            fields = record.get("fields", {})
+            filled = [v for v in fields.values() if v not in (None, "")]
+            completeness = len(filled) / (len(fields) or 1)
+            consistency = sum(
+                1 for v in filled if self._plausible(v)
+            ) / (len(filled) or 1)
+            scored.append({
+                **record,
+                "completeness": completeness,
+                "consistency": consistency,
+                # Least trustworthy first: that is where verification pays.
+                "verify_priority": 1 - (completeness * consistency),
+            })
+        return sorted(scored, key=lambda r: -r["verify_priority"])
+
+    # -- comparison -------------------------------------------------------
+
+    def _matches(self, want: Any, have: Any) -> bool:
+        if have is None:
+            return False
+        return self._normalise(want) == self._normalise(have)
+
+    def _classify(self, want: Any, have: Any) -> str:
+        if have in (None, ""):
+            return MISSING
+        if self._normalise(want) == self._normalise(have):
+            return FORMAT
+        return WRONG
+
+    @staticmethod
+    def _normalise(value: Any) -> str:
+        text = str(value).strip().lower()
+        return text.replace(",", "") if NUMERIC.match(text) else text
+
+    @staticmethod
+    def _plausible(value: Any) -> bool:
+        """Cheap self-consistency: does this look like anything at all?"""
+        text = str(value).strip()
+        if not text:
+            return False
+        if NUMERIC.match(text):
+            return True
+        return bool(re.match(r"^\d{4}-\d{2}-\d{2}$", text)) or text.isalpha() or " " in text
+
+
+def got_extra(expected: dict, actual: dict) -> list[str]:
+    """Fields produced that nothing asked for."""
+    wanted = {f for fields in expected.values() for f in fields}
+    produced = {f for fields in actual.values() for f in fields}
+    return sorted(produced - wanted)
+
+
+def count_by(rows: list[dict], key: str) -> dict[str, int]:
+    counts: dict[str, int] = defaultdict(int)
+    for row in rows:
+        counts[row.get(key, "unknown")] += 1
+    return counts

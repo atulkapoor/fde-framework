@@ -28,6 +28,11 @@ from fde.models.schema import (
     Stack,
 )
 
+# Directories that hold registry data but not registry entries. Declared rather
+# than inferred, so a misspelled entry kind still fails loudly -- that guard is
+# what stops content going silently missing.
+NON_ENTRY_DIRS = {"templates"}
+
 
 class RegistryError(Exception):
     """Something in framework/ is wrong, and this says which file and which field."""
@@ -72,10 +77,12 @@ def load_registry(root: str | Path) -> Registry:
     for child in sorted(root.iterdir()):
         if not child.is_dir() or child.name.startswith("."):
             continue
+        if child.name in NON_ENTRY_DIRS:
+            continue
         if child.name not in KINDS:
             raise RegistryError(
                 f"{child}: unknown registry directory {child.name!r}. "
-                f"Expected one of: {', '.join(sorted(KINDS))}. "
+                f"Expected one of: {', '.join(sorted(set(KINDS) | NON_ENTRY_DIRS))}. "
                 f"A misspelled directory loads nothing and looks like missing content."
             )
         _load_kind(registry, child, child.name)
