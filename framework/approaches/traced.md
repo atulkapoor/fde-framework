@@ -16,3 +16,9 @@ per step cannot tell you.
 
 Per-tenant cost attribution is an architectural decision rather than a reporting
 one. Retrofitting it means touching every call site.
+
+The GenAI semantic conventions are **not stable**: every attribute still carries
+development status, and they moved to their own repository on their own release
+cadence in mid-2026 -- a separate cadence, not a graduation. Chat and embedding
+attributes are settled enough to build on; agent and tool-orchestration ones are
+still moving. Use them, pin the version, and expect a rename to arrive as work.

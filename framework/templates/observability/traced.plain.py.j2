@@ -1,0 +1,132 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+A loop cannot be debugged one node at a time. What is needed is the trajectory:
+what it decided, in what order, and why it stopped.
+
+**The attribute names here follow the GenAI semantic conventions, which are not
+stable.** Every `gen_ai.*` attribute currently carries development status, and
+they now live in their own repository on their own release cadence -- which is a
+separate cadence, not a graduation. Names can change between versions.
+
+The posture that follows is to use them anyway, because the shape is right and
+widely emitted, but to **pin the version this was written against** so a future
+rename shows up as a diff rather than a mystery. That constant is at the top for
+exactly that reason.
+
+Cost is attributed per tenant here rather than in a reporting layer later.
+Retrofitting it means touching every call site, which is why it is an
+architectural decision rather than a dashboard one.
+"""
+
+from __future__ import annotations
+
+import time
+import uuid
+from contextlib import contextmanager
+from dataclasses import dataclass, field
+from typing import Any
+
+# The convention version this was written against. Pinned deliberately: these
+# names are pre-stable, so an upgrade is a decision somebody makes rather than
+# something that happens to a running system.
+GENAI_CONVENTION_VERSION = "1.42.0-dev"
+
+
+@dataclass
+class Span:
+    name: str
+    operation: str
+    trace_id: str
+    span_id: str
+    parent_id: str | None = None
+    attributes: dict[str, Any] = field(default_factory=dict)
+    started: float = 0.0
+    ended: float | None = None
+
+    @property
+    def duration_ms(self) -> float:
+        return ((self.ended or time.monotonic()) - self.started) * 1000
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+    convention_version = GENAI_CONVENTION_VERSION
+
+    def __init__(self, tenant: str = "default") -> None:
+        self.tenant = tenant
+        self.spans: list[Span] = []
+        self._stack: list[Span] = []
+
+    @contextmanager
+    def span(self, name: str, operation: str, **attributes: Any):
+        """One step, with its place in the trajectory recorded.
+
+        `operation` uses the convention's own vocabulary -- chat, embeddings,
+        execute_tool, invoke_agent, retrieval -- so a trace reads the same way
+        whatever produced it.
+        """
+        parent = self._stack[-1] if self._stack else None
+        current = Span(
+            name=name,
+            operation=operation,
+            trace_id=parent.trace_id if parent else uuid.uuid4().hex,
+            span_id=uuid.uuid4().hex[:16],
+            parent_id=parent.span_id if parent else None,
+            attributes={
+                "gen_ai.operation.name": operation,
+                # Not part of the convention. Kept because a bill nobody can
+                # attribute is a bill nobody can act on.
+                "tenant.id": self.tenant,
+                **attributes,
+            },
+            started=time.monotonic(),
+        )
+        self._stack.append(current)
+        try:
+            yield current
+        finally:
+            current.ended = time.monotonic()
+            self._stack.pop()
+            self.spans.append(current)
+
+    def record_model_call(
+        self, span: Span, *, model: str, input_tokens: int, output_tokens: int
+    ) -> None:
+        span.attributes.update({
+            "gen_ai.request.model": model,
+            "gen_ai.usage.input_tokens": input_tokens,
+            "gen_ai.usage.output_tokens": output_tokens,
+        })
+
+    def trajectory(self) -> list[dict[str, Any]]:
+        """The whole path in order, which is the thing a loop is debugged from."""
+        return [
+            {
+                "name": s.name,
+                "operation": s.operation,
+                "parent": s.parent_id,
+                "ms": round(s.duration_ms, 2),
+                **s.attributes,
+            }
+            for s in self.spans
+        ]
+
+    def cost_by_tenant(self) -> dict[str, dict[str, int]]:
+        """Tokens per tenant, from the spans themselves."""
+        totals: dict[str, dict[str, int]] = {}
+        for span in self.spans:
+            tenant = span.attributes.get("tenant.id", "unknown")
+            bucket = totals.setdefault(tenant, {"input_tokens": 0, "output_tokens": 0})
+            bucket["input_tokens"] += span.attributes.get("gen_ai.usage.input_tokens", 0)
+            bucket["output_tokens"] += span.attributes.get("gen_ai.usage.output_tokens", 0)
+        return totals
+
+    def run(self, payload: Any) -> Any:
+        with self.span("pipeline", "invoke_workflow"):
+            return payload
