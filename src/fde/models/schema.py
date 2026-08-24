@@ -187,6 +187,10 @@ class Pattern(BaseModel):
 
     id: str
     component: str
+
+    # Which approach this implements. Explicit rather than inferred from a
+    # naming convention, so a decision resolves to code without guessing.
+    approach: str | None = None
     realizations: list[Realization] = Field(min_length=1)
     applies_when: list[str] = Field(default_factory=list)
     avoid_when: list[str] = Field(default_factory=list)
