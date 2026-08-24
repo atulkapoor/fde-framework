@@ -1,0 +1,119 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Cheap tier first; escalate what it could not settle. The residue does three jobs
+at once -- it is the escalation path, the queue worth a human's attention, and
+once verified, the additions to the golden set.
+
+**Calibration is the pattern, not a detail.** What separates this from a router
+is that the decision is made on the *output*: the cheap tier attempts the work
+and is then judged. That judgement is only worth anything if the threshold has
+been measured against known answers, because confidence scores are routinely
+miscalibrated and a threshold tuned on one workload fails on the next. So an
+uncalibrated instance refuses to route rather than quietly saving money at an
+error rate nobody knows.
+"""
+
+from __future__ import annotations
+
+import re
+from typing import Any
+
+# An identifier good enough to match on without judgement. Exact matching is
+# more accurate by definition; it is simply not always available.
+EXACT_KEYS = ("account", "customer_id", "reference", "email")
+IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _.@-]{3,}$")
+
+# Below this, the cheap tier is not trusted with the answer.
+DEFAULT_THRESHOLD = 0.9
+
+# An error rate the cheap tier may have and still be worth using unattended.
+MAX_CHEAP_TIER_ERROR = 0.05
+
+
+class Uncalibrated(RuntimeError):
+    """Asked to route on a confidence score nobody has measured.
+
+    Refusing is the conservative choice: running the reliable path over
+    everything costs more and has a known error rate, which is the trade a
+    client can actually agree to.
+    """
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(self, calibrated: bool = True, threshold: float = DEFAULT_THRESHOLD) -> None:
+        self.calibrated = calibrated
+        self.threshold = threshold
+
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        records = payload.get("records", [])
+        resolved: list[dict[str, Any]] = []
+        escalated: list[dict[str, Any]] = []
+
+        for record in records:
+            confidence, evidence = self._cheap_tier(record)
+            if confidence >= self.threshold:
+                resolved.append({**record, "tier": "exact", "confidence": confidence,
+                                 "matched_on": evidence})
+                continue
+
+            if not self.calibrated:
+                # Everything above this line was deterministic. Deciding to
+                # escalate is the first judgement call, and it needs a number
+                # somebody measured.
+                raise Uncalibrated(
+                    "cannot route on confidence that has not been measured against "
+                    "known answers; run calibrate() first, or use the reliable path "
+                    "for everything"
+                )
+            escalated.append({**record, "tier": "escalated", "confidence": confidence})
+
+        return {
+            "resolved": resolved,
+            "escalated": escalated,
+            # The same records, named for the other thing they are for. Whoever
+            # verifies these is also building the golden set.
+            "verify_queue": escalated,
+            "cheap_tier_share": len(resolved) / (len(records) or 1),
+        }
+
+    def calibrate(self, observations: list[dict[str, Any]]) -> dict[str, Any]:
+        """What the threshold actually buys, measured.
+
+        Cost saved is meaningless without the error rate it bought, so both come
+        back together and the verdict is explicit. A tier that is confident and
+        wrong is worse than no tier at all, because it is wrong silently.
+        """
+        confident = [o for o in observations if o.get("confident")]
+        wrong_while_confident = [o for o in confident if not o.get("correct")]
+
+        error_rate = len(wrong_while_confident) / (len(confident) or 1)
+        return {
+            "observations": len(observations),
+            "escalation_rate": 1 - (len(confident) / (len(observations) or 1)),
+            "cheap_tier_error_rate": error_rate,
+            "max_acceptable": MAX_CHEAP_TIER_ERROR,
+            "safe": bool(confident) and error_rate <= MAX_CHEAP_TIER_ERROR,
+        }
+
+    # -- the cheap tier ---------------------------------------------------
+
+    def _cheap_tier(self, record: dict[str, Any]) -> tuple[float, str | None]:
+        """Exact identifiers only. No judgement, no similarity, no guessing.
+
+        This is deliberately narrow. Widening it to catch near-matches is how a
+        deterministic tier stops being deterministic and starts being an
+        unmeasured model.
+        """
+        for key in EXACT_KEYS:
+            value = str(record.get(key, "")).strip()
+            if value and IDENTIFIER.match(value):
+                return 1.0, key
+        return 0.0, None
