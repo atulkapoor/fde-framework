@@ -42,6 +42,10 @@ class Architecture:
     disagreements: list[Disagreement] = field(default_factory=list)
     unrealizable: dict[str, str] = field(default_factory=dict)
 
+    # What was known when this was decided. Carried so the documents can quote
+    # a stated budget rather than reconstruct it from a rationale.
+    values: dict[str, object] = field(default_factory=dict)
+
     @property
     def copyleft_licences(self) -> dict[str, str]:
         return {s: v for s, v in self.licences.items() if copyleft(v)}
@@ -81,6 +85,7 @@ def architect(
         assumptions=_assumptions(profile, registry),
         disagreements=profile.disagreements(),
         unrealizable=unrealizable,
+        values=dict(values),
     )
 
 

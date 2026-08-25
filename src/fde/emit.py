@@ -22,6 +22,7 @@ from fde.architect import Architecture
 from fde.deploy import write_deploy
 from fde.intake.samples import build_eval_set, infer_contract, infer_metrics, load_pairs
 from fde.moves import BoundaryViolation, assert_boundary
+from fde.ops import write_ops
 from fde.registry import Registry
 
 
@@ -65,6 +66,7 @@ def emit(
         _write_boundary(architecture, out)
     _write_evals(architecture, out, pairs_path)
     write_deploy(architecture, out)
+    write_ops(architecture, out, registry)
     _write_project_file(out)
     (out / "ARCHITECTURE.md").write_text(render_architecture(architecture))
     return out

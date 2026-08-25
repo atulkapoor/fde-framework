@@ -360,7 +360,8 @@ def build_cmd(
     registry = load_registry(registry_root)
     architecture = build_architecture(load_engagement(root).profile, registry)
     try:
-        emit(architecture, out, pairs_path=Path(root) / "artifacts" / "pairs.jsonl")
+        emit(architecture, out, registry=registry,
+             pairs_path=Path(root) / "artifacts" / "pairs.jsonl")
     except BuildRefused as exc:
         typer.echo(f"refused: {exc}", err=True)
         raise typer.Exit(1) from exc
