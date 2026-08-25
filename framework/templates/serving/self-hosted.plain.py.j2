@@ -1,0 +1,117 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+The arithmetic belongs here, before a deployment, rather than in an incident
+afterwards. Naive sizing counts the weights and forgets the cache, then runs out
+of memory under exactly the load it was sized for -- the cache scales with
+concurrency and context length, and at production settings it is frequently
+larger than the model.
+
+Where it does not fit, three levers in order: quantisation, then
+parameter-efficient adaptation, then distillation. Each costs more effort and
+more quality risk than the one before, so the first that fits is the answer and
+the rest are not improvements.
+
+Two serving defaults carry most of the throughput. Prefix caching is the single
+highest-value flag for nearly any workload with a shared system prompt and costs
+nothing to turn on. Concurrency wants different values depending on whether
+anybody is waiting: headroom for interactive work, throughput for batch.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+BYTES_PER_PARAM = {"fp32": 4.0, "bf16": 2.0, "fp16": 2.0, "int8": 1.0, "int4": 0.5}
+
+# Concurrency that leaves room for a person waiting, against concurrency that
+# maximises work done when nobody is.
+CONCURRENT_INTERACTIVE = 16
+CONCURRENT_BATCH = 64
+
+# Enough headroom for activations and fragmentation. Filling the card exactly is
+# how a deployment works in testing and fails under load.
+UTILISATION = 0.90
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def plan(
+        self,
+        params_b: float,
+        precision: str = "bf16",
+        vram_gb: float = 80.0,
+        max_num_seqs: int = CONCURRENT_INTERACTIVE,
+        max_model_len: int = 8192,
+        layers: int = 32,
+        kv_heads: int = 8,
+        head_dim: int = 128,
+    ) -> dict[str, Any]:
+        """Whether this fits, and what to do about it if not."""
+        weights = params_b * BYTES_PER_PARAM[precision]
+        cache = (
+            max_num_seqs * max_model_len * layers * 2 * kv_heads * head_dim * 2
+        ) / 1e9
+        required = weights + cache
+        available = vram_gb * UTILISATION
+
+        plan = {
+            "weights_gb": round(weights, 2),
+            "kv_cache_gb": round(cache, 2),
+            "required_gb": round(required, 2),
+            "available_gb": round(available, 2),
+            "fits": required <= available,
+            "shortfall_gb": round(max(0.0, required - available), 2),
+            "advice": [],
+        }
+        if not plan["fits"]:
+            plan["advice"] = self._levers(params_b, precision, available, cache)
+        return plan
+
+    def _levers(self, params_b, precision, available, cache) -> list[str]:
+        """Cheapest first. Stop at the one that fits."""
+        advice = []
+        for cheaper in ("int8", "int4"):
+            if params_b * BYTES_PER_PARAM[cheaper] + cache <= available:
+                advice.append(
+                    f"Quantisation to {cheaper} brings this within the card. "
+                    f"Cheapest lever, and measure the quality cost rather than assuming it."
+                )
+                return advice
+        advice.append(
+            "Quantisation alone will not fit it, even at int4."
+        )
+        advice.append(
+            "Parameter-efficient adaptation of a smaller base is the next lever: "
+            "more effort, and it changes what the model is rather than how it is stored."
+        )
+        advice.append(
+            "Distillation last. It is a training project, not a configuration change, "
+            "and it is the only one that needs its own evaluation."
+        )
+        return advice
+
+    def config(
+        self, concurrent: int | None = None, human_waiting: bool = True
+    ) -> dict[str, Any]:
+        """Serving settings, with the two that matter set deliberately."""
+        return {
+            # Free throughput wherever requests share a prompt prefix, which is
+            # nearly all of them. There is no reason for this to be off.
+            "enable_prefix_caching": True,
+            "max_num_seqs": concurrent
+            or (CONCURRENT_INTERACTIVE if human_waiting else CONCURRENT_BATCH),
+            "gpu_memory_utilization": UTILISATION,
+            # A starting point, not an answer. Raise both until it runs out of
+            # memory, then come back one notch.
+            "tune": "raise max_num_seqs and max_num_batched_tokens until OOM, then step back",
+        }
+
+    def run(self, payload: Any) -> Any:
+        return payload

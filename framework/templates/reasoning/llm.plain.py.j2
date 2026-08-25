@@ -1,0 +1,109 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Strip the framework names off any agent and the model's real work is two
+decisions, made repeatedly: **can this be answered directly, or must something
+happen first**, and **is the goal achieved**. Everything else is plumbing.
+
+That matters because when these misbehave in production the fault is almost
+always in how those two checks were specified, not in the model evaluating them.
+So they are named here, separately, and every run records which one ended it. A
+run that cannot say why it stopped cannot be debugged.
+
+**The loop is bounded, and the bound is the point.** Once the next step can
+depend on the last in a way nobody enumerated, paths stop being testable and
+cost stops being bounded -- which is exactly what obliges a step cap, a budget
+cap, and a critic before anything irreversible. The argument about whether this
+counts as an agent is not worth having; the obligations are.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any
+
+# A loop with no cap is an outage waiting for a slow afternoon.
+MAX_STEPS = 8
+MAX_COST = 100.0
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(self, max_steps: int = MAX_STEPS, max_cost: float = MAX_COST) -> None:
+        self.max_steps = max_steps
+        self.max_cost = max_cost
+
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        goal = payload["goal"]
+        known: dict[str, Any] = payload.get("known", {})
+        act: Callable[[dict[str, Any]], dict[str, Any]] | None = payload.get("act")
+
+        # First predicate. Answering without acting is the cheapest possible
+        # outcome and the one most often skipped past.
+        if self.can_answer_directly(goal, known):
+            return self._done("answered_directly", steps=0, answer=known[goal], cost=0.0)
+
+        state: dict[str, Any] = {"goal": goal, **known}
+        spent = 0.0
+        trace: list[dict[str, Any]] = []
+
+        for step in range(1, self.max_steps + 1):
+            if act is None:
+                return self._done("no_action_available", steps=step - 1, cost=spent)
+
+            observation = act(state)
+            spent += float(observation.get("cost", 0) or 0)
+            trace.append({"step": step, "observation": observation})
+            state.update(observation)
+
+            # Second predicate.
+            if self.goal_achieved(goal, observation, state):
+                return self._done(
+                    "goal_achieved", steps=step, answer=observation.get("answer"),
+                    cost=spent, trace=trace,
+                )
+
+            if spent >= self.max_cost:
+                # Deliberately checked after the step that spent it: stopping
+                # before doing anything would report a budget that was never used.
+                return self._done("budget", steps=step, cost=spent, trace=trace)
+
+        return self._done("step_cap", steps=self.max_steps, cost=spent, trace=trace)
+
+    # -- the two predicates ----------------------------------------------
+
+    def can_answer_directly(self, goal: str, known: dict[str, Any]) -> bool:
+        """Is acting necessary at all?
+
+        Named rather than inlined, because this is one of the two places the
+        system decides anything -- and one of the two places to look when it
+        misbehaves.
+        """
+        return goal in known
+
+    def goal_achieved(self, goal: str, observation: dict[str, Any],
+                      state: dict[str, Any]) -> bool:
+        """Is this finished?
+
+        The default is explicit rather than inferred. A loop that guesses at
+        completion either stops early or never stops, and both look like the
+        model being unreliable when they are a specification being vague.
+        """
+        return bool(observation.get("done"))
+
+    @staticmethod
+    def _done(reason: str, steps: int, cost: float = 0.0,
+              answer: Any = None, trace: list | None = None) -> dict[str, Any]:
+        return {
+            "stopped_because": reason,
+            "steps": steps,
+            "cost": cost,
+            "answer": answer,
+            "trace": trace or [],
+        }
