@@ -12,6 +12,7 @@ Two different questions:
 from __future__ import annotations
 
 from datetime import date
+from pathlib import Path
 
 from pydantic import BaseModel
 
@@ -92,9 +93,29 @@ def validate_links(registry: Registry) -> list[LinkError]:
     return errors
 
 
-def find_gaps(registry: Registry, today: str | date | None = None) -> list[Gap]:
+def find_gaps(
+    registry: Registry, today: str | date | None = None, templates: Path | None = None
+) -> list[Gap]:
     now = _as_date(today) if today else date.today()
     gaps: list[Gap] = []
+
+    # A realization pointing at a template nobody wrote resolves cleanly and
+    # then emits a scaffold. That is honest but silent, so it is reported here
+    # rather than discovered when someone reads the generated code.
+    if templates and templates.exists():
+        for pattern in registry.patterns.values():
+            for realization in pattern.realizations:
+                if not (templates / realization.template).exists():
+                    gaps.append(
+                        Gap(
+                            kind="missing_template",
+                            detail=(
+                                f"{pattern.id} / {realization.stack}: "
+                                f"{realization.template} is referenced and not written, "
+                                f"so this emits a scaffold"
+                            ),
+                        )
+                    )
 
     for pattern in registry.patterns.values():
         if not _cited_cases(pattern):

@@ -1,0 +1,100 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Vectors beside the data, in the database already being operated. Usually the
+honest answer when Postgres is there: a separate vector store is a separate
+thing to back up, secure, upgrade and page someone about at three in the
+morning, and it has to earn that.
+
+**The same contract as the in-process implementation.** Swapping between them
+changes this file and nothing about the architecture -- which is the seam the
+whole registry exists to preserve.
+
+Two operational notes worth carrying. Index build is not free and happens after
+bulk load rather than before. And an embedding column is only as constrained as
+the data that produced it: where the source may not leave, neither may this
+table, because an embedding is recoverable to its source.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any
+
+# Rebuilt after bulk load rather than maintained during it. Lists is a tuning
+# knob against recall; start near the square root of the row count.
+INDEX_SQL = """
+CREATE INDEX IF NOT EXISTS {table}_embedding_idx
+    ON {table} USING ivfflat (embedding vector_cosine_ops)
+    WITH (lists = {lists});
+"""
+
+SCHEMA_SQL = """
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE TABLE IF NOT EXISTS {table} (
+    id       text PRIMARY KEY,
+    body     text NOT NULL,
+    embedding vector({dimensions})
+);
+"""
+
+SEARCH_SQL = """
+SELECT id, body, 1 - (embedding <=> %(query)s::vector) AS score
+FROM {table}
+ORDER BY embedding <=> %(query)s::vector
+LIMIT %(k)s;
+"""
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(
+        self,
+        connection: Any = None,
+        embed: Callable[[str], list[float]] | None = None,
+        table: str = "documents",
+        dimensions: int = 768,
+    ) -> None:
+        self.connection = connection
+        self.embed = embed
+        self.table = table
+        self.dimensions = dimensions
+
+    def schema(self) -> str:
+        return SCHEMA_SQL.format(table=self.table, dimensions=self.dimensions)
+
+    def index_statement(self, rows: int) -> str:
+        """Built after load. Building it first makes the load slower and the
+        index worse."""
+        lists = max(1, int(rows ** 0.5))
+        return INDEX_SQL.format(table=self.table, lists=lists)
+
+    def index(self, documents: list[dict[str, Any]]) -> None:
+        with self.connection.cursor() as cursor:
+            for document in documents:
+                cursor.execute(
+                    f"INSERT INTO {self.table} (id, body, embedding) "
+                    f"VALUES (%s, %s, %s) ON CONFLICT (id) DO UPDATE "
+                    f"SET body = EXCLUDED.body, embedding = EXCLUDED.embedding",
+                    (document["id"], document["text"], self.embed(document["text"])),
+                )
+
+    def retrieve(self, query: str, k: int = 5) -> list[dict[str, Any]]:
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                SEARCH_SQL.format(table=self.table),
+                {"query": self.embed(query), "k": k},
+            )
+            return [
+                {"id": row[0], "text": row[1], "score": row[2], "rank": n + 1}
+                for n, row in enumerate(cursor.fetchall())
+            ]
+
+    def run(self, payload: dict[str, Any]) -> Any:
+        return self.retrieve(payload["query"], k=payload.get("k", 5))

@@ -1,0 +1,84 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Similarity over embeddings, held in process. Fine to a few tens of thousands of
+vectors; past that the linear scan is the bottleneck and a real index earns its
+keep.
+
+**A reranker in front of the results is the cheapest quality gain available**
+and the one most often skipped -- a meaningful lift for a couple of hundred
+milliseconds, without touching the index. It goes in the seam below.
+
+The embedding function is the least reversible decision here: changing it means
+reindexing everything. It is injected rather than chosen, so that decision stays
+where it belongs.
+"""
+
+from __future__ import annotations
+
+import math
+from collections.abc import Callable
+from typing import Any
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(
+        self,
+        embed: Callable[[str], list[float]] | None = None,
+        rerank: Callable[[str, list[dict]], list[dict]] | None = None,
+    ) -> None:
+        self.embed = embed or self._bag_of_words
+        # Left as a seam on purpose. Adding one is the cheapest improvement
+        # available to most pipelines.
+        self.rerank = rerank
+        self._vectors: dict[str, list[float]] = {}
+        self._documents: dict[str, str] = {}
+
+    def index(self, documents: list[dict[str, Any]]) -> None:
+        for document in documents:
+            self._documents[document["id"]] = document["text"]
+            self._vectors[document["id"]] = self.embed(document["text"])
+
+    def retrieve(self, query: str, k: int = 5) -> list[dict[str, Any]]:
+        wanted = self.embed(query)
+        scored = sorted(
+            (
+                {"id": i, "text": self._documents[i], "score": self._cosine(wanted, v)}
+                for i, v in self._vectors.items()
+            ),
+            key=lambda h: -h["score"],
+        )
+        # Over-fetch before reranking: a reranker can only reorder what it was
+        # given, so a tight first pass caps what it can recover.
+        candidates = scored[: k * 4] if self.rerank else scored[:k]
+        if self.rerank:
+            candidates = self.rerank(query, candidates)[:k]
+        return [{**hit, "rank": n + 1} for n, hit in enumerate(candidates[:k])]
+
+    def run(self, payload: dict[str, Any]) -> Any:
+        return self.retrieve(payload["query"], k=payload.get("k", 5))
+
+    @staticmethod
+    def _cosine(a: list[float], b: list[float]) -> float:
+        dot = sum(x * y for x, y in zip(a, b, strict=False))
+        size = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
+        return dot / size if size else 0.0
+
+    @staticmethod
+    def _bag_of_words(text: str, width: int = 256) -> list[float]:
+        """A stand-in so this runs with no dependencies.
+
+        Not an embedding model. Replace it with one before drawing any
+        conclusion about retrieval quality from this.
+        """
+        vector = [0.0] * width
+        for token in text.lower().split():
+            vector[hash(token) % width] += 1.0
+        return vector

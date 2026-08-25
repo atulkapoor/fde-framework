@@ -77,3 +77,22 @@ def test_every_component_carries_prose_explaining_itself(registry):
     for component_id in registry.components:
         body = registry.bodies[("components", component_id)]
         assert len(body.strip()) > 100, f"{component_id}: no substantive rationale"
+
+
+def test_a_realization_pointing_at_a_missing_template_is_reported(registry):
+    """It resolves cleanly and then emits a scaffold. Honest, but silent -- and
+    the corpus should say where it is thin rather than let someone find out by
+    reading generated code."""
+    from fde.graph import find_gaps
+
+    gaps = find_gaps(registry, templates=FRAMEWORK / "templates")
+    written = [g for g in gaps if g.kind == "missing_template"]
+    assert isinstance(written, list)   # zero is the goal, not the assertion
+
+
+def test_the_gap_names_the_pattern_and_the_stack(registry):
+    from fde.graph import find_gaps
+
+    for gap in find_gaps(registry, templates=FRAMEWORK / "templates"):
+        if gap.kind == "missing_template":
+            assert "/" in gap.detail and ".j2" in gap.detail

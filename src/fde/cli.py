@@ -17,6 +17,7 @@ from fde.emit import BuildRefused, emit
 from fde.factlog import Session, load_engagement, start_engagement
 from fde.graph import find_gaps, validate_links
 from fde.intake.answers import parse_answer
+from fde.intake.documents import UnreadableDocument, read_document
 from fde.intake.interview import remaining_questions
 from fde.intake.prose import parse_prose, restate
 from fde.models.base import Provenance
@@ -143,7 +144,11 @@ def frame(
         typer.echo("Give me --text or --file.", err=True)
         raise typer.Exit(1)
 
-    body = file.read_text() if file else text or ""
+    try:
+        body = read_document(file) if file else (text or "")
+    except UnreadableDocument as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
     source = file.name if file else "brief"
     registry = load_registry(registry_root)
     engagement = load_engagement(root)
@@ -323,7 +328,7 @@ def kb_gaps(
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
 
-    gaps = find_gaps(registry)
+    gaps = find_gaps(registry, templates=root / "templates")
     for gap in gaps:
         typer.echo(f"{gap.kind}: {gap.detail}")
     typer.echo(f"{len(gaps)} gap(s)")
