@@ -1,0 +1,72 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Scored against held-out labels, with the threshold treated as a decision rather
+than a default.
+
+**0.5 is a convention, not a choice.** Where a missed case costs a hundred times
+a false alarm, the threshold that minimises expected cost is nowhere near the
+middle -- and a model reported at its default threshold is being judged on a
+decision nobody made.
+
+So the sweep below returns the threshold that minimises cost given what each
+mistake actually costs, alongside what the default would have given. The gap
+between them is usually the most useful number in the report.
+
+The held-out set stays held out. A threshold tuned on the same data it is
+evaluated on is a number about that data.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(self, cost_false_negative: float = 1.0,
+                 cost_false_positive: float = 1.0) -> None:
+        self.cost_false_negative = cost_false_negative
+        self.cost_false_positive = cost_false_positive
+
+    def score_at(self, labels: list[int], scores: list[float],
+                 threshold: float) -> dict[str, Any]:
+        pairs = list(zip(labels, scores, strict=False))
+        fp = sum(1 for y, s in pairs if not y and s >= threshold)
+        fn = sum(1 for y, s in pairs if y and s < threshold)
+        tp = sum(1 for y, s in pairs if y and s >= threshold)
+        tn = len(pairs) - fp - fn - tp
+        return {
+            "threshold": round(threshold, 3),
+            "confusion": {"tp": tp, "tn": tn, "fp": fp, "fn": fn},
+            "expected_cost": (fn * self.cost_false_negative
+                              + fp * self.cost_false_positive) / (len(pairs) or 1),
+            "accuracy": (tp + tn) / (len(pairs) or 1),
+        }
+
+    def choose_threshold(self, labels: list[int], scores: list[float],
+                         steps: int = 100) -> dict[str, Any]:
+        """The threshold that minimises expected cost, against the default."""
+        candidates = [self.score_at(labels, scores, i / steps) for i in range(1, steps)]
+        best = min(candidates, key=lambda c: c["expected_cost"])
+        default = self.score_at(labels, scores, 0.5)
+        return {
+            "chosen": best,
+            "at_default": default,
+            # Usually the most useful figure in the report: what the convention
+            # was costing.
+            "cost_of_the_default": round(
+                default["expected_cost"] - best["expected_cost"], 4
+            ),
+            "costs": {"false_negative": self.cost_false_negative,
+                      "false_positive": self.cost_false_positive},
+        }
+
+    def run(self, payload: dict[str, Any]) -> Any:
+        return self.choose_threshold(payload["labels"], payload["scores"])

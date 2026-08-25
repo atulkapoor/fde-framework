@@ -1,0 +1,63 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+One system, called directly. A registry for a single endpoint is ceremony, and
+adding it before there is a second caller is the tidiness that costs an
+engagement a week.
+
+What does not get skipped: a mutative call still needs a key so a retry cannot
+happen twice, and it still needs a timeout. Those are cheap here and expensive
+to add once something is in production and occasionally double-charging.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from collections.abc import Callable
+from typing import Any
+
+DEFAULT_TIMEOUT_SECONDS = 10.0
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(
+        self,
+        call: Callable[..., Any] | None = None,
+        mutative: bool = True,
+        timeout: float = DEFAULT_TIMEOUT_SECONDS,
+    ) -> None:
+        self._call = call
+        # Assumed to change something. Guessing wrong this way costs a key
+        # nobody needed; the other way costs a duplicate.
+        self.mutative = mutative
+        self.timeout = timeout
+        self._seen: dict[str, Any] = {}
+
+    def run(self, payload: dict[str, Any]) -> Any:
+        if not self.mutative:
+            return self._call(**payload)
+
+        key = payload.get("idempotency_key") or self.key_for(payload)
+        if key in self._seen:
+            return {"result": self._seen[key], "duplicate": True}
+
+        result = self._call(**payload, timeout=self.timeout)
+        self._seen[key] = result
+        return {"result": result, "duplicate": False, "key": key}
+
+    @staticmethod
+    def key_for(payload: dict[str, Any]) -> str:
+        """From what the call is, so a retry produces the same key."""
+        body = json.dumps(
+            {k: v for k, v in payload.items() if k != "idempotency_key"},
+            sort_keys=True, default=str,
+        )
+        return hashlib.sha256(body.encode()).hexdigest()[:32]

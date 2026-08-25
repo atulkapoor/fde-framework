@@ -1,0 +1,77 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+vLLM, configured deliberately rather than left at defaults.
+
+**Prefix caching is the single highest-value flag** for nearly any workload
+where requests share a system prompt, which is nearly all of them. It is free
+and it is off unless asked for.
+
+**Concurrency wants a different number depending on whether anybody is
+waiting.** Headroom for interactive work, throughput for batch, and the honest
+way to find the ceiling is to raise it until the process runs out of memory and
+come back a notch -- there is no formula that beats measuring.
+
+**Memory utilisation below one.** Filling the card exactly works in testing and
+fails under load, because activations and fragmentation need room that the
+arithmetic does not account for.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+CONCURRENT_INTERACTIVE = 16
+CONCURRENT_BATCH = 64
+UTILISATION = 0.90
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(self, model: str, human_waiting: bool = True, tensor_parallel: int = 1) -> None:
+        self.model = model
+        self.human_waiting = human_waiting
+        self.tensor_parallel = tensor_parallel
+
+    def engine_args(self, **overrides: Any) -> dict[str, Any]:
+        args = {
+            "model": self.model,
+            # Free throughput wherever a prompt prefix repeats. No reason to
+            # leave this off.
+            "enable_prefix_caching": True,
+            "max_num_seqs": (
+                CONCURRENT_INTERACTIVE if self.human_waiting else CONCURRENT_BATCH
+            ),
+            "gpu_memory_utilization": UTILISATION,
+            "tensor_parallel_size": self.tensor_parallel,
+        }
+        args.update(overrides)
+        return args
+
+    def command(self, **overrides: Any) -> list[str]:
+        """The server invocation, so a runbook can quote it exactly."""
+        args = self.engine_args(**overrides)
+        parts = ["vllm", "serve", args.pop("model")]
+        for key, value in sorted(args.items()):
+            flag = "--" + key.replace("_", "-")
+            parts.extend([flag] if value is True else [flag, str(value)])
+        return parts
+
+    def tuning_notes(self) -> list[str]:
+        return [
+            "Raise max_num_seqs and max_num_batched_tokens until it runs out of "
+            "memory, then step back one notch. No formula beats measuring.",
+            "Watch p95 latency alongside throughput: a batch that doubles "
+            "throughput and triples tail latency is a regression for anyone waiting.",
+            "Tensor parallelism needs more than one card. On a single GPU it is "
+            "not an option, whatever the throughput target says.",
+        ]
+
+    def run(self, payload: Any) -> Any:
+        return payload

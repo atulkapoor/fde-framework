@@ -1,0 +1,100 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+A grading model that runs inside the boundary.
+
+**This exists because of where it runs, not because it grades better.** Where
+nothing may leave, a hosted judge is not an option -- and a metric you cannot
+run is not a metric you have. Discovering that at deployment, with the
+evaluation strategy already written into a statement of work, is expensive.
+
+The other rules do not relax because the judge is local. It still never grades
+its own output, and it is still calibrated against human agreement before anyone
+quotes a number from it. A local judge that nobody checked is not better than a
+hosted one that nobody checked; it is the same problem inside the building.
+
+Scores are returned per item with the rubric criterion that produced them,
+because a single number tells you the output was mediocre and not which part.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any
+
+MIN_HUMAN_AGREEMENT = 0.8
+
+
+class JudgeNotCalibrated(RuntimeError):
+    """Asked for a score from a judge whose agreement with people is unknown."""
+
+
+class SelfGrading(ValueError):
+    """The thing that produced the answer was asked to grade it."""
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    # Recorded so a boundary check can see it without inspecting the code.
+    runs_in_boundary = True
+
+    def __init__(self, generate: Callable[[str], str] | None = None,
+                 judge_id: str = "local-judge", agreement: float | None = None) -> None:
+        self._generate = generate
+        self.judge_id = judge_id
+        self.agreement = agreement
+
+    def calibrate(self, graded: list[dict[str, Any]]) -> dict[str, Any]:
+        agreed = sum(
+            1 for g in graded if abs(g["judge"] - g["human"]) <= g.get("tolerance", 0.2)
+        )
+        self.agreement = agreed / (len(graded) or 1)
+        return {"agreement": self.agreement, "minimum": MIN_HUMAN_AGREEMENT,
+                "usable": self.agreement >= MIN_HUMAN_AGREEMENT, "n": len(graded)}
+
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if payload.get("author") == self.judge_id:
+            raise SelfGrading(f"{self.judge_id} produced this and cannot also score it")
+        if self.agreement is None or self.agreement < MIN_HUMAN_AGREEMENT:
+            raise JudgeNotCalibrated(
+                f"agreement with people is "
+                f"{'unmeasured' if self.agreement is None else round(self.agreement, 2)}; "
+                f"calibrate to at least {MIN_HUMAN_AGREEMENT:.0%} before quoting a number"
+            )
+
+        criteria = payload.get("criteria", ["accuracy", "completeness", "tone"])
+        scored = []
+        for item in payload.get("items", []):
+            # Per criterion, because one number says the output was mediocre and
+            # not which part of it was.
+            per_criterion = {c: self._ask(item, c) for c in criteria}
+            scored.append({
+                "id": item["id"],
+                "per_criterion": per_criterion,
+                "score": sum(per_criterion.values()) / (len(criteria) or 1),
+            })
+
+        return {
+            "scored": scored,
+            "mean": sum(s["score"] for s in scored) / (len(scored) or 1),
+            "judge_agreement": self.agreement,
+            "ran_in_boundary": self.runs_in_boundary,
+        }
+
+    def _ask(self, item: dict[str, Any], criterion: str) -> float:
+        prompt = (
+            f"Score this output on {criterion} from 0 to 1. Reply with the number "
+            f"alone.\n\nOutput:\n{item['output']}"
+        )
+        try:
+            return max(0.0, min(1.0, float((self._generate or (lambda p: "0"))(prompt).strip())))
+        except (TypeError, ValueError):
+            # An unparseable score is not a zero. Zero is a judgement; this is
+            # the absence of one, and averaging it in would be a quiet lie.
+            return float("nan")

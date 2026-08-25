@@ -1,0 +1,62 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Rented GPUs that scale to zero between jobs. The right answer when nobody is
+waiting: a multi-minute cold start is an infrastructure detail rather than a
+user-experience failure, and paying nothing between runs beats per-token pricing
+at volume by a wide margin.
+
+**The trap is idle time, and it is worth calculating before committing.** A
+fleet left running overnight costs more than the work it did, so scale-to-zero
+has to be real rather than nominal -- and the arithmetic below is here because
+this decision is usually made on the throughput number alone.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+# Roughly what a large accelerator costs by the hour. Dated and approximate --
+# re-derive against current pricing rather than trusting this.
+GPU_COST_PER_HOUR = 4.50
+COLD_START_SECONDS = 60.0
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def economics(
+        self,
+        items: int,
+        seconds_per_item: float,
+        per_token_cost: float = 0.0,
+        gpu_cost_per_hour: float = GPU_COST_PER_HOUR,
+        idle_hours: float = 0.0,
+    ) -> dict[str, Any]:
+        """What this actually costs, including the part people forget."""
+        compute_hours = (items * seconds_per_item + COLD_START_SECONDS) / 3600
+        rented = (compute_hours + idle_hours) * gpu_cost_per_hour
+
+        return {
+            "compute_hours": round(compute_hours, 3),
+            "rented_cost": round(rented, 2),
+            "per_token_cost": round(per_token_cost, 2),
+            "cheaper": "rented" if per_token_cost and rented < per_token_cost else "per_token",
+            # The line that decides it. Idle time is not overhead, it is the
+            # whole difference between this being cheap and being expensive.
+            "idle_cost": round(idle_hours * gpu_cost_per_hour, 2),
+            "warning": (
+                "idle time exceeds compute time; scale-to-zero is not working"
+                if idle_hours > compute_hours else None
+            ),
+            "as_of": "2026-08",
+            "rederive": "check current hourly pricing and measured seconds per item",
+        }
+
+    def run(self, payload: Any) -> Any:
+        return payload

@@ -1,0 +1,65 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Real spans, exported to whatever the client already runs.
+
+**The GenAI attribute names are not stable.** They still carry development
+status and moved to their own repository on their own release cadence, which is
+a separate cadence rather than a graduation. Names can change between versions,
+so the version this was written against is pinned at the top and an upgrade is a
+decision somebody makes rather than something that happens to a running system.
+
+Chat and embedding attributes are settled enough to build dashboards on. Agent
+and tool-orchestration ones are still moving; treat anything built on those as
+provisional.
+
+Cost is attributed per tenant at the call site because retrofitting it means
+touching every one of them.
+"""
+
+from __future__ import annotations
+
+from contextlib import contextmanager
+from typing import Any
+
+GENAI_CONVENTION_VERSION = "1.42.0-dev"
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+    convention_version = GENAI_CONVENTION_VERSION
+
+    def __init__(self, service: str = "app", tenant: str = "default") -> None:
+        from opentelemetry import trace
+
+        self.tenant = tenant
+        self._tracer = trace.get_tracer(service)
+
+    @contextmanager
+    def span(self, name: str, operation: str, **attributes: Any):
+        """One step. `operation` uses the convention's vocabulary -- chat,
+        embeddings, execute_tool, invoke_agent -- so a trace reads the same way
+        whatever produced it."""
+        with self._tracer.start_as_current_span(name) as span:
+            span.set_attribute("gen_ai.operation.name", operation)
+            # Outside the convention. Kept because a bill nobody can attribute
+            # is a bill nobody can act on.
+            span.set_attribute("tenant.id", self.tenant)
+            for key, value in attributes.items():
+                span.set_attribute(key, value)
+            yield span
+
+    @staticmethod
+    def record_model_call(span, *, model: str, input_tokens: int, output_tokens: int) -> None:
+        span.set_attribute("gen_ai.request.model", model)
+        span.set_attribute("gen_ai.usage.input_tokens", input_tokens)
+        span.set_attribute("gen_ai.usage.output_tokens", output_tokens)
+
+    def run(self, payload: Any) -> Any:
+        with self.span("pipeline", "invoke_workflow"):
+            return payload

@@ -1,0 +1,88 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Entities and edges as ordinary tables, traversed with a recursive query.
+
+Worth saying plainly: a dedicated graph database is a separate system to
+operate, and for the traversal depths most retrieval actually needs, Postgres
+does this well enough that adding one has to be argued for rather than assumed.
+
+The traversal is bounded in the query itself. An unbounded recursive walk on a
+dense graph is a query that does not return, and the depth limit is what keeps
+this a retrieval step rather than a research problem -- it belongs in the SQL,
+not in a timeout somewhere upstream.
+
+Both halves live in one database, which means one backup, one set of
+credentials, and one place the residency boundary has to hold.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS {table}_nodes (
+    id text PRIMARY KEY,
+    kind text,
+    label text
+);
+CREATE TABLE IF NOT EXISTS {table}_edges (
+    source text REFERENCES {table}_nodes(id),
+    relation text NOT NULL,
+    target text REFERENCES {table}_nodes(id),
+    evidence text,
+    PRIMARY KEY (source, relation, target)
+);
+CREATE INDEX IF NOT EXISTS {table}_edges_source_idx ON {table}_edges (source);
+"""
+
+# Bounded in the query. A depth limit enforced upstream is a timeout, and a
+# timeout is not a bound -- it is a bill that arrives anyway.
+PATH_SQL = """
+WITH RECURSIVE walk(source, target, path, depth) AS (
+    SELECT e.source, e.target, ARRAY[e.source, e.relation, e.target], 1
+    FROM {table}_edges e
+    WHERE e.source = %(start)s
+  UNION ALL
+    SELECT e.source, e.target, w.path || e.relation || e.target, w.depth + 1
+    FROM {table}_edges e
+    JOIN walk w ON e.source = w.target
+    WHERE w.depth < %(max_hops)s
+      AND NOT e.target = ANY(w.path)
+)
+SELECT path, depth FROM walk WHERE target = %(end)s ORDER BY depth LIMIT 1;
+"""
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(self, connection: Any = None, table: str = "kg", max_hops: int = 3) -> None:
+        self.connection = connection
+        self.table = table
+        self.max_hops = max_hops
+
+    def schema(self) -> str:
+        return SCHEMA_SQL.format(table=self.table)
+
+    def connect(self, start: str, end: str) -> dict[str, Any]:
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                PATH_SQL.format(table=self.table),
+                {"start": start, "end": end, "max_hops": self.max_hops},
+            )
+            row = cursor.fetchone()
+        return {
+            "path": row[0] if row else None,
+            "hops": row[1] if row else 0,
+            "found": row is not None,
+            "bounded_at": self.max_hops,
+        }
+
+    def run(self, payload: dict[str, Any]) -> Any:
+        return self.connect(payload["from"], payload["to"])

@@ -1,0 +1,73 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Adapting behaviour: tone, house style, output shape.
+
+**For behaviour, never for facts.** Fine-tuning teaches a model how to respond
+rather than what is true, and anything that changes weekly belongs in retrieval
+where it can be corrected without retraining. A fact baked into weights is a
+fact you cannot fix on a Friday.
+
+**Only verified pairs train.** Unverified records are an asset and they are
+mined rather than trained on -- training on them teaches the model to reproduce
+whatever was wrong with them, confidently and at scale.
+
+Expensive to reverse: a change means retraining and re-evaluating. That is why
+the contract below insists on a held-out set captured before training rather
+than carved out afterwards, since a split made after the fact is a split made
+with knowledge of the answers.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+MIN_VERIFIED_PAIRS = 500
+
+
+class NotEnoughVerified(ValueError):
+    """Too few confirmed examples to adapt on."""
+
+
+class UnverifiedInTraining(ValueError):
+    """An unconfirmed record reached the training set."""
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def prepare(self, records: list[dict[str, Any]], holdout: float = 0.2) -> dict[str, Any]:
+        """Split before training, and refuse anything unverified."""
+        verified = [r for r in records if r.get("verified")]
+        unverified = [r for r in records if not r.get("verified")]
+
+        if any(r.get("verified") is None for r in records):
+            raise UnverifiedInTraining(
+                "records must state whether they are verified; unknown is not a "
+                "third option here, because the default becomes a training set"
+            )
+        if len(verified) < MIN_VERIFIED_PAIRS:
+            raise NotEnoughVerified(
+                f"{len(verified)} verified pairs, fewer than {MIN_VERIFIED_PAIRS}. "
+                f"There are {len(unverified)} unverified -- mine those for a "
+                f"verification queue rather than training on them"
+            )
+
+        cut = int(len(verified) * (1 - holdout))
+        return {
+            "train": verified[:cut],
+            # Held out before anything is fit, not carved off afterwards with
+            # knowledge of the answers.
+            "holdout": verified[cut:],
+            "mine_instead": unverified,
+            "note": "unverified records are an asset; they are scored without labels, "
+                    "not trained on",
+        }
+
+    def run(self, payload: dict[str, Any]) -> Any:
+        return self.prepare(payload.get("records", []), payload.get("holdout", 0.2))

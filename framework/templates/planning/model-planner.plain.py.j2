@@ -1,0 +1,82 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+The plan is produced at run time, which is the line worth drawing. Once the next
+step can depend on the last in a way nobody enumerated, paths stop being
+testable and cost stops being bounded -- so crossing it obliges three things a
+written sequence never needed: a cap on steps, a cap on spend, and a critic
+before anything irreversible.
+
+**The plan is validated before it is executed.** A planner that proposes a step
+nothing can perform should fail while it is still a plan, not four steps in with
+half the work done and no way back.
+
+Replanning is allowed and counted. A planner that can revise indefinitely is
+where an unbounded loop hides after somebody added a step cap to the executor.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any
+
+MAX_PLAN_STEPS = 12
+MAX_REPLANS = 2
+
+
+class UnperformableStep(ValueError):
+    """The plan names something no tool can do."""
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(
+        self,
+        propose: Callable[[str, dict], list[str]] | None = None,
+        available: set[str] | None = None,
+        max_steps: int = MAX_PLAN_STEPS,
+        max_replans: int = MAX_REPLANS,
+    ) -> None:
+        self.propose = propose
+        self.available = available or set()
+        self.max_steps = max_steps
+        self.max_replans = max_replans
+
+    def plan(self, goal: str, state: dict[str, Any] | None = None) -> list[str]:
+        """Propose, then check it against what actually exists."""
+        proposed = (self.propose or (lambda g, s: []))(goal, state or {})
+        return self.validate(proposed)
+
+    def validate(self, proposed: list[str]) -> list[str]:
+        """Reject a plan that cannot be carried out, before carrying it out.
+
+        Truncating rather than refusing on length: a plan longer than the cap is
+        usually a planner that has lost the thread, and the cap is what stops
+        that becoming a bill.
+        """
+        if self.available:
+            impossible = [s for s in proposed if s not in self.available]
+            if impossible:
+                raise UnperformableStep(
+                    f"plan names steps nothing can perform: {impossible}"
+                )
+        return proposed[: self.max_steps]
+
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        goal, state = payload["goal"], payload.get("state", {})
+        replans = 0
+        while True:
+            steps = self.plan(goal, state)
+            if steps or replans >= self.max_replans:
+                return {
+                    "plan": steps,
+                    "replans": replans,
+                    "stopped_because": "planned" if steps else "replan_cap",
+                }
+            replans += 1

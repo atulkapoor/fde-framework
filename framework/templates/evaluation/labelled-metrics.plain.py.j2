@@ -1,0 +1,64 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Scored against held-out labels.
+
+**The metric comes from the cost of each error, not from convention.** Where a
+missed case costs a hundred times a false alarm, accuracy is the wrong number
+and will read as healthy while the system fails at the only thing it was for.
+So the cost of each mistake is stated, and the headline figure is the expected
+cost rather than a rate.
+
+Accuracy is still reported, because people ask for it. It is reported alongside
+the class balance, since ninety-five percent on a corpus that is ninety-five
+percent one class is a coin that always says the same thing.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(
+        self, cost_false_negative: float = 1.0, cost_false_positive: float = 1.0
+    ) -> None:
+        self.cost_false_negative = cost_false_negative
+        self.cost_false_positive = cost_false_positive
+
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        pairs = list(
+            zip(payload.get("expected", []), payload.get("actual", []), strict=False)
+        )
+        tp = sum(1 for e, a in pairs if e and a)
+        tn = sum(1 for e, a in pairs if not e and not a)
+        fp = sum(1 for e, a in pairs if not e and a)
+        fn = sum(1 for e, a in pairs if e and not a)
+        total = len(pairs) or 1
+
+        precision = tp / (tp + fp) if (tp + fp) else 0.0
+        recall = tp / (tp + fn) if (tp + fn) else 0.0
+        positives = sum(1 for e, _ in pairs if e)
+
+        return {
+            "accuracy": (tp + tn) / total,
+            # Alongside accuracy on purpose: the two are read together or
+            # neither is worth reading.
+            "positive_rate": positives / total,
+            "precision": precision,
+            "recall": recall,
+            "f1": 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0,
+            "confusion": {"tp": tp, "tn": tn, "fp": fp, "fn": fn},
+            # The headline where errors cost differently, which is most places.
+            "expected_cost": (fn * self.cost_false_negative
+                              + fp * self.cost_false_positive) / total,
+            "costs": {"false_negative": self.cost_false_negative,
+                      "false_positive": self.cost_false_positive},
+        }

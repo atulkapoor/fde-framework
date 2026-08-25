@@ -1,0 +1,124 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Tools exposed over the Model Context Protocol, with the annotation vocabulary it
+defines.
+
+**Annotations describe; the server enforces.** They shape how a client frames a
+call to a person -- whether to warn, whether to ask -- and they are the tool's
+own claim about itself. Authority is checked here, against what the caller
+actually holds, because a boundary that trusts a declaration is a boundary in
+name only.
+
+Defaults are chosen the safe way round: a tool is destructive unless it says
+otherwise, and not read-only unless it says so. Guessing wrong in that direction
+costs a confirmation; the other way costs the data.
+
+Reversibility is tracked separately and is not part of the protocol. Moving
+something to a trash folder is destructive and reversible; deleting it
+permanently is both -- and that is the distinction deciding whether a critic
+belongs in front of the call.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any, Callable
+
+
+class UnregisteredTool(LookupError):
+    """Called something the boundary does not know about."""
+
+
+class ScopeDenied(PermissionError):
+    """The caller's authority does not cover this tool."""
+
+
+@dataclass(frozen=True)
+class Tool:
+    name: str
+    run: Callable[..., Any]
+    required_scope: str
+    description: str = ""
+    input_schema: dict[str, Any] = field(default_factory=dict)
+
+    # The protocol's annotation vocabulary, with its own defaults.
+    read_only_hint: bool = False
+    destructive_hint: bool = True
+    idempotent_hint: bool = False
+    open_world_hint: bool = True
+
+    # Not in the protocol. Kept because trash and permanent deletion are both
+    # destructive and only one of them can be undone.
+    reversible: bool = False
+
+    def annotations(self) -> dict[str, Any]:
+        return {
+            "title": self.name,
+            "readOnlyHint": self.read_only_hint,
+            "destructiveHint": self.destructive_hint,
+            "idempotentHint": self.idempotent_hint,
+            "openWorldHint": self.open_world_hint,
+        }
+
+    def as_descriptor(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "description": self.description,
+            "inputSchema": self.input_schema or {"type": "object"},
+            "annotations": self.annotations(),
+        }
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(self) -> None:
+        self._tools: dict[str, Tool] = {}
+        self.audit: list[dict[str, Any]] = []
+
+    def register(self, tool: Tool) -> None:
+        self._tools[tool.name] = tool
+
+    def list_tools(self) -> list[dict[str, Any]]:
+        """What a client sees. Descriptions, not permissions."""
+        return [t.as_descriptor() for t in self._tools.values()]
+
+    def call(self, name: str, arguments: dict[str, Any], *, subject: str,
+             granted_scopes: set[str], actor: str | None = None) -> Any:
+        tool = self._tools.get(name)
+        if tool is None:
+            raise UnregisteredTool(
+                f"{name!r} is not registered; every outward call goes through here"
+            )
+        # Against what the caller holds. Never against what the tool says.
+        if tool.required_scope not in granted_scopes:
+            raise ScopeDenied(
+                f"{name!r} needs {tool.required_scope!r}, which {subject} does not hold"
+            )
+
+        self.audit.append({
+            "tool": name, "subject": subject, "actor": actor,
+            "destructive": tool.destructive_hint, "reversible": tool.reversible,
+        })
+        return tool.run(**arguments)
+
+    def needs_a_critic(self) -> list[str]:
+        """Mutative and not reversible. What move four looks for."""
+        return sorted(
+            n for n, t in self._tools.items()
+            if not t.read_only_hint and not t.reversible
+        )
+
+    def run(self, payload: dict[str, Any]) -> Any:
+        return self.call(
+            payload["tool"], payload.get("arguments", {}),
+            subject=payload["subject"],
+            granted_scopes=set(payload.get("granted_scopes", [])),
+            actor=payload.get("actor"),
+        )

@@ -1,0 +1,71 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Allocation subject to constraints, answered rather than guessed.
+
+**A feasible answer or none.** That is what separates this from a model trained
+to imitate past decisions: such a model will produce something plausible that
+violates a constraint and will not mention that it did. Here, an infeasible
+problem comes back infeasible, with the constraints that could not be satisfied
+together.
+
+The greedy assignment below is honest about being greedy -- it satisfies the
+constraints and does not claim to be optimal. Where optimality matters, this is
+the seam a real solver goes into, behind the same contract.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+
+class Infeasible(ValueError):
+    """No assignment satisfies these constraints.
+
+    Reported rather than approximated. An answer that quietly breaks a hard
+    constraint is worse than no answer, because the breakage is discovered by
+    whoever the constraint was protecting.
+    """
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Assign items to resources without exceeding capacity."""
+        items = payload.get("items", [])
+        capacity = dict(payload.get("capacity", {}))
+        assignment: dict[str, str] = {}
+
+        for item in sorted(items, key=lambda i: -i.get("size", 1)):
+            placed = False
+            for resource, remaining in capacity.items():
+                if remaining >= item.get("size", 1) and self._allowed(item, resource):
+                    capacity[resource] = remaining - item.get("size", 1)
+                    assignment[item["id"]] = resource
+                    placed = True
+                    break
+            if not placed:
+                raise Infeasible(
+                    f"{item['id']} (size {item.get('size', 1)}) fits nowhere with "
+                    f"remaining capacity {capacity}"
+                )
+
+        return {
+            "assignment": assignment,
+            "remaining": capacity,
+            "feasible": True,
+            # Said plainly rather than implied. Feasible is a proof; optimal is
+            # a claim this method cannot make.
+            "optimal": False,
+        }
+
+    @staticmethod
+    def _allowed(item: dict[str, Any], resource: str) -> bool:
+        allowed = item.get("allowed")
+        return resource in allowed if allowed else True

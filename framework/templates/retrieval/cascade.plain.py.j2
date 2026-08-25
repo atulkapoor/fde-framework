@@ -1,0 +1,86 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+A lexical tier first, escalating to a semantic one only where confidence falls
+short. The residue is the escalation path, the queue worth a human's attention,
+and once verified the additions to the golden set -- one set of records, three
+uses.
+
+**Calibration is the pattern rather than a detail.** What separates this from a
+router is that the decision is made on the output: the cheap tier attempts the
+work and is then judged. That judgement is worth nothing unless the threshold
+has been measured against known answers, because confidence is routinely
+miscalibrated and a threshold tuned on one workload fails on the next. So an
+uncalibrated instance refuses rather than quietly saving money at an error rate
+nobody knows.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any
+
+DEFAULT_THRESHOLD = 0.8
+MAX_CHEAP_TIER_ERROR = 0.05
+
+
+class Uncalibrated(RuntimeError):
+    """Asked to route on a confidence score nobody has measured."""
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(
+        self,
+        cheap: Callable[[Any], dict[str, Any]] | None = None,
+        expensive: Callable[[Any], dict[str, Any]] | None = None,
+        calibrated: bool = True,
+        threshold: float = DEFAULT_THRESHOLD,
+    ) -> None:
+        self.cheap = cheap
+        self.expensive = expensive
+        self.calibrated = calibrated
+        self.threshold = threshold
+
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        settled, escalated = [], []
+        for item in payload.get("items", []):
+            attempt = (self.cheap or (lambda i: {"confidence": 0.0}))(item)
+            if attempt.get("confidence", 0.0) >= self.threshold:
+                settled.append({**attempt, "tier": "cheap", "item": item})
+                continue
+
+            if not self.calibrated:
+                raise Uncalibrated(
+                    "cannot route on confidence that has not been measured against "
+                    "known answers; calibrate, or run the reliable path for everything"
+                )
+            if self.expensive:
+                settled.append({**self.expensive(item), "tier": "expensive", "item": item})
+            escalated.append(item)
+
+        return {
+            "results": settled,
+            "escalated": escalated,
+            "verify_queue": escalated,
+            "cheap_tier_share": (len(settled) - len(escalated)) / (len(settled) or 1),
+        }
+
+    def calibrate(self, observations: list[dict[str, Any]]) -> dict[str, Any]:
+        """What the threshold buys, measured. A saving without its error rate
+        is not a result."""
+        confident = [o for o in observations if o.get("confident")]
+        wrong = [o for o in confident if not o.get("correct")]
+        rate = len(wrong) / (len(confident) or 1)
+        return {
+            "observations": len(observations),
+            "escalation_rate": 1 - (len(confident) / (len(observations) or 1)),
+            "cheap_tier_error_rate": rate,
+            "safe": bool(confident) and rate <= MAX_CHEAP_TIER_ERROR,
+        }

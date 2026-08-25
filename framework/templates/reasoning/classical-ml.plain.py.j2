@@ -1,0 +1,74 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+A numeric or class outcome from columns, with the reason it came out that way.
+
+The contract is what matters here rather than the estimator behind it. Two
+things every implementation owes:
+
+**A prediction and its drivers, together.** A score with no attribution is
+unusable wherever anyone has to justify a decision, which is most places that
+score people or money -- and attribution retrofitted afterwards is reconstruction
+rather than explanation.
+
+**A refusal outside the range it was trained on.** A model asked about inputs
+unlike anything it has seen will answer confidently and be wrong, and nothing in
+the output distinguishes that from a normal prediction. Saying so is cheap;
+finding out from a customer is not.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any
+
+
+class OutOfRange(ValueError):
+    """The input lies outside what this model has seen."""
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(
+        self,
+        predict: Callable[[dict[str, float]], float] | None = None,
+        attribute: Callable[[dict[str, float]], list[tuple[str, float]]] | None = None,
+        seen_range: dict[str, tuple[float, float]] | None = None,
+    ) -> None:
+        self._predict = predict
+        self._attribute = attribute
+        # Recorded at training time. A model that cannot say what it has seen
+        # cannot say when it is guessing.
+        self.seen_range = seen_range or {}
+
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        features = payload["features"]
+        outside = self._outside(features)
+        if outside:
+            raise OutOfRange(
+                f"{outside} lie outside the range this model was trained on; "
+                f"a confident answer here would not mean anything"
+            )
+
+        return {
+            "prediction": self._predict(features),
+            # Together, always. A score without its drivers cannot be defended.
+            "drivers": sorted(
+                (self._attribute or (lambda f: []))(features), key=lambda d: -abs(d[1])
+            ),
+            "in_range": True,
+        }
+
+    def _outside(self, features: dict[str, float]) -> list[str]:
+        out = []
+        for name, value in features.items():
+            bounds = self.seen_range.get(name)
+            if bounds and not (bounds[0] <= value <= bounds[1]):
+                out.append(name)
+        return out

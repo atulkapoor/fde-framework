@@ -1,0 +1,118 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Memory in the database already being operated, with validity intervals so a fact
+can stop being true.
+
+**That is the point of doing it here rather than in a vector store.** The named
+open problem in agent memory is temporal: someone changes employer and a store
+that only appends keeps asserting the old one with confidence. A row with a
+`valid_to` answers it directly, and answering "what did we believe on the
+fourteenth" is a `WHERE` clause rather than a research project.
+
+Superseding is an update and an insert in one transaction. Doing them apart is
+how a system ends up with two current answers to the same question, which is
+worse than having none -- retrieved context holding a contradiction does not
+produce a careful answer.
+
+An embedding column holding regulated data is in scope for residency, because an
+embedding is recoverable to its source. "We only store vectors" is not an
+exemption.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+SCHEMA_SQL = """
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE TABLE IF NOT EXISTS {table} (
+    id         bigserial PRIMARY KEY,
+    subject    text NOT NULL,
+    key        text NOT NULL,
+    value      jsonb NOT NULL,
+    because    text,
+    embedding  vector({dimensions}),
+    valid_from timestamptz NOT NULL DEFAULT now(),
+    -- Null means current. This column is the whole answer to a fact that
+    -- stopped being true.
+    valid_to   timestamptz
+);
+CREATE INDEX IF NOT EXISTS {table}_current_idx
+    ON {table} (subject, key) WHERE valid_to IS NULL;
+"""
+
+CURRENT_SQL = """
+SELECT key, value, because, valid_from
+FROM {table}
+WHERE subject = %(subject)s AND valid_to IS NULL;
+"""
+
+AS_OF_SQL = """
+SELECT key, value, because
+FROM {table}
+WHERE subject = %(subject)s
+  AND valid_from <= %(at)s
+  AND (valid_to IS NULL OR valid_to > %(at)s);
+"""
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(self, connection: Any = None, table: str = "memories",
+                 dimensions: int = 768) -> None:
+        self.connection = connection
+        self.table = table
+        self.dimensions = dimensions
+
+    def schema(self) -> str:
+        return SCHEMA_SQL.format(table=self.table, dimensions=self.dimensions)
+
+    def remember(self, subject: str, key: str, value: Any, because: str = "") -> None:
+        """Close the old row and open a new one, together.
+
+        One transaction on purpose. Apart, a failure between them leaves either
+        two current answers or none, and both are worse than the fact being
+        stale.
+        """
+        with self.connection:
+            with self.connection.cursor() as cursor:
+                cursor.execute(
+                    f"UPDATE {self.table} SET valid_to = now() "
+                    f"WHERE subject = %s AND key = %s AND valid_to IS NULL",
+                    (subject, key),
+                )
+                cursor.execute(
+                    f"INSERT INTO {self.table} (subject, key, value, because) "
+                    f"VALUES (%s, %s, %s, %s)",
+                    (subject, key, value, because),
+                )
+
+    def current(self, subject: str) -> list[dict[str, Any]]:
+        """One answer per key, by construction."""
+        with self.connection.cursor() as cursor:
+            cursor.execute(CURRENT_SQL.format(table=self.table), {"subject": subject})
+            return [
+                {"key": r[0], "value": r[1], "because": r[2], "since": r[3]}
+                for r in cursor.fetchall()
+            ]
+
+    def as_of(self, subject: str, at: Any) -> list[dict[str, Any]]:
+        """What was believed at a point in time.
+
+        The audit question is not what we think now, it is what we thought when
+        we acted -- and here that is a query rather than an archaeology project.
+        """
+        with self.connection.cursor() as cursor:
+            cursor.execute(AS_OF_SQL.format(table=self.table),
+                           {"subject": subject, "at": at})
+            return [{"key": r[0], "value": r[1], "because": r[2]} for r in cursor.fetchall()]
+
+    def run(self, payload: dict[str, Any]) -> Any:
+        return self.current(payload["subject"])

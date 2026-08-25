@@ -1,0 +1,80 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Tesseract, which wins here by constraint rather than by quality. It is the
+strong option that runs on a CPU, which makes it frequently the only one
+available where there are no GPUs and nothing may leave -- and a good engine you
+cannot deploy is worse than an adequate one you can.
+
+Two settings carry most of the accuracy on document work, and both are usually
+left at defaults.
+
+**Page segmentation mode.** The default assumes a full page of prose; a form or
+a column of figures is a different problem, and telling it so is free.
+
+**Language data.** Running the wrong language pack against a document is not a
+graceful degradation, it is confident nonsense.
+
+Word-level confidence is available and worth keeping. Averaging it into one page
+score discards exactly the signal that says which box to look at.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+# 3 is fully automatic and assumes prose. 6 treats the page as a single uniform
+# block, which is usually right for forms and statements.
+PSM_UNIFORM_BLOCK = 6
+MIN_WORD_CONFIDENCE = 60  # tesseract reports 0-100
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(self, language: str = "eng", psm: int = PSM_UNIFORM_BLOCK) -> None:
+        self.language = language
+        self.psm = psm
+
+    def config(self) -> str:
+        return f"--oem 3 --psm {self.psm} -l {self.language}"
+
+    def read(self, image: Any) -> dict[str, Any]:
+        """Word-level output with confidence kept per word.
+
+        Requires pytesseract and the tesseract binary. The import is local so
+        that a project emitted for a different engine does not fail to import.
+        """
+        import pytesseract
+        from pytesseract import Output
+
+        data = pytesseract.image_to_data(
+            image, config=self.config(), output_type=Output.DICT
+        )
+        words = [
+            {"text": t, "confidence": int(c), "left": left, "top": top}
+            for t, c, left, top in zip(
+                data["text"], data["conf"], data["left"], data["top"], strict=False
+            )
+            if t.strip()
+        ]
+        weak = [w for w in words if w["confidence"] < MIN_WORD_CONFIDENCE]
+        return {
+            "text": " ".join(w["text"] for w in words),
+            "words": words,
+            # Kept per word. The average hides the one box that mattered.
+            "weak_words": weak,
+            "weak_share": len(weak) / (len(words) or 1),
+        }
+
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        pages = [self.read(p) for p in payload.get("pages", [])]
+        return {
+            "pages": pages,
+            "clean_share": sum(1 for p in pages if p["weak_share"] < 0.05) / (len(pages) or 1),
+        }

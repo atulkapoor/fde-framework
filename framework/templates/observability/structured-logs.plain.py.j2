@@ -1,0 +1,61 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Machine-readable events with a correlation identifier. Enough for a pipeline
+whose path you can enumerate; not enough once the path is decided at run time,
+which is when spans start being the only thing that can reconstruct what
+happened.
+
+**The correlation identifier is the whole value.** A log line that cannot be
+tied to the request that produced it is a sentence in a book with no page
+numbers.
+
+Anything classified sensitive is named rather than printed. A log is the most
+commonly forgotten place data leaves a boundary, and it is usually discovered by
+someone reading a log aggregator they did not expect the data to reach.
+"""
+
+from __future__ import annotations
+
+import json
+import time
+import uuid
+from typing import Any
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(self, sensitive: set[str] | None = None) -> None:
+        self.correlation_id = uuid.uuid4().hex[:16]
+        self.sensitive = sensitive or set()
+        self.lines: list[str] = []
+
+    def event(self, name: str, **fields: Any) -> str:
+        line = json.dumps(
+            {
+                "at": time.time(),
+                "event": name,
+                "correlation_id": self.correlation_id,
+                **{k: self._safe(k, v) for k, v in fields.items()},
+            },
+            sort_keys=True, default=str,
+        )
+        self.lines.append(line)
+        return line
+
+    def _safe(self, key: str, value: Any) -> Any:
+        """Named, never printed.
+
+        Knowing a field was present is usually all a log needs; its contents are
+        what turns a log aggregator into an unplanned copy of the data.
+        """
+        return f"<redacted {key}>" if key in self.sensitive else value
+
+    def run(self, payload: dict[str, Any]) -> Any:
+        return self.event(payload.get("event", "step"), **payload.get("fields", {}))

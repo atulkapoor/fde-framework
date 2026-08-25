@@ -1,0 +1,41 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Data that already has a schema needs validating, not parsing. The cheapest
+perception is none, and re-parsing something already structured is how a field
+that was correct becomes a field that is nearly correct.
+
+Validating is not nothing, though. A column that is absent, empty or the wrong
+type is reported here rather than three components later, where the cause is no
+longer obvious.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(self, required: list[str] | None = None) -> None:
+        self.required = required or []
+
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        records, problems = [], []
+        for row in payload.get("rows", []):
+            missing = [c for c in self.required if row.get(c) in (None, "")]
+            if missing:
+                problems.append({"id": row.get("id"), "missing": missing})
+            records.append({"id": row.get("id"), "fields": dict(row), "usable": not missing})
+
+        return {
+            "records": records,
+            "problems": problems,
+            "clean_share": 1 - (len(problems) / (len(records) or 1)),
+        }

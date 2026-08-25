@@ -1,0 +1,71 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Pixels to text, with everything that implies.
+
+**The per-page error rate is the system's ceiling.** Measure it before promising
+anything downstream, because no later component recovers a character that was
+never read. A pipeline that reports 94% extraction accuracy and then quotes 97%
+end-to-end is quoting a number that cannot exist.
+
+Confidence per region is kept rather than averaged away. A page that is clean
+except for the one box holding the account number is not a good page, and a
+single page-level score says it is.
+
+This is the contract; a real engine goes behind it. The choice among engines is
+a decision in its own right -- one runs on a CPU and in an air gap, others need
+a GPU and read tables far better -- and it belongs in the registry rather than
+hard-coded here.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any
+
+# Below this, a region is not trusted and is queued for a human instead.
+MIN_REGION_CONFIDENCE = 0.75
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(
+        self,
+        engine: Callable[[Any], list[dict[str, Any]]] | None = None,
+        critical_regions: set[str] | None = None,
+    ) -> None:
+        self._engine = engine
+        # Regions where a low-confidence read matters regardless of the page
+        # average -- an account number, a total, a date.
+        self.critical = critical_regions or set()
+
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        pages = []
+        for page in payload.get("pages", []):
+            regions = (self._engine or (lambda p: []))(page)
+            weak = [r for r in regions if r.get("confidence", 0) < MIN_REGION_CONFIDENCE]
+            critical_weak = [r for r in weak if r.get("name") in self.critical]
+
+            pages.append({
+                "id": page.get("id"),
+                "text": "\n".join(r.get("text", "") for r in regions),
+                "regions": regions,
+                "weak_regions": [r.get("name") for r in weak],
+                # A clean page with one bad box is not a clean page.
+                "usable": not critical_weak,
+                "needs_human": bool(critical_weak),
+            })
+
+        usable = [p for p in pages if p["usable"]]
+        return {
+            "pages": pages,
+            # The ceiling. Nothing downstream exceeds it.
+            "clean_share": len(usable) / (len(pages) or 1),
+            "verify_queue": [p["id"] for p in pages if p["needs_human"]],
+        }

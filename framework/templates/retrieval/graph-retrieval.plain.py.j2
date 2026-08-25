@@ -1,0 +1,74 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Explicit entities and edges, traversed at query time.
+
+Worth its cost only where similarity search structurally cannot answer -- how
+two things connect, rather than which text resembles a query. On single-fact
+lookup it measurably loses to plain chunks, so this is a specialised instrument
+and not an upgrade.
+
+The costs are real and they arrive later than the benefit. Building the graph is
+a multi-pass extraction; traversing it adds meaningfully to end-to-end latency;
+and the index grows super-linearly, which is what makes incremental updates
+painful on a corpus that changes. A graph built once for a corpus that moves
+weekly is a maintenance commitment nobody costed.
+
+Published gains warrant scepticism too: judge position bias has been shown to
+swing reported win rates by tens of points. Measure on your own traffic before
+believing a number from someone else's.
+"""
+
+from __future__ import annotations
+
+from collections import defaultdict, deque
+from typing import Any
+
+MAX_HOPS = 3
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(self, max_hops: int = MAX_HOPS) -> None:
+        self._edges: dict[str, list[tuple[str, str]]] = defaultdict(list)
+        self._facts: dict[str, str] = {}
+        self.max_hops = max_hops
+
+    def add(self, source: str, relation: str, target: str, evidence: str = "") -> None:
+        self._edges[source].append((relation, target))
+        self._facts[f"{source}|{relation}|{target}"] = evidence
+
+    def connect(self, start: str, end: str) -> list[list[str]] | None:
+        """The path between two things, which is the question chunks cannot answer.
+
+        Bounded on purpose: an unbounded traversal on a dense graph is a query
+        that never returns, and the hop limit is what keeps this a retrieval
+        step rather than a search problem.
+        """
+        seen, queue = {start}, deque([(start, [start])])
+        while queue:
+            node, path = queue.popleft()
+            if len(path) > self.max_hops + 1:
+                continue
+            for relation, target in self._edges.get(node, []):
+                if target == end:
+                    return [*path, relation, target]
+                if target not in seen:
+                    seen.add(target)
+                    queue.append((target, [*path, relation, target]))
+        return None
+
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        path = self.connect(payload["from"], payload["to"])
+        return {
+            "path": path,
+            "found": path is not None,
+            "hops": (len(path) // 2) if path else 0,
+            "bounded_at": self.max_hops,
+        }

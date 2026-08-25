@@ -1,0 +1,89 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+A graph with explicit nodes and edges, where the model decides which edge to
+take.
+
+**Earn this.** A graph framework is worth carrying when there is real branching,
+retries with state, or a need to resume where a run left off. For a linear
+sequence it is a dependency, a mental model and an upgrade treadmill bought for
+nothing -- and the no-framework realization of this same pattern exists precisely
+so that answer stays available.
+
+What it buys, when it is warranted: the graph is inspectable before it runs, so
+the paths can be enumerated even though which one is taken is decided at run
+time. That is what makes an unbounded system testable at all.
+
+The bounds are not optional and are not the framework's job. A recursion limit
+caps steps; a budget caps spend; a critic sits before anything irreversible.
+Adding a graph library does not supply any of the three, and a system that has
+one without them has bought structure without safety.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any
+
+MAX_STEPS = 12
+MAX_COST = 100.0
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(self, max_steps: int = MAX_STEPS, max_cost: float = MAX_COST) -> None:
+        self.max_steps = max_steps
+        self.max_cost = max_cost
+        self._nodes: dict[str, Callable[[dict], dict]] = {}
+        self._routes: dict[str, Callable[[dict], str]] = {}
+
+    def node(self, name: str, run: Callable[[dict], dict]) -> None:
+        self._nodes[name] = run
+
+    def route(self, name: str, decide: Callable[[dict], str]) -> None:
+        """Where the model chooses. The only place control flow is not fixed."""
+        self._routes[name] = decide
+
+    def compile(self, entry: str):
+        """Build the graph. Import is local so a project emitted for the
+        no-framework realization still imports without the dependency."""
+        from langgraph.graph import END, StateGraph
+
+        graph = StateGraph(dict)
+        for name, run in self._nodes.items():
+            graph.add_node(name, run)
+        for name, decide in self._routes.items():
+            graph.add_conditional_edges(name, decide)
+        graph.set_entry_point(entry)
+        for name in self._nodes:
+            if name not in self._routes:
+                graph.add_edge(name, END)
+        # The framework's own guard. Necessary and nowhere near sufficient:
+        # it caps steps and says nothing about spend or reversibility.
+        return graph.compile().with_config(recursion_limit=self.max_steps)
+
+    def paths(self) -> list[str]:
+        """Enumerable before running, even though the route is chosen during.
+
+        This is the thing worth having: the shape can be reviewed, tested and
+        drawn, and only the choice among edges is left to run time.
+        """
+        return sorted(self._nodes)
+
+    def bounds(self) -> dict[str, Any]:
+        return {
+            "max_steps": self.max_steps,
+            "max_cost": self.max_cost,
+            # Stated because the framework does not provide them and their
+            # absence is invisible until it is expensive.
+            "critic_required_before": "any irreversible step",
+        }
+
+    def run(self, payload: dict[str, Any]) -> Any:
+        return {"nodes": self.paths(), "bounds": self.bounds()}

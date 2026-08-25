@@ -1,0 +1,74 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Turning records into features a model can use, and keeping what that transform
+was.
+
+**The transform is part of the model.** A feature computed one way at training
+and another way at serving is the most common cause of a model that scored well
+and behaves badly, and it is nearly invisible -- both paths look correct in
+isolation. So the transform is defined once and both paths use it.
+
+Missing values are handled explicitly rather than by whatever the library does
+by default. A silent zero for an absent income is a statement that the income
+was zero, which is a different claim from not knowing it.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any
+
+
+class UnknownFeature(KeyError):
+    """Serving asked for a feature training never produced."""
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(
+        self,
+        transforms: dict[str, Callable[[dict], Any]] | None = None,
+        missing: dict[str, Any] | None = None,
+    ) -> None:
+        self.transforms = transforms or {}
+        # Stated per feature. "Absent" and "zero" are different claims and
+        # conflating them is how a model learns something nobody meant.
+        self.missing = missing or {}
+
+    def build(self, record: dict[str, Any]) -> dict[str, Any]:
+        """One definition, used by training and by serving alike."""
+        features, absent = {}, []
+        for name, transform in self.transforms.items():
+            try:
+                value = transform(record)
+            except (KeyError, TypeError, ValueError):
+                value = None
+            if value is None:
+                absent.append(name)
+                value = self.missing.get(name)
+            features[name] = value
+        return {"features": features, "absent": absent}
+
+    def check(self, wanted: list[str]) -> None:
+        """Fail where serving expects something training never made."""
+        unknown = [f for f in wanted if f not in self.transforms]
+        if unknown:
+            raise UnknownFeature(
+                f"{unknown} are not produced by this transform; a feature computed "
+                f"differently at serving is the commonest silent model failure"
+            )
+
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        built = [self.build(r) for r in payload.get("records", [])]
+        return {
+            "records": built,
+            "absent_rate": sum(len(b["absent"]) for b in built)
+            / ((len(built) * max(1, len(self.transforms))) or 1),
+        }

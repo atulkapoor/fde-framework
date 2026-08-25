@@ -1,0 +1,68 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Adapting a model to map fields onto a schema.
+
+Different code from adapting one to generate text, even though the decision that
+selected them is the same -- which is why this is its own implementation rather
+than a parameter on that one. Here the target is a fixed set of keys and the
+evaluation is field by field; there it is prose and the evaluation is judged.
+
+The rule from the deterministic path still applies. Where a mapping can be
+written down, write it down: a model that maps fields will be right most of the
+time and confidently wrong the rest, and the confidence is the problem. This is
+for the mappings that genuinely cannot be stated -- varied layouts, inconsistent
+labels, values that need reading rather than matching.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+
+class ContractMismatch(ValueError):
+    """A training pair does not produce the fields the contract requires."""
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(self, contract: list[str] | None = None) -> None:
+        self.contract = contract or []
+
+    def prepare(self, pairs: list[dict[str, Any]]) -> dict[str, Any]:
+        """Check every example against the contract before training on it.
+
+        A pair missing a required field teaches the model that the field is
+        optional, and that lesson is expensive to unlearn.
+        """
+        bad = [
+            p.get("id")
+            for p in pairs
+            if not set(self.contract) <= set(p.get("target", {}))
+        ]
+        if bad:
+            raise ContractMismatch(
+                f"{len(bad)} pairs do not cover the contract (first: {bad[:3]}); "
+                f"training on them teaches that the missing fields are optional"
+            )
+
+        coverage = {
+            field: sum(1 for p in pairs if p.get("target", {}).get(field)) / (len(pairs) or 1)
+            for field in self.contract
+        }
+        return {
+            "pairs": len(pairs),
+            # Per field, because a field present in two percent of examples will
+            # be learned badly and the aggregate number will not show it.
+            "coverage": coverage,
+            "thin": [f for f, c in coverage.items() if c < 0.1],
+        }
+
+    def run(self, payload: dict[str, Any]) -> Any:
+        return self.prepare(payload.get("pairs", []))

@@ -1,0 +1,104 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Gradient-boosted trees, still the right answer for a numeric or class outcome
+from columns. It trains on far less data than the alternatives, answers in
+single-digit milliseconds, and -- the part that usually decides it -- can say
+which features moved a prediction.
+
+**Attribution is not optional here.** A requirement to explain a decision to
+somebody outside the team rules out approaches that cannot produce a reason,
+whatever their accuracy. That is why this beats a language model on tabular
+problems far more often than the discussion suggests.
+
+Two things worth doing at training time because they cannot be added later.
+
+**Record the range each feature was trained on.** A model asked about inputs
+unlike anything it has seen answers confidently and is wrong, and nothing in the
+output distinguishes that from a normal prediction.
+
+**Keep the feature order.** Silently reordered columns produce a model that is
+wrong in a way that looks like a modelling problem rather than a plumbing one.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+
+class OutOfRange(ValueError):
+    """Input lies outside what this model was trained on."""
+
+
+class FeatureMismatch(ValueError):
+    """Serving supplied features in a different shape from training."""
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(self, booster: Any = None, feature_names: list[str] | None = None,
+                 seen_range: dict[str, tuple[float, float]] | None = None) -> None:
+        self.booster = booster
+        # Order is part of the contract, not a detail. A reordered column is a
+        # bug that presents as a bad model.
+        self.feature_names = feature_names or []
+        self.seen_range = seen_range or {}
+
+    def fit(self, rows: list[dict[str, float]], labels: list[float], **params: Any) -> None:
+        import xgboost as xgb
+
+        self.feature_names = sorted(rows[0]) if rows else []
+        matrix = xgb.DMatrix(
+            [[r[f] for f in self.feature_names] for r in rows],
+            label=labels, feature_names=self.feature_names,
+        )
+        self.booster = xgb.train({"max_depth": 4, "eta": 0.1, **params}, matrix)
+        # Captured now because it cannot be recovered afterwards.
+        self.seen_range = {
+            f: (min(r[f] for r in rows), max(r[f] for r in rows))
+            for f in self.feature_names
+        }
+
+    def predict(self, features: dict[str, float]) -> dict[str, Any]:
+        import xgboost as xgb
+
+        if sorted(features) != sorted(self.feature_names):
+            raise FeatureMismatch(
+                f"expected {self.feature_names}, got {sorted(features)}"
+            )
+        outside = [
+            f for f, v in features.items()
+            if f in self.seen_range and not (
+                self.seen_range[f][0] <= v <= self.seen_range[f][1]
+            )
+        ]
+        if outside:
+            raise OutOfRange(
+                f"{outside} lie outside the training range; a confident answer "
+                f"here would not mean anything"
+            )
+
+        matrix = xgb.DMatrix(
+            [[features[f] for f in self.feature_names]], feature_names=self.feature_names
+        )
+        contributions = self.booster.predict(matrix, pred_contribs=True)[0]
+        return {
+            "prediction": float(self.booster.predict(matrix)[0]),
+            # Signed and ordered by size. "Balance pushed hard against it" is an
+            # explanation; a list of important columns is a topic list.
+            "drivers": sorted(
+                zip(self.feature_names, [float(c) for c in contributions[:-1]], strict=False),
+                key=lambda d: -abs(d[1]),
+            ),
+            "bias": float(contributions[-1]),
+            "in_range": True,
+        }
+
+    def run(self, payload: dict[str, Any]) -> Any:
+        return self.predict(payload["features"])

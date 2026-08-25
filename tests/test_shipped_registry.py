@@ -4,6 +4,7 @@ Separate from the loader tests, which use fixtures. These assert things about
 the real registry, and fail when authored content drifts from the schema.
 """
 
+import re
 from pathlib import Path
 
 import pytest
@@ -96,3 +97,69 @@ def test_the_gap_names_the_pattern_and_the_stack(registry):
     for gap in find_gaps(registry, templates=FRAMEWORK / "templates"):
         if gap.kind == "missing_template":
             assert "/" in gap.detail and ".j2" in gap.detail
+
+
+def test_every_realization_has_a_template(registry):
+    """No realization resolves to a scaffold any more. Where the framework
+    decides what to build, it can emit it."""
+    from fde.graph import find_gaps
+
+    unwritten = [
+        g.detail for g in find_gaps(registry, templates=FRAMEWORK / "templates")
+        if g.kind == "missing_template"
+    ]
+    assert not unwritten, f"still scaffolding: {unwritten}"
+
+
+def test_every_template_renders(registry):
+    """A template with a syntax error emits a broken project, and it would not
+    be found until somebody built one."""
+    from jinja2 import Environment, FileSystemLoader
+
+    env = Environment(loader=FileSystemLoader(str(FRAMEWORK / "templates")), autoescape=False)
+    for pattern in registry.patterns.values():
+        for realization in pattern.realizations:
+            rendered = env.get_template(realization.template).render(
+                component=pattern.component, approach=pattern.approach,
+                stack=realization.stack, interface=realization.provides,
+                rationale="test", class_name="Thing", rejected=[],
+            )
+            assert rendered.strip()
+
+
+def test_every_emitted_module_is_valid_python(registry):
+    """Rendering is not enough. It has to parse."""
+    import ast
+
+    from jinja2 import Environment, FileSystemLoader
+
+    env = Environment(loader=FileSystemLoader(str(FRAMEWORK / "templates")), autoescape=False)
+    for pattern in registry.patterns.values():
+        for realization in pattern.realizations:
+            source = env.get_template(realization.template).render(
+                component=pattern.component, approach=pattern.approach,
+                stack=realization.stack, interface=realization.provides,
+                rationale="test", class_name="Thing", rejected=[],
+            )
+            ast.parse(source)   # raises SyntaxError with the file named
+
+
+def test_every_emitted_module_declares_what_it_satisfies(registry):
+    """A module that cannot say which interface it implements cannot be
+    swapped for another that implements the same one."""
+    from jinja2 import Environment, FileSystemLoader
+
+    env = Environment(loader=FileSystemLoader(str(FRAMEWORK / "templates")), autoescape=False)
+    for pattern in registry.patterns.values():
+        for realization in pattern.realizations:
+            source = env.get_template(realization.template).render(
+                component=pattern.component, approach=pattern.approach,
+                stack=realization.stack, interface=realization.provides,
+                rationale="test", class_name="Thing", rejected=[],
+            )
+            # Both a plain assignment and an annotated dataclass field are
+            # legitimate ways to declare this.
+            for attribute in ("interface", "approach", "stack"):
+                assert re.search(rf"\b{attribute}(: \w+)? = ", source), (
+                    f"{realization.template} does not declare {attribute}"
+                )
