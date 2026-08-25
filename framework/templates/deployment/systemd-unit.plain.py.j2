@@ -1,0 +1,36 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+The artefacts for this rung are written into deploy/ at build time. This module
+records which rung was chosen and what would earn the next one, so the decision
+is visible in the running system rather than only in a document nobody opens.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def rung(self) -> dict[str, Any]:
+        """Where on the ladder this sits, and what moves it."""
+        return {
+            "approach": self.approach,
+            "graduate_when": {
+                "systemd-unit": "more than one long-lived process, or a dependency "
+                                "that conflicts with the host",
+                "compose": "multi-node scheduling, or zero-downtime rolling deploys",
+                "kubernetes-manifests": "multi-tenant isolation, or an HA control plane "
+                                        "somebody has asked for by name",
+            }.get(self.approach, "nothing further"),
+        }
+
+    def run(self, payload: Any) -> Any:
+        return payload

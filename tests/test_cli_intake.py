@@ -75,13 +75,15 @@ def test_frame_reads_from_a_file(tmp_path):
 
 
 def test_ask_records_answers_against_the_role(tmp_path):
+    """Independent of which question comes first: the residency answer is
+    valid only for that dimension, so whatever else is asked skips."""
     root = engagement(tmp_path)
     result = runner.invoke(
-        app, ["ask", str(root), "--role", "admin"], input="may_leave\ncustomer-vpc\n\n\n\n"
+        app, ["ask", str(root), "--role", "admin"], input="cannot_leave\n" + "\n" * 20
     )
     assert result.exit_code == 0
-    fact = load_engagement(root).profile.fact("hosting")
-    assert fact.value == "customer-vpc"
+    fact = load_engagement(root).profile.fact("data_residency")
+    assert fact.value == "cannot_leave"
     assert fact.respondent.role == "admin"
 
 
@@ -134,16 +136,21 @@ def test_a_corrected_answer_is_stored(tmp_path):
 def test_an_answer_that_contradicts_an_earlier_one_says_which(tmp_path):
     root = engagement(tmp_path)
     runner.invoke(app, ["frame", str(root), "--text", "Data cannot leave the client environment."])
+    # Offer public-saas to every question and skip when it is rejected. It is a
+    # legal value for exactly one dimension, so this finds that dimension
+    # wherever the order happens to put it -- which is what stops this test
+    # breaking every time one is added.
     result = runner.invoke(
-        app, ["ask", str(root), "--role", "admin"], input="local\npublic-saas\non-prem\n\n\n"
+        app, ["ask", str(root), "--role", "admin"], input="public-saas\n\n" * 20
     )
     assert "data_residency" in result.output
+    assert "cannot_leave" in result.output
 
 
 def test_ask_writes_one_session_not_one_file_per_answer(tmp_path):
     root = engagement(tmp_path)
     runner.invoke(
-        app, ["ask", str(root), "--role", "admin"], input="may_leave\ncustomer-vpc\n\n\n\n"
+        app, ["ask", str(root), "--role", "admin"], input="cannot_leave\n" + "\n" * 20
     )
     assert len(list((root / "facts").iterdir())) == 1
 
@@ -159,9 +166,9 @@ def test_the_respondents_name_is_recorded_when_given(tmp_path):
     runner.invoke(
         app,
         ["ask", str(root), "--role", "admin", "--name", "R. Iyer"],
-        input="may_leave\ncustomer-vpc\n\n\n\n",
+        input="cannot_leave\n" + "\n" * 20,
     )
-    assert load_engagement(root).profile.fact("hosting").respondent.name == "R. Iyer"
+    assert load_engagement(root).profile.fact("data_residency").respondent.name == "R. Iyer"
 
 
 def test_ask_reports_when_the_role_has_nothing_left(tmp_path):
