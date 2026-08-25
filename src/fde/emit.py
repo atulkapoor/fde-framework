@@ -13,11 +13,13 @@ hole that imports cleanly is a hole found in production.
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 
 from fde.architect import Architecture
+from fde.intake.samples import build_eval_set, infer_contract, infer_metrics, load_pairs
 from fde.moves import BoundaryViolation, assert_boundary
 from fde.registry import Registry
 
@@ -44,6 +46,7 @@ def emit(
     out: Path,
     registry: Registry | None = None,
     templates: Path | None = None,
+    pairs_path: Path | None = None,
 ) -> Path:
     out = Path(out)
     _refuse_if_unsound(architecture, out)
@@ -59,6 +62,7 @@ def emit(
     _write_pipeline(architecture, out)
     if architecture.graph.sensitive_nodes():
         _write_boundary(architecture, out)
+    _write_evals(architecture, out, pairs_path)
     _write_project_file(out)
     (out / "ARCHITECTURE.md").write_text(render_architecture(architecture))
     return out
@@ -231,6 +235,165 @@ def _write_boundary(architecture: Architecture, out: Path) -> None:
         "        )\n\n\n"
         "check()\n"
     )
+
+
+def _write_evals(architecture: Architecture, out: Path, pairs_path: Path | None) -> None:
+    """The measurement the project ships with.
+
+    Seeded from the client's own examples, so the evaluation is about their
+    problem from the first run rather than a benchmark that resembles it.
+    Without pairs there is still a harness and an error taxonomy -- an empty
+    golden set is a gap somebody can see, and no harness at all is one nobody
+    finds until they ask how it is going.
+    """
+    evals = out / "evals"
+    evals.mkdir(parents=True, exist_ok=True)
+
+    pairs = load_pairs(pairs_path) if pairs_path and pairs_path.exists() else []
+    suite = build_eval_set(pairs) if pairs else None
+    contract = infer_contract(pairs) if pairs else None
+    metrics = infer_metrics(contract) if contract else ["field_exact_match"]
+
+    for name, cases in (
+        ("golden", suite.golden if suite else []),
+        ("edge_case", suite.edge_case if suite else []),
+        ("adversarial", suite.adversarial if suite else []),
+    ):
+        (evals / f"{name}.jsonl").write_text(
+            "".join(json.dumps(c, default=str) + "\n" for c in cases)
+        )
+
+    (evals / "taxonomy.py").write_text(_TAXONOMY)
+    (evals / "harness.py").write_text(_HARNESS.format(metrics=json.dumps(metrics)))
+
+
+_TAXONOMY = '''"""Why a case failed, by source rather than by symptom.
+
+Knowing an answer was wrong tells you how often you fail. Knowing the failure
+came from ingestion tells you what to build next, and those are different
+questions with different answers.
+"""
+
+DATA = "data"                 # the source was wrong or missing before we touched it
+INPUT = "input"               # parsing lost or mangled it on the way in
+PREDICTION = "prediction"     # the model or rule produced the wrong value
+OUTPUT = "output"             # right value, wrong shape or place
+SYSTEM = "system"             # timeout, crash, resource exhaustion
+INTEGRATION = "integration"   # the boundary between two parts of this
+
+SOURCES = [DATA, INPUT, PREDICTION, OUTPUT, SYSTEM, INTEGRATION]
+
+
+def classify(expected, actual, context=None):
+    """Best-effort attribution. Deliberately conservative: an unattributed
+    failure is more useful than a confidently mis-attributed one."""
+    context = context or {}
+    if context.get("exception"):
+        return SYSTEM
+    if context.get("parse_losses"):
+        return INPUT
+    if actual in (None, ""):
+        return DATA if context.get("source_missing") else PREDICTION
+    if type(actual) is not type(expected):
+        return OUTPUT
+    return PREDICTION
+'''
+
+
+_HARNESS = '''#!/usr/bin/env python3
+"""Run the evaluation. Exits non-zero below the threshold, so CI can gate on it.
+
+Three layers, because golden alone measures the happy path. Edge cases come from
+the layouts the corpus barely covers; adversarial cases come from the contract
+and describe things nobody supplied -- a missing required field, a value of the
+wrong type, an instruction hidden in a document.
+
+A run that scores well on golden and badly on adversarial is not a good system.
+It is a system nobody has attacked yet.
+"""
+
+import argparse
+import json
+import sys
+from collections import Counter
+import json
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from evals.taxonomy import classify  # noqa: E402
+
+HERE = Path(__file__).parent
+METRICS = {metrics}
+
+
+def load(name):
+    path = HERE / f"{{name}}.jsonl"
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+def run_layer(name, cases, predict):
+    if not cases:
+        return {{"layer": name, "cases": 0, "score": None, "note": "no cases supplied"}}
+
+    correct, failures = 0, []
+    for case in cases:
+        expected = case.get("output", case.get("expect"))
+        try:
+            actual = predict(case.get("input"))
+        except Exception as exc:  # noqa: BLE001
+            failures.append({{"id": case.get("id"), "source": classify(
+                expected, None, {{"exception": exc}})}})
+            continue
+        if actual == expected:
+            correct += 1
+        else:
+            failures.append({{"id": case.get("id"),
+                             "source": classify(expected, actual)}})
+
+    return {{
+        "layer": name,
+        "cases": len(cases),
+        "score": correct / len(cases),
+        # The shape of the failures, which is what decides the next move.
+        "by_source": dict(Counter(f["source"] for f in failures)),
+        "failures": failures[:10],
+    }}
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--min-score", type=float, default=0.0,
+                        help="fail below this on the golden layer")
+    args = parser.parse_args()
+
+    def predict(_):
+        raise NotImplementedError(
+            "wire this to app.pipeline.run once the components are implemented"
+        )
+
+    report = [run_layer(n, load(n), predict)
+              for n in ("golden", "edge_case", "adversarial")]
+
+    print(f"metrics: {{', '.join(METRICS)}}")
+    for layer in report:
+        score = "--" if layer["score"] is None else f"{{layer['score']:.1%}}"
+        print(f"  {{layer['layer']:12}} {{layer['cases']:4}} cases  {{score}}")
+        if layer.get("by_source"):
+            print(f"               by source: {{layer['by_source']}}")
+
+    golden = next(layer for layer in report if layer["layer"] == "golden")
+    if golden["score"] is not None and golden["score"] < args.min_score:
+        print(f"below {{args.min_score:.1%}}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+'''
 
 
 def _write_project_file(out: Path) -> None:

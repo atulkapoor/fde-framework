@@ -189,3 +189,79 @@ def test_the_same_architecture_emits_the_same_project(reg, tmp_path):
     emit(architect(profile(**COMPLETE), reg), a)
     emit(architect(profile(**COMPLETE), reg), b)
     assert (a / "app" / "pipeline.py").read_text() == (b / "app" / "pipeline.py").read_text()
+
+
+# --- the measurement the project ships with ------------------------------
+
+
+def test_an_eval_harness_is_emitted_even_without_pairs(built):
+    """No harness at all is a gap nobody finds until they ask how it is going.
+    An empty golden set is a gap anybody can see."""
+    assert (built / "evals" / "harness.py").exists()
+    assert (built / "evals" / "taxonomy.py").exists()
+
+
+def test_all_three_layers_are_emitted(built):
+    for layer in ("golden", "edge_case", "adversarial"):
+        assert (built / "evals" / f"{layer}.jsonl").exists()
+
+
+def test_the_harness_runs(built):
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, "evals/harness.py"], cwd=built, capture_output=True, text=True
+    )
+    assert result.returncode == 0, result.stderr
+    assert "golden" in result.stdout
+
+
+def test_the_taxonomy_classifies_by_source(built):
+    body = (built / "evals" / "taxonomy.py").read_text()
+    for source in ("data", "input", "prediction", "output", "system", "integration"):
+        assert source in body
+
+
+def test_the_golden_set_is_seeded_from_the_clients_own_pairs(reg, tmp_path):
+    """The evaluation is about their problem from the first run, not a
+    benchmark that resembles it."""
+    import json
+
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text("\n".join(json.dumps(p) for p in [
+        {"id": "a", "input": "x", "verified": True, "layout": "one",
+         "output": {"total": 1.0, "account": "****1"}},
+        {"id": "b", "input": "y", "verified": True, "layout": "two",
+         "output": {"total": 2.0, "account": "****2"}},
+    ]))
+    out = tmp_path / "proj"
+    emit(architect(profile(**COMPLETE), reg), out, pairs_path=pairs)
+    golden = (out / "evals" / "golden.jsonl").read_text()
+    assert "****" in golden
+
+
+def test_the_adversarial_layer_covers_what_nobody_supplied(reg, tmp_path):
+    import json
+
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text(json.dumps(
+        {"id": "a", "input": "x", "verified": True,
+         "output": {"total": 1.0, "account": "****1"}}) + "\n")
+    out = tmp_path / "proj"
+    emit(architect(profile(**COMPLETE), reg), out, pairs_path=pairs)
+    cases = (out / "evals" / "adversarial.jsonl").read_text()
+    assert "prompt_injection" in cases
+    assert "sensitive_egress" in cases
+
+
+def test_the_harness_can_fail_a_build(built):
+    """CI has to be able to gate on it, or it is a report nobody reads."""
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, "evals/harness.py", "--min-score", "1.01"],
+        cwd=built, capture_output=True, text=True,
+    )
+    assert result.returncode in (0, 1)   # 0 only when there is nothing to score

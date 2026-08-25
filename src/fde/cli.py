@@ -20,6 +20,15 @@ from fde.intake.answers import parse_answer
 from fde.intake.documents import UnreadableDocument, read_document
 from fde.intake.interview import remaining_questions
 from fde.intake.prose import parse_prose, restate
+from fde.intake.samples import (
+    ContractConflict,
+    assess,
+    build_eval_set,
+    infer_contract,
+    infer_metrics,
+    load_pairs,
+    samples_to_facts,
+)
 from fde.models.base import Provenance
 from fde.models.fact import Fact
 from fde.models.profile import Profile
@@ -169,6 +178,53 @@ def frame(
     )
 
 
+@app.command("samples")
+def samples_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    file: Annotated[Path, typer.Option(help="A .jsonl of input/output pairs.")],
+) -> None:
+    """Read sample pairs: the contract, the metric, and the golden set.
+
+    The most valuable thing a client hands over. A brief describes the problem;
+    these describe the answer.
+    """
+    engagement = load_engagement(root)
+    try:
+        pairs = load_pairs(file)
+        contract = infer_contract(pairs)
+    except (ContractConflict, ValueError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+
+    suite = build_eval_set(pairs)
+    typer.echo(f"{len(pairs)} pairs, {len(contract.fields)} fields\n")
+    for name, entry in sorted(contract.fields.items()):
+        marks = " ".join(
+            m for m in ("required" if entry.required else "optional", entry.sensitivity or "")
+            if m
+        )
+        typer.echo(f"  {name:24} {entry.type:8} {marks}")
+
+    typer.echo(f"\nmetric: {', '.join(infer_metrics(contract))}")
+    typer.echo(
+        f"evals:  {len(suite.golden)} golden, {len(suite.edge_case)} edge, "
+        f"{len(suite.adversarial)} adversarial"
+    )
+    for warning in assess(pairs):
+        typer.echo(f"\n{warning}")
+
+    facts = samples_to_facts(pairs)
+    engagement.append(
+        Session(
+            session_id=_next_session_id(engagement, "samples"),
+            respondent=Respondent(role=Role.SYSTEM),
+            facts=facts,
+        )
+    )
+    # Kept beside the engagement so build can emit the golden set from them.
+    (engagement.artifacts_dir / "pairs.jsonl").write_text(file.read_text())
+
+
 @app.command("ask")
 def ask(
     root: Annotated[Path, typer.Argument(help="The engagement directory.")],
@@ -304,7 +360,7 @@ def build_cmd(
     registry = load_registry(registry_root)
     architecture = build_architecture(load_engagement(root).profile, registry)
     try:
-        emit(architecture, out)
+        emit(architecture, out, pairs_path=Path(root) / "artifacts" / "pairs.jsonl")
     except BuildRefused as exc:
         typer.echo(f"refused: {exc}", err=True)
         raise typer.Exit(1) from exc
