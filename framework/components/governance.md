@@ -4,7 +4,8 @@ name: Governance
 caps: []
 required_when:
   - data_residency == cannot_leave
-  - interpretability_required == true
+  - data_residency == may_leave
+  - hosting == air-gapped
 ---
 Identity, delegated authority, guardrails, approval gates, audit and ledger.
 

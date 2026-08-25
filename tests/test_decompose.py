@@ -52,8 +52,26 @@ def test_a_residency_constraint_requires_governance(reg):
     assert "governance" in decompose(profile(data_residency="cannot_leave"), reg).components
 
 
-def test_no_residency_constraint_does_not(reg):
-    assert "governance" not in decompose(profile(data_residency="may_leave"), reg).components
+def test_governance_is_needed_either_way_and_differs_in_kind(reg):
+    """An audit trail is needed whenever actions are taken on someone's behalf.
+    Residency decides whether a boundary is enforced around them, not whether
+    anything is recorded at all."""
+    for residency in ("cannot_leave", "may_leave"):
+        assert "governance" in decompose(profile(data_residency=residency), reg).components
+
+
+def test_explaining_a_decision_is_a_separate_component(reg):
+    """A boundary answers where data may go; accountability answers why this
+    outcome. A system can need both, and folding them together means whichever
+    fires first hides the other."""
+    graph = decompose(profile(interpretability_required=True), reg)
+    assert "accountability" in graph.components
+
+
+def test_a_residency_constraint_alone_does_not_require_explanations(reg):
+    graph = decompose(profile(data_residency="cannot_leave"), reg)
+    assert "governance" in graph.components
+    assert "accountability" not in graph.components
 
 
 def test_an_unresolved_dimension_requires_nothing(reg):
@@ -76,7 +94,7 @@ def test_the_reason_names_the_condition_that_fired(reg):
 
 
 def test_a_component_required_twice_records_both_reasons(reg):
-    graph = decompose(profile(data_residency="cannot_leave", interpretability_required=True), reg)
+    graph = decompose(profile(data_residency="cannot_leave", hosting="air-gapped"), reg)
     assert len(graph.components["governance"].because) >= 2
 
 
@@ -118,7 +136,7 @@ def test_the_same_components_for_different_reasons_record_different_reasons(reg)
     """Two problems can need the same part for unrelated causes, and the
     architecture document has to say which."""
     a = decompose(profile(data_residency="cannot_leave"), reg)
-    b = decompose(profile(interpretability_required=True), reg)
+    b = decompose(profile(data_residency="may_leave"), reg)
     assert a.components["governance"].because != b.components["governance"].because
 
 

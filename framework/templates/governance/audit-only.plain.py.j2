@@ -1,0 +1,98 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+A record of what happened, without a boundary around where it happened. The
+right answer where nothing forbids egress but actions are still taken on
+someone's behalf -- and paying for enforced placement when nothing requires it
+is the over-engineering the residency question exists to prevent.
+
+Two things do not change with the simpler option.
+
+**The record names the human as subject and the agent as actor.** A line saying
+an agent issued a refund has lost the chain that makes the record worth keeping.
+
+**It never fails open into silence.** If the trail cannot be written, the action
+does not happen. An audit that quietly drops entries under load is worse than
+none, because it is trusted.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import time
+from typing import Any
+
+
+class AuditUnavailable(RuntimeError):
+    """The trail could not be written, so the action does not proceed."""
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(self, sink: Any = None) -> None:
+        # Defaults to memory so this runs. In a deployment it is whatever the
+        # client already keeps records in -- and it commits with the action.
+        self.entries: list[dict[str, Any]] = []
+        self._sink = sink
+        self._previous_digest = ""
+
+    def record(
+        self, action: str, subject: str, actor: str | None = None, **detail: Any
+    ) -> dict[str, Any]:
+        entry = {
+            "action": action,
+            # The person. Not the thing acting for them.
+            "subject": subject,
+            "actor": actor,
+            "at": detail.pop("at", None) or time.time(),
+            "detail": detail,
+        }
+        # Chained so a removed entry is detectable. Not tamper-proof -- tamper
+        # evident, which is the achievable and useful property.
+        entry["previous"] = self._previous_digest
+        entry["digest"] = self._digest(entry)
+
+        try:
+            if self._sink is not None:
+                self._sink(entry)
+            self.entries.append(entry)
+        except Exception as exc:
+            raise AuditUnavailable(
+                f"could not record {action!r}; the action must not proceed"
+            ) from exc
+
+        self._previous_digest = entry["digest"]
+        return entry
+
+    def verify(self) -> bool:
+        """Whether the chain is intact."""
+        previous = ""
+        for entry in self.entries:
+            if entry["previous"] != previous:
+                return False
+            expected = self._digest({k: v for k, v in entry.items() if k != "digest"})
+            if entry["digest"] != expected:
+                return False
+            previous = entry["digest"]
+        return True
+
+    @staticmethod
+    def _digest(entry: dict[str, Any]) -> str:
+        payload = json.dumps(
+            {k: v for k, v in entry.items() if k != "digest"},
+            sort_keys=True, separators=(",", ":"), default=str,
+        )
+        return hashlib.sha256(payload.encode()).hexdigest()[:32]
+
+    def run(self, payload: dict[str, Any]) -> Any:
+        return self.record(
+            payload["action"], payload["subject"], payload.get("actor"),
+            **payload.get("detail", {}),
+        )

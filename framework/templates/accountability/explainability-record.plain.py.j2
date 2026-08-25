@@ -1,0 +1,90 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Why this outcome, in a form somebody outside the team can read months later.
+
+**Recorded at decision time or not at all.** Reconstructing why a model decided
+something after the fact is guesswork wearing a report's formatting -- the
+inputs have moved, the model has been retrained, and the honest answer is that
+nobody knows. The question always arrives when the original context is gone,
+which is exactly why it has to be captured while it is still cheap.
+
+Drivers come back largest first, because an explanation that buries the reason
+in position six is not one. And a decision made without an explanation stays
+findable: in a system that promised explanations, the unexplained decision is
+precisely what an auditor asks about.
+"""
+
+from __future__ import annotations
+
+import time
+from typing import Any
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(self) -> None:
+        self._records: dict[str, dict[str, Any]] = {}
+
+    def explain(
+        self,
+        case_id: str,
+        outcome: Any,
+        drivers: list[tuple[str, float]],
+        inputs: dict[str, Any] | None = None,
+        at: float | None = None,
+    ) -> dict[str, Any]:
+        """Record why, alongside the decision itself.
+
+        `drivers` are (name, contribution) pairs -- signed, because "tenure
+        pushed towards approval and balance pushed harder against it" is an
+        explanation, while a list of important features is a topic list.
+        """
+        record = {
+            "case_id": case_id,
+            "outcome": outcome,
+            # Ordered by how much each moved the outcome. Sign is kept; size
+            # decides position.
+            "drivers": sorted(drivers, key=lambda d: -abs(d[1])),
+            "inputs": inputs or {},
+            "at": at if at is not None else time.time(),
+        }
+        self._records[case_id] = record
+        return record
+
+    def explanation(self, case_id: str) -> dict[str, Any] | None:
+        return self._records.get(case_id)
+
+    def unexplained(self, case_ids: list[str]) -> list[str]:
+        """Decisions made without one.
+
+        In a system that promised explanations this is the audit finding, so it
+        is a question the system can answer about itself rather than one
+        somebody has to go looking for.
+        """
+        return [c for c in case_ids if c not in self._records]
+
+    def narrate(self, case_id: str, top: int = 3) -> str:
+        """The same record as a sentence, for whoever has to read it."""
+        record = self._records.get(case_id)
+        if not record:
+            return f"No explanation was recorded for {case_id}."
+
+        parts = [
+            f"{name} pushed {'towards' if weight > 0 else 'against'} it "
+            f"({weight:+.2f})"
+            for name, weight in record["drivers"][:top]
+        ]
+        return f"Outcome {record['outcome']!r}: " + "; ".join(parts) + "."
+
+    def run(self, payload: dict[str, Any]) -> Any:
+        return self.explain(
+            payload["case_id"], payload["outcome"], payload.get("drivers", []),
+            inputs=payload.get("inputs"),
+        )

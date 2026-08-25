@@ -1,0 +1,101 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Named fields onto a contract, by rule. Where correctness is not negotiable this
+is the right tool and a model is not -- and the reason is narrower than it
+sounds. Constrained decoding will give you output that always matches the schema
+and can still contain the wrong account number, because it guarantees *shape*
+and never *truth*. A well-formed wrong answer is worse than a refusal: nothing
+downstream can tell it is wrong.
+
+So the design rule here is **fail loudly**. A field that cannot be mapped is
+reported unmapped. A value that fails its validator is rejected rather than
+coerced -- coercion is how a parser turns 4,230 into 4 and reports success.
+
+The batch comes back with how much it could map, because a mapper that handled
+sixty percent and said nothing about the rest is a partial system with the gap
+unmeasured. What it could not map is also the queue worth a human's attention.
+"""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Callable
+from typing import Any
+
+
+def normalise(label: str) -> str:
+    """Field labels vary in punctuation and case and not in meaning."""
+    return re.sub(r"[^a-z0-9]+", " ", label.lower()).strip()
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(
+        self,
+        synonyms: dict[str, list[str]] | None = None,
+        validators: dict[str, Callable[[str], bool]] | None = None,
+    ) -> None:
+        # The entity master. Grows from what the corpus actually contains, and
+        # every addition is a decision somebody made rather than a guess a model
+        # made silently.
+        self.synonyms = {k: [normalise(s) for s in v] for k, v in (synonyms or {}).items()}
+        self.validators = validators or {}
+
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        contract = payload.get("contract", [])
+        records = [self._map(r, contract) for r in payload.get("records", [])]
+        complete = [r for r in records if not r["unmapped"] and not r["rejected"]]
+        return {
+            "records": records,
+            "mapped_share": len(complete) / (len(records) or 1),
+            # Records the rules could not finish. The same set is worth a
+            # human's attention and worth adding to the entity master.
+            "needs_attention": [r["id"] for r in records if r["unmapped"] or r["rejected"]],
+        }
+
+    def _map(self, record: dict[str, Any], contract: list[str]) -> dict[str, Any]:
+        source = {normalise(k): v for k, v in record.get("raw", {}).items()}
+        mapped: dict[str, Any] = {}
+        rejected: dict[str, str] = {}
+        unmapped: list[str] = []
+
+        for field in contract:
+            value = self._find(field, source)
+            if value is None:
+                # Not guessed at. An unmapped field is a fact about the data.
+                unmapped.append(field)
+                continue
+
+            validator = self.validators.get(field)
+            if validator and not validator(str(value)):
+                rejected[field] = (
+                    f"{value!r} did not satisfy the rule for {field}; "
+                    f"not coerced, because coercion reports success for a wrong value"
+                )
+                continue
+
+            mapped[field] = value
+
+        return {"id": record.get("id"), "mapped": mapped,
+                "unmapped": unmapped, "rejected": rejected}
+
+    def _find(self, field: str, source: dict[str, Any]) -> Any:
+        """Exact label, then a declared synonym. Never a near match.
+
+        Fuzzy matching here is how a deterministic mapper stops being
+        deterministic: it starts guessing, and it stops being able to say why.
+        """
+        wanted = normalise(field)
+        if wanted in source:
+            return source[wanted]
+        for alias in self.synonyms.get(field, []):
+            if alias in source:
+                return source[alias]
+        return None

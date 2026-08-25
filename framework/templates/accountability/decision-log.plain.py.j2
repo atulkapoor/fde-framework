@@ -1,0 +1,64 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Inputs, rule, outcome. Where a decision came from a rule this is the strongest
+explanation available: replaying the rule against the recorded inputs reproduces
+the outcome exactly, and no model is needed to generate a story about it.
+
+The limit is worth stating. Where the decision came from a model, inputs and
+outcome do not reconstruct the reasoning -- something that attributes the
+outcome to its drivers is needed instead, and this will say so rather than
+pretend the record is sufficient.
+"""
+
+from __future__ import annotations
+
+import time
+from typing import Any
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(self) -> None:
+        self._entries: dict[str, dict[str, Any]] = {}
+
+    def record(self, case_id: str, inputs: dict[str, Any], rule: str,
+               outcome: Any, at: float | None = None) -> dict[str, Any]:
+        entry = {
+            "case_id": case_id,
+            "inputs": dict(inputs),
+            "rule": rule,
+            "outcome": outcome,
+            "at": at if at is not None else time.time(),
+            # A replayable record is a different claim from an inferred one, and
+            # the difference matters to whoever relies on it.
+            "reproducible": True,
+        }
+        self._entries[case_id] = entry
+        return entry
+
+    def replay(self, case_id: str, apply: Any) -> bool:
+        """Run the rule again against what was recorded.
+
+        The whole point: an explanation you can re-derive is worth more than one
+        you have to trust.
+        """
+        entry = self._entries.get(case_id)
+        if not entry:
+            return False
+        return apply(entry["inputs"]) == entry["outcome"]
+
+    def unexplained(self, case_ids: list[str]) -> list[str]:
+        return [c for c in case_ids if c not in self._entries]
+
+    def run(self, payload: dict[str, Any]) -> Any:
+        return self.record(
+            payload["case_id"], payload.get("inputs", {}),
+            payload.get("rule", "unspecified"), payload["outcome"],
+        )
