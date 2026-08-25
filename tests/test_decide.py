@@ -224,6 +224,8 @@ def test_a_dimension_that_does_not_move_the_architecture_scores_zero(reg):
     from fde.intake.interview import divergence
     from fde.space import Space
 
+    # Who operates it after handover does not change what gets built; it
+    # changes whether what gets built survives.
     space = Space.from_registry(reg).answer("output_shape", "classification")
-    scored = divergence("embeddings", space, outcome=architecture_outcome(reg))
+    scored = divergence("operates_after_handover", space, outcome=architecture_outcome(reg))
     assert scored.score == 0.0

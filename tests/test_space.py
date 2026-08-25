@@ -62,9 +62,10 @@ def test_answering_leaves_the_original_untouched(space):
 
 
 def test_answering_one_thing_settles_another_nobody_stated(space):
-    """An air gap rules out managed embeddings. Nobody says so; it follows."""
+    """An air gap is a statement about residency too: nothing leaves a network
+    with no egress. Nobody says so; it follows."""
     after = space.answer("hosting", "air-gapped")
-    assert after.surviving("embeddings") == {"local"}
+    assert after.surviving("data_residency") == {"cannot_leave"}
 
 
 def test_consequences_run_to_a_fixed_point_not_a_single_pass(reg):
@@ -84,8 +85,8 @@ def test_consequences_run_to_a_fixed_point_not_a_single_pass(reg):
 
 def test_a_dimension_down_to_one_value_is_resolved_without_being_asked(space):
     after = space.answer("hosting", "air-gapped")
-    assert after.resolved("embeddings")
-    assert after.value("embeddings") == "local"
+    assert after.resolved("data_residency")
+    assert after.value("data_residency") == "cannot_leave"
 
 
 def test_pruning_is_order_independent(space):
@@ -163,7 +164,7 @@ def test_exploring_the_whole_space_stays_linear(space):
 
 def test_exploring_a_resolved_dimension_yields_the_one_case(space):
     after = space.answer("hosting", "air-gapped")
-    assert len(after.explore("embeddings")) == 1
+    assert len(after.explore("data_residency")) == 1
 
 
 def _tiny_registry(dedent):

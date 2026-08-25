@@ -10,10 +10,16 @@ recognises:
   customer-vpc: [in our vpc, our own vpc, inside our cloud account]
   managed-api: [hosted api, managed api, vendor api]
   public-saas: [public saas, off the shelf saas]
+ask_role: ['admin']
 prunes:
   air-gapped:
-    embeddings: [managed]
-ask_role: ['admin']
+    data_residency: [may_leave]
+  on-prem:
+    data_residency: [may_leave]
 ---
+An air gap is a statement about residency as much as about placement: nothing
+can leave a network with no egress, so saying one settles the other and nobody
+should be asked twice.
+
 Where the compute sits. Three topologies, one architecture -- the shape does not
 change between them, only placement does.

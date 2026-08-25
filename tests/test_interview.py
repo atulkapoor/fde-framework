@@ -161,9 +161,10 @@ def test_a_high_pruning_dimension_that_changes_nothing_is_not_asked_first(
 
 
 def test_divergence_is_computed_by_exploring_not_by_a_heuristic(space):
-    result = divergence("hosting", space, outcome=lambda s: s.value("embeddings"))
+    result = divergence("hosting", space, outcome=lambda s: s.value("data_residency"))
     assert result.considered == len(space.surviving("hosting"))
-    assert result.outcomes == 2  # air-gapped forces local embeddings; the rest leave it open
+    # air-gapped and on-prem settle residency; the other three leave it open
+    assert result.outcomes == 2
 
 
 def test_exploring_stays_linear_in_the_number_of_dimensions(space, reg):

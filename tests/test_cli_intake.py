@@ -77,11 +77,11 @@ def test_frame_reads_from_a_file(tmp_path):
 def test_ask_records_answers_against_the_role(tmp_path):
     root = engagement(tmp_path)
     result = runner.invoke(
-        app, ["ask", str(root), "--role", "admin"], input="may_leave\nlocal\non-prem\n\n\n\n"
+        app, ["ask", str(root), "--role", "admin"], input="may_leave\ncustomer-vpc\n\n\n\n"
     )
     assert result.exit_code == 0
     fact = load_engagement(root).profile.fact("hosting")
-    assert fact.value == "on-prem"
+    assert fact.value == "customer-vpc"
     assert fact.respondent.role == "admin"
 
 
@@ -143,7 +143,7 @@ def test_an_answer_that_contradicts_an_earlier_one_says_which(tmp_path):
 def test_ask_writes_one_session_not_one_file_per_answer(tmp_path):
     root = engagement(tmp_path)
     runner.invoke(
-        app, ["ask", str(root), "--role", "admin"], input="may_leave\nlocal\non-prem\n\n\n\n"
+        app, ["ask", str(root), "--role", "admin"], input="may_leave\ncustomer-vpc\n\n\n\n"
     )
     assert len(list((root / "facts").iterdir())) == 1
 
@@ -159,7 +159,7 @@ def test_the_respondents_name_is_recorded_when_given(tmp_path):
     runner.invoke(
         app,
         ["ask", str(root), "--role", "admin", "--name", "R. Iyer"],
-        input="may_leave\nlocal\non-prem\n\n\n\n",
+        input="may_leave\ncustomer-vpc\n\n\n\n",
     )
     assert load_engagement(root).profile.fact("hosting").respondent.name == "R. Iyer"
 
