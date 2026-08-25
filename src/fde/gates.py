@@ -1,0 +1,299 @@
+"""What has to be true before building is worth starting.
+
+Five gates, and one of them is different from the rest.
+
+Four block and accept an override with a recorded reason. An FDE on site can see
+things a checklist cannot, and a framework that refuses to proceed on a
+technicality gets worked around rather than used -- so the override is a
+first-class move, and the reason lands in the risk section rather than in an
+argument.
+
+**Data access does not.** You can design around a missing baseline; you cannot
+design around credentials you do not have. Waiting is the only move, and a
+framework that lets an engagement proceed past this is helping somebody spend
+three weeks designing against data they have never seen.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import Any
+
+from fde.models.profile import Profile
+
+# What makes a baseline usable. Fewer than these and a post-launch comparison
+# is an assertion rather than a measurement.
+BASELINE_FIELDS = (
+    "volume",
+    "cycle_time_per_unit_seconds",
+    "labour_hours_per_week",
+    "rework_rate",
+    "exception_rate",
+    "error_rate",
+    "business_metric",
+)
+
+# Dimensions weighted by how much they move a design. Ten trivial answers is
+# not most of the way there, and counting fields says it is.
+DECISIVE = {
+    "output_shape": 3.0,
+    "data_residency": 3.0,
+    "input_format": 2.0,
+    "query_pattern": 2.0,
+    "hosting": 2.0,
+    "labelled_count": 2.0,
+    "corpus_size": 1.5,
+    "latency_budget_ms": 1.5,
+    "interpretability_required": 1.5,
+    "human_waiting": 1.0,
+    "external_systems": 0.5,
+    "recall_span": 0.5,
+}
+
+# Output shapes whose evaluation needs a model to judge them.
+NEEDS_A_JUDGE = {"freeform"}
+
+
+class HardGate(Exception):
+    """This one cannot be overridden, and saying so is the point."""
+
+
+@dataclass
+class Result:
+    ok: bool
+    reason: str = ""
+
+
+@dataclass
+class Gate:
+    name: str
+    passed: bool
+    reason: str = ""
+    remedy: str = ""
+    hard: bool = False
+
+
+@dataclass
+class Overridden:
+    gate: str
+    reason: str
+
+
+@dataclass
+class Status:
+    gates: list[Gate] = field(default_factory=list)
+    known: list[str] = field(default_factory=list)
+    missing: list[str] = field(default_factory=list)
+    assumed: list[str] = field(default_factory=list)
+    missing_roles: list[str] = field(default_factory=list)
+    overridden: list[Overridden] = field(default_factory=list)
+    completeness: float = 0.0
+
+    def gate(self, name: str) -> Gate:
+        return next(g for g in self.gates if g.name == name)
+
+    def override(self, name: str, reason: str) -> None:
+        target = self.gate(name)
+        if target.hard:
+            raise HardGate(
+                f"{name} cannot be overridden. {target.reason} Waiting is the only "
+                f"move here, and designing against data nobody has seen is how "
+                f"three weeks disappear."
+            )
+        if not reason.strip():
+            raise ValueError(
+                f"overriding {name} needs a reason; a gate waved through without "
+                f"one is a gate nobody considered"
+            )
+        self.overridden.append(Overridden(gate=name, reason=reason))
+
+    def blocked_by(self) -> list[str]:
+        """Gates still standing in the way, after overrides.
+
+        More useful than a single yes or no: an FDE wants to know which two
+        things are outstanding, not that something is.
+        """
+        waved = {o.gate for o in self.overridden}
+        return [g.name for g in self.gates if not g.passed and g.name not in waved]
+
+    @property
+    def can_proceed(self) -> bool:
+        return not self.blocked_by()
+
+
+def validate_baseline(baseline: dict[str, Any] | None) -> Result:
+    """Whether this is a baseline or a number somebody said in a meeting.
+
+    Two qualifiers do more work than the seven fields. Cycle time has to come
+    from a representative sample rather than the best case -- the gap between
+    what is possible and what happens is usually the whole project. And the
+    definitions have to be recorded, because the test of a baseline is whether
+    the same fields can be measured again in sixty days and compared.
+    """
+    if not baseline:
+        return Result(False, "no baseline was captured")
+
+    missing = [f for f in BASELINE_FIELDS if f not in baseline]
+    if missing:
+        return Result(False, f"missing: {', '.join(missing)}")
+
+    if not baseline.get("sampled"):
+        return Result(
+            False,
+            "cycle time must come from a representative sample, not the best case; "
+            "the difference between what is possible and what happens is the project",
+        )
+    if not baseline.get("definitions_recorded"):
+        return Result(
+            False,
+            "the definitions are not recorded, so this is not re-measurable in "
+            "sixty days and nothing can be compared against it later",
+        )
+    return Result(True)
+
+
+def completeness(profile: Profile) -> float:
+    """How much of what actually gets decided is settled.
+
+    Weighted rather than counted. Answering ten incidental questions is not
+    most of the way to a design, and a percentage built from field counts will
+    say that it is.
+    """
+    total = sum(DECISIVE.values())
+    have = sum(w for d, w in DECISIVE.items() if profile.resolved(d))
+    return round(have / total, 3)
+
+
+def input_status(
+    profile: Profile,
+    baseline: dict[str, Any] | None = None,
+    data_access: bool | None = None,
+    original_statement: str | None = None,
+    current_statement: str | None = None,
+) -> Status:
+    """Known, assumed, missing -- and whether this is worth starting."""
+    known = sorted(profile.values())
+    contested = [d.dimension for d in profile.disagreements()]
+
+    return Status(
+        gates=[
+            _data_access(data_access),
+            _baseline(baseline),
+            _client_readiness(profile),
+            _scope_drift(original_statement, current_statement),
+            _offline_evaluability(profile),
+        ],
+        known=known,
+        missing=sorted(d for d in DECISIVE if not profile.resolved(d)),
+        assumed=contested,
+        missing_roles=_missing_roles(profile),
+        completeness=completeness(profile),
+    )
+
+
+# --- the gates -----------------------------------------------------------
+
+
+def _data_access(data_access: bool | None) -> Gate:
+    """The hard one.
+
+    Everything else on this list can be worked around by an engineer who knows
+    the domain. This cannot: without credentials there is nothing to look at,
+    and a design built against imagined data is discovered to be wrong on the
+    day the data arrives.
+    """
+    if data_access:
+        return Gate("data_access", True, hard=True)
+    return Gate(
+        "data_access",
+        False,
+        reason="Credentials have not been shown to work against real data.",
+        remedy="Get a connection that returns real rows, even a handful. "
+               "Promised access is not access.",
+        hard=True,
+    )
+
+
+def _baseline(baseline: dict[str, Any] | None) -> Gate:
+    result = validate_baseline(baseline)
+    if result.ok:
+        return Gate("baseline_capture", True)
+    return Gate(
+        "baseline_capture",
+        False,
+        reason=result.reason,
+        remedy=(
+            "Measure volume, cycle time per unit, labour hours, rework rate, "
+            "exception rate, error rate and the business metric, over 30 to 60 "
+            "days, recording the definitions. Where history is unreliable, "
+            "measure forward rather than accept an estimate."
+        ),
+    )
+
+
+def _client_readiness(profile: Profile) -> Gate:
+    """Whether anybody can say what good means.
+
+    The eval owner is the scarcest person on an engagement and the one whose
+    absence is discovered last, usually when somebody asks whether it is working
+    and nobody can answer.
+    """
+    if "eval_owner" not in _missing_roles(profile):
+        return Gate("client_readiness", True)
+    return Gate(
+        "client_readiness",
+        False,
+        reason="Nobody has been named who can say what separates acceptable "
+               "from excellent.",
+        remedy="Find the person whose judgement the client would accept about a "
+               "borderline output. Without them nothing downstream is measurable.",
+    )
+
+
+def _scope_drift(original: str | None, current: str | None) -> Gate:
+    """Measured against the first statement, always.
+
+    Comparing against the latest version measures nothing: the whole point is
+    the distance travelled from what was originally agreed.
+    """
+    if not original or not current or original.strip() == current.strip():
+        return Gate("scope_drift", True)
+
+    added = len(current.split()) - len(original.split())
+    return Gate(
+        "scope_drift",
+        False,
+        reason=f"The statement has moved from the original by roughly {abs(added)} "
+               f"words. Drift is measured against the original, not the latest.",
+        remedy="Either agree the new scope explicitly, or write down what was "
+               "dropped to make room for it.",
+    )
+
+
+def _offline_evaluability(profile: Profile) -> Gate:
+    """Whether the metric can run where the system runs.
+
+    An air-gapped deployment whose evaluation needs a hosted judge has no
+    evaluation, and that is discovered at deployment when it is expensive.
+    """
+    air_gapped = profile.get("hosting") in ("air-gapped", "on-prem")
+    needs_judge = profile.get("output_shape") in NEEDS_A_JUDGE
+
+    if not (air_gapped and needs_judge):
+        return Gate("offline_evaluability", True)
+    return Gate(
+        "offline_evaluability",
+        False,
+        reason="Freeform output needs a judge, and nothing may leave here.",
+        remedy="Plan a judge that runs inside the boundary, and calibrate it "
+               "against human agreement before quoting a number from it.",
+    )
+
+
+def _missing_roles(profile: Profile) -> list[str]:
+    spoken = {
+        str(f.respondent.role)
+        for dimension in profile.dimensions()
+        for f in profile.history(dimension)
+    }
+    return sorted({"eval_owner", "admin"} - spoken)

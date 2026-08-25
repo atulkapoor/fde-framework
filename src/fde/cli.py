@@ -18,6 +18,7 @@ from fde.architect import architect as build_architecture
 from fde.emit import BuildRefused, emit
 from fde.evolution import Override, Prediction, calibration, emit_case, sweep_triggers
 from fde.factlog import Session, load_engagement, start_engagement
+from fde.gates import input_status
 from fde.graph import find_gaps, validate_links
 from fde.intake.answers import parse_answer
 from fde.intake.documents import UnreadableDocument, read_document
@@ -120,6 +121,30 @@ def status(
         for dimension in sorted(resolved):
             fact = profile.fact(dimension)
             typer.echo(f"  {dimension} = {fact.value}   [{_who(fact)}]")
+
+    status = input_status(
+        profile,
+        original_statement=(
+            engagement.original_statement().text if engagement.original_statement() else None
+        ),
+        current_statement=(
+            engagement.current_statement().text if engagement.current_statement() else None
+        ),
+    )
+    typer.echo(f"\n{status.completeness:.0%} of what gets decided is settled")
+
+    blocking = status.blocked_by()
+    if blocking:
+        typer.echo(f"\nblocked by {len(blocking)}")
+        for name in blocking:
+            gate = status.gate(name)
+            mark = "  [hard] " if gate.hard else "  "
+            typer.echo(f"{mark}{name}: {gate.reason}")
+            if gate.remedy:
+                typer.echo(f"      -> {gate.remedy}")
+
+    if status.missing_roles:
+        typer.echo(f"\nnobody has spoken for: {', '.join(status.missing_roles)}")
 
     # Disagreement is the most valuable thing discovery produces. It goes last so
     # it is the final thing on screen, and it is never summarised away.
