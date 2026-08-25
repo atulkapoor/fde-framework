@@ -7,6 +7,8 @@ through authoring content and the links do not resolve yet.
 
 from __future__ import annotations
 
+import json
+from datetime import date
 from pathlib import Path
 from typing import Annotated
 
@@ -14,6 +16,7 @@ import typer
 
 from fde.architect import architect as build_architecture
 from fde.emit import BuildRefused, emit
+from fde.evolution import Override, Prediction, calibration, emit_case, sweep_triggers
 from fde.factlog import Session, load_engagement, start_engagement
 from fde.graph import find_gaps, validate_links
 from fde.intake.answers import parse_answer
@@ -348,6 +351,111 @@ def architect_cmd(
         typer.echo(f"\nunresolved: {', '.join(d.dimension for d in architecture.disagreements)}")
     if architecture.copyleft_licences:
         typer.echo(f"\ncopyleft: {', '.join(architecture.copyleft_licences)}")
+
+
+@app.command("override")
+def override_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    component: Annotated[str, typer.Option(help="Which component.")],
+    choose: Annotated[str, typer.Option(help="What to use instead.")],
+    because: Annotated[str, typer.Option(help="Why. Recorded, never argued with.")],
+    registry_root: Annotated[Path, typer.Option("--registry")] = DEFAULT_ROOT,
+) -> None:
+    """Choose differently from the recommendation.
+
+    Never warns and never blocks. You are on site and know things the rules do
+    not -- what is recorded is which rule was overridden, because that is the
+    signal, and arguing with you would teach the framework nothing.
+    """
+    registry = load_registry(registry_root)
+    engagement = load_engagement(root)
+    architecture = build_architecture(engagement.profile, registry)
+
+    decision = architecture.decisions.get(component)
+    recommended = decision.approach if decision else None
+    conflicts = [
+        c for c in (f"data_residency={engagement.profile.get('data_residency')}",)
+        if engagement.profile.get("data_residency") == "cannot_leave"
+        and choose in ("managed-api", "managed-embedding")
+    ]
+
+    record = Override(
+        component=component, recommended=recommended or "nothing", chosen=choose,
+        because=because, overrode_rule=recommended or "none", conflicts_with=conflicts,
+    )
+    engagement.append(
+        Session(
+            session_id=_next_session_id(engagement, f"override-{component}"),
+            respondent=Respondent(role=Role.SYSTEM),
+            facts=[Fact(f"override.{component}", choose, Provenance.OBSERVATION,
+                        source=because)],
+        )
+    )
+    (engagement.root / "overrides.jsonl").open("a").write(
+        json.dumps(record.__dict__) + "\n"
+    )
+
+    if recommended:
+        typer.echo(f"recorded: {component} {recommended} -> {choose}")
+    else:
+        # Nothing was recommended, so nothing was overridden. Still worth
+        # recording: a component chosen where the framework had no opinion is
+        # a gap in the corpus, not a disagreement with it.
+        typer.echo(
+            f"recorded: {component} -> {choose}\n"
+            f"  nothing was recommended here, so this is a gap in the corpus "
+            f"rather than a disagreement with it"
+        )
+    if conflicts:
+        # Flagged, not refused. It goes in the risk section rather than in the
+        # way.
+        typer.echo(f"  conflicts with {', '.join(conflicts)} -- noted in the risks")
+
+
+@app.command("retro")
+def retro_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    outcome: Annotated[str, typer.Option(help="What actually happened.")] = "",
+    days: Annotated[int, typer.Option(help="How long it took.")] = 0,
+    today: Annotated[str, typer.Option(help="Sweep date, for reproducibility.")] = "",
+    registry_root: Annotated[Path, typer.Option("--registry")] = DEFAULT_ROOT,
+) -> None:
+    """What this engagement taught. Capture only -- no rule is changed here.
+
+    Rules cannot be revised until engagements have outcomes, and pretending to
+    revise on a handful would be borrowing rigour rather than having it. What
+    this does is make sure nothing is lost in the meantime.
+    """
+    registry = load_registry(registry_root)
+    engagement = load_engagement(root)
+    architecture = build_architecture(engagement.profile, registry)
+
+    stamp = today or date.today().isoformat()
+    predictions = [
+        Prediction(trigger=f"{component}.graduate", condition=decision.rationale,
+                   predicted_at=stamp, horizon_days=90)
+        for component, decision in architecture.decisions.decided().items()
+    ]
+    observations = sweep_triggers(predictions, observations=[], today=stamp)
+    report = calibration(observations)
+
+    case = emit_case(
+        engagement=root.name,
+        profile=engagement.profile.values(),
+        decisions={c: d.approach for c, d in architecture.decisions.decided().items()},
+        observations=observations,
+        outcome=outcome or "not stated",
+        days=days or None,
+        reused=sorted({r.stack for r in architecture.realizations.values()}),
+    )
+    (engagement.root / "case.json").write_text(json.dumps(case, indent=2, default=str))
+
+    typer.echo(f"case {case['id']}  ({len(case['decisions'])} decisions)")
+    typer.echo(f"  triggers: {report['fired']} fired, "
+               f"{report['expired_unfired']} expired unfired")
+    typer.echo(f"  evidence: {report['strength']} -- {report['why']}")
+    typer.echo("\nNothing in framework/ was changed. Revision needs a corpus, "
+               "and this is how the corpus gets one.")
 
 
 @app.command("build")
