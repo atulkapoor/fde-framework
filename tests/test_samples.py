@@ -141,11 +141,16 @@ def test_the_injection_case_targets_the_input_not_the_schema(reg=None):
 # --- facts ---------------------------------------------------------------
 
 
-def test_pairs_settle_dimensions_nobody_had_to_be_asked(reg=None):
+def test_pairs_settle_only_what_they_actually_settle(reg=None):
+    """The shape, yes -- examples of the output decide it. The counts, no: a
+    sample file cannot say whether it is the whole labelled set or a
+    three-line excerpt, and emitting len(pairs) as corpus_size once let an
+    attachment's line count silently outvote a client's stated two hundred
+    thousand."""
     facts = {f.dimension: f.value for f in samples_to_facts(PAIRS)}
     assert facts["output_shape"] == "structured"
-    assert facts["labelled_count"] == 3
-    assert facts["corpus_size"] == 4
+    assert "labelled_count" not in facts
+    assert "corpus_size" not in facts
 
 
 def test_a_sensitive_field_settles_residency_as_a_question_worth_asking(reg=None):

@@ -163,14 +163,20 @@ def build_eval_set(pairs: list[dict[str, Any]], seed: int = 0) -> EvalSuite:
 
 
 def samples_to_facts(pairs: list[dict[str, Any]]) -> list[Fact]:
-    """What the pairs settle without anybody being asked."""
+    """What the pairs settle without anybody being asked.
+
+    Only what they actually settle. The shape of the output is genuinely
+    decided by examples of the output. The *counts* are not: a sample file
+    cannot say whether it is the whole labelled set or a three-line excerpt,
+    and an earlier version emitted len(pairs) as corpus_size at artifact
+    strength -- silently outvoting a client's stated two hundred thousand
+    with the line count of an attachment. Ambiguity is asked about, never
+    guessed; the counts stay in assess(), as prompts.
+    """
     contract = infer_contract(pairs)
-    verified = [p for p in pairs if p.get("verified")]
 
     facts = [
         Fact("output_shape", contract.shape, Provenance.ARTIFACT, source="sample pairs"),
-        Fact("corpus_size", len(pairs), Provenance.ARTIFACT, source="sample pairs"),
-        Fact("labelled_count", len(verified), Provenance.ARTIFACT, source="sample pairs"),
     ]
     if contract.sensitive_fields:
         # Not an answer to the residency question. A reason to ask it.

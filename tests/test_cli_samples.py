@@ -53,12 +53,15 @@ def test_too_few_pairs_is_said_out_loud(tmp_path):
     assert "2 verified pairs" in result.output
 
 
-def test_the_pairs_settle_dimensions_without_anyone_being_asked(tmp_path):
+def test_the_pairs_settle_the_shape_and_never_the_counts(tmp_path):
+    """Counts stay questions: the file cannot know whether it is the whole
+    labelled set, and a stated number must not be outvoted by a line count."""
     root, pairs = engagement(tmp_path)
     runner.invoke(app, ["samples", str(root), "--file", str(pairs)])
     profile = load_engagement(root).profile
     assert profile.get("output_shape") == "structured"
-    assert profile.get("labelled_count") == 2
+    assert profile.get("labelled_count") is None
+    assert profile.get("corpus_size") is None
 
 
 def test_the_pairs_are_kept_so_the_build_can_use_them(tmp_path):
@@ -78,3 +81,18 @@ def test_contradictory_pairs_are_refused_and_nothing_is_recorded(tmp_path):
     assert result.exit_code != 0
     assert "specification question" in result.output
     assert not (root / "artifacts" / "pairs.jsonl").exists()
+
+
+def test_a_stated_count_survives_a_later_sample_file(tmp_path):
+    """The bug this guards against: frame extracts corpus_size=200,000 from
+    the brief, then a three-line sample file arrives and silently overwrites
+    it with 3 -- flipping every decision gated on labels or volume."""
+    root, pairs = engagement(tmp_path)
+    runner.invoke(app, [
+        "frame", str(root),
+        "--text", "About 200,000 documents. Around 8,000 labelled examples exist.",
+    ])
+    runner.invoke(app, ["samples", str(root), "--file", str(pairs)])
+    profile = load_engagement(root).profile
+    assert profile.get("corpus_size") == 200_000
+    assert profile.get("labelled_count") == 8_000

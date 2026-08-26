@@ -129,6 +129,8 @@ def status(
     """What is known, what is contested, and who said it."""
     engagement = _engagement(root)
     profile = engagement.profile
+    # Lenient on purpose: status is the one command that must answer even
+    # with no registry in reach -- the gates fall back rather than fail.
     try:
         registry = load_registry(registry_root)
     except RegistryError:
@@ -208,7 +210,7 @@ def frame(
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
     source = file.name if file else "brief"
-    registry = load_registry(registry_root)
+    registry = _registry(registry_root)
     engagement = _engagement(root)
 
     facts = parse_prose(body, registry, source=source)
@@ -290,7 +292,7 @@ def ask(
     the answer changes. Press enter to skip anything -- an intake that cannot
     get past an unknown is an intake that stops.
     """
-    registry = load_registry(registry_root)
+    registry = _registry(registry_root)
     engagement = _engagement(root)
     try:
         parsed_role = Role(role)
@@ -383,6 +385,20 @@ def _with(profile: Profile, fact: Fact) -> Profile:
 def _next_session_id(engagement, label: str) -> str:
     existing = len(list(engagement.facts_dir.glob("*.yaml")))
     return f"{existing + 1:04d}-{label}"
+
+
+def _registry(root: Path):
+    """Load the registry or say plainly why not.
+
+    Engagement commands hit this from any working directory; the default
+    root is relative, so the classic failure is running from the wrong one
+    -- which deserves the one-line answer, not a stack trace.
+    """
+    try:
+        return load_registry(root)
+    except RegistryError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
 
 
 def _engagement(root: Path):
@@ -593,7 +609,7 @@ def architect_cmd(
     registry_root: Annotated[Path, typer.Option("--registry")] = DEFAULT_ROOT,
 ) -> None:
     """Decide the design, and say what is still open."""
-    registry = load_registry(registry_root)
+    registry = _registry(registry_root)
     engagement = _engagement(root)
     _refuse_if_blocked(engagement, registry, warn_only=True)
     overrides = _overrides(engagement)
@@ -628,7 +644,7 @@ def override_cmd(
     not -- what is recorded is which rule was overridden, because that is the
     signal, and arguing with you would teach the framework nothing.
     """
-    registry = load_registry(registry_root)
+    registry = _registry(registry_root)
     engagement = _engagement(root)
     architecture = build_architecture(engagement.profile, registry)
 
@@ -739,7 +755,7 @@ def retro_cmd(
     revise on a handful would be borrowing rigour rather than having it. What
     this does is make sure nothing is lost in the meantime.
     """
-    registry = load_registry(registry_root)
+    registry = _registry(registry_root)
     engagement = _engagement(root)
     overrides = _overrides(engagement)
     architecture = build_architecture(engagement.profile, registry, overrides=overrides)
@@ -800,7 +816,7 @@ def build_cmd(
     registry_root: Annotated[Path, typer.Option("--registry")] = DEFAULT_ROOT,
 ) -> None:
     """Emit the project. Refuses before writing anything if it would be unsound."""
-    registry = load_registry(registry_root)
+    registry = _registry(registry_root)
     engagement = _engagement(root)
     _refuse_if_blocked(engagement, registry)
     architecture = build_architecture(
