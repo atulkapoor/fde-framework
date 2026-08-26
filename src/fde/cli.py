@@ -13,12 +13,13 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+import yaml
 
 from fde.architect import architect as build_architecture
 from fde.emit import BuildRefused, emit
 from fde.evolution import Override, Prediction, calibration, emit_case, sweep_triggers
 from fde.factlog import Session, load_engagement, start_engagement
-from fde.gates import input_status
+from fde.gates import HardGate, input_status, validate_baseline
 from fde.graph import find_gaps, validate_links
 from fde.intake.answers import parse_answer
 from fde.intake.documents import UnreadableDocument, read_document
@@ -120,9 +121,10 @@ def status(
     engagement = load_engagement(root)
     profile = engagement.profile
 
+    # An empty profile is not an empty engagement: a baseline, a waiver or a
+    # restated problem are all state the gates judge, facts or no facts.
     if profile.is_empty():
-        typer.echo("nothing recorded yet")
-        return
+        typer.echo("no facts recorded yet")
 
     resolved = profile.values()
     if resolved:
@@ -131,16 +133,13 @@ def status(
             fact = profile.fact(dimension)
             typer.echo(f"  {dimension} = {fact.value}   [{_who(fact)}]")
 
-    status = input_status(
-        profile,
-        original_statement=(
-            engagement.original_statement().text if engagement.original_statement() else None
-        ),
-        current_statement=(
-            engagement.current_statement().text if engagement.current_statement() else None
-        ),
-    )
+    status = _gate_status(engagement)
     typer.echo(f"\n{status.completeness:.0%} of what gets decided is settled")
+
+    if status.overridden:
+        typer.echo(f"\nwaived ({len(status.overridden)})")
+        for waived in status.overridden:
+            typer.echo(f"  {waived.gate}: {waived.reason}")
 
     blocking = status.blocked_by()
     if blocking:
@@ -364,6 +363,168 @@ def _next_session_id(engagement, label: str) -> str:
     return f"{existing + 1:04d}-{label}"
 
 
+def _gate_status(engagement):
+    """The gates, judged against everything the engagement has recorded.
+
+    Waivers stored on disk are re-applied here rather than baked into the
+    verdict, so a hand-edited waiver of the hard gate simply does not take:
+    the gate stays in blocked_by, visibly, instead of quietly vanishing.
+    """
+    state = engagement.gate_state()
+    status = input_status(
+        engagement.profile,
+        baseline=engagement.baseline(),
+        data_access=bool(state.get("data_access")),
+        original_statement=(
+            engagement.original_statement().text if engagement.original_statement() else None
+        ),
+        current_statement=(
+            engagement.current_statement().text if engagement.current_statement() else None
+        ),
+    )
+    for waiver in state.get("overrides", []):
+        try:
+            status.override(waiver["gate"], waiver["reason"])
+        except (HardGate, ValueError, StopIteration):
+            continue
+    return status
+
+
+def _refuse_if_blocked(engagement, *, warn_only: bool = False) -> None:
+    status = _gate_status(engagement)
+    blocking = status.blocked_by()
+    if not blocking:
+        return
+    for name in blocking:
+        gate = status.gate(name)
+        mark = "[hard] " if gate.hard else ""
+        typer.echo(f"  {mark}{name}: {gate.reason}", err=True)
+        if gate.remedy:
+            typer.echo(f"      -> {gate.remedy}", err=True)
+    if warn_only:
+        typer.echo(
+            "\nproceeding anyway -- a design is thinking, not a deliverable. "
+            "`fde build` will refuse until these clear.\n", err=True,
+        )
+        return
+    typer.echo(
+        "\nrefused: gates above are unsatisfied. Soft gates take "
+        "`fde waive <gate> --reason`; data access has no workaround, only "
+        "credentials that return real rows.", err=True,
+    )
+    raise typer.Exit(1)
+
+
+@app.command("baseline")
+def baseline_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    file: Annotated[Path, typer.Option(help="A YAML file of the measured fields.")],
+) -> None:
+    """Record the measured baseline: seven fields, sampled, with definitions.
+
+    Stored even when incomplete -- a partial baseline is honest state, and the
+    gate will say exactly what it still lacks.
+    """
+    engagement = load_engagement(root)
+    try:
+        fields = yaml.safe_load(file.read_text()) or {}
+    except (OSError, yaml.YAMLError) as exc:
+        typer.echo(f"cannot read {file}: {exc}", err=True)
+        raise typer.Exit(1) from exc
+    if not isinstance(fields, dict):
+        typer.echo(f"{file}: expected a mapping of field to value", err=True)
+        raise typer.Exit(1)
+
+    engagement.record_baseline(fields)
+    result = validate_baseline(fields)
+    if result.ok:
+        typer.echo("baseline recorded -- re-measurable, sampled, complete")
+    else:
+        typer.echo(f"recorded, but not yet a baseline: {result.reason}")
+
+
+@app.command("data-access")
+def data_access_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    note: Annotated[str, typer.Option(
+        help="What was connected to and what came back. Promised access is not access."
+    )],
+) -> None:
+    """Attest that credentials returned real data.
+
+    The note is the evidence: name the system and what it returned. An
+    attestation without one is a promise, and the gate exists because promises
+    are what cost three weeks.
+    """
+    if not note.strip():
+        typer.echo("the note is the evidence -- say what returned real rows", err=True)
+        raise typer.Exit(1)
+    engagement = load_engagement(root)
+    engagement.record_data_access(note=note, at=date.today().isoformat())
+    typer.echo("data access recorded")
+
+
+@app.command("waive")
+def waive_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    gate: Annotated[str, typer.Argument(help="Which gate to wave through.")],
+    reason: Annotated[str, typer.Option(help="Why. Lands in the risk section.")],
+) -> None:
+    """Override a soft gate, with the reason recorded.
+
+    You are on site and can see things a checklist cannot. The hard gate is the
+    exception: nothing can waive absent credentials.
+    """
+    engagement = load_engagement(root)
+    status = _gate_status(engagement)
+    try:
+        status.override(gate, reason)
+    except HardGate as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    except ValueError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    except StopIteration:
+        names = ", ".join(g.name for g in status.gates)
+        typer.echo(f"no gate named {gate!r}. The gates: {names}", err=True)
+        raise typer.Exit(1) from None
+
+    engagement.record_waiver(gate=gate, reason=reason, at=date.today().isoformat())
+    typer.echo(f"waived {gate} -- recorded for the risk section")
+
+
+@app.command("restate")
+def restate_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    text: Annotated[str | None, typer.Option(help="The problem as now stated.")] = None,
+    file: Annotated[Path | None, typer.Option(help="Or a file holding it.")] = None,
+    reason: Annotated[str, typer.Option(help="What changed and why.")] = "",
+) -> None:
+    """Record a new version of the problem statement.
+
+    Version 1 is never edited; drift is measured against it. Restating is how
+    the scope-drift gate gets something real to measure.
+    """
+    if not text and not file:
+        typer.echo("give --text or --file", err=True)
+        raise typer.Exit(1)
+    if not reason.strip():
+        typer.echo(
+            "a restatement needs --reason: scope that moves without one is "
+            "drift by definition", err=True,
+        )
+        raise typer.Exit(1)
+
+    engagement = load_engagement(root)
+    body = text or file.read_text()
+    engagement.revise_statement(body.strip(), reason=reason)
+    typer.echo(
+        f"statement v{len(engagement.statements)} recorded -- drift is still "
+        f"measured against v1"
+    )
+
+
 @app.command("architect")
 def architect_cmd(
     root: Annotated[Path, typer.Argument(help="The engagement directory.")],
@@ -371,7 +532,9 @@ def architect_cmd(
 ) -> None:
     """Decide the design, and say what is still open."""
     registry = load_registry(registry_root)
-    architecture = build_architecture(load_engagement(root).profile, registry)
+    engagement = load_engagement(root)
+    _refuse_if_blocked(engagement, warn_only=True)
+    architecture = build_architecture(engagement.profile, registry)
 
     typer.echo(f"topology {architecture.topology}   [{architecture.fingerprint()}]\n")
     for component, decision in sorted(architecture.decisions.decided().items()):
@@ -500,7 +663,9 @@ def build_cmd(
 ) -> None:
     """Emit the project. Refuses before writing anything if it would be unsound."""
     registry = load_registry(registry_root)
-    architecture = build_architecture(load_engagement(root).profile, registry)
+    engagement = load_engagement(root)
+    _refuse_if_blocked(engagement)
+    architecture = build_architecture(engagement.profile, registry)
     try:
         emit(architecture, out, registry=registry,
              pairs_path=Path(root) / "artifacts" / "pairs.jsonl")

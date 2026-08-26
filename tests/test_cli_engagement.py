@@ -27,10 +27,14 @@ def test_start_refuses_to_overwrite(tmp_path):
     assert r.exit_code != 0 and "already exists" in r.output
 
 
-def test_status_on_a_fresh_engagement_says_nothing_is_known(tmp_path):
+def test_status_on_a_fresh_engagement_says_nothing_is_known_but_shows_gates(tmp_path):
+    """An empty profile is not an empty engagement. The gates judge state the
+    fact log does not hold, and a fresh engagement is blocked -- which is the
+    first thing worth seeing, not something hidden behind the first fact."""
     runner.invoke(app, ["start", "acme", "--base", str(tmp_path)])
     r = runner.invoke(app, ["status", str(tmp_path / "acme")])
-    assert r.exit_code == 0 and "nothing recorded yet" in r.output
+    assert r.exit_code == 0 and "no facts recorded yet" in r.output
+    assert "blocked by" in r.output
 
 
 def test_status_reports_resolved_dimensions_and_who_said_them(tmp_path):

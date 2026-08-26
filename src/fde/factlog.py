@@ -131,6 +131,14 @@ class Engagement:
     def artifacts_dir(self) -> Path:
         return self.root / "artifacts"
 
+    @property
+    def baseline_path(self) -> Path:
+        return self.root / "baseline.yaml"
+
+    @property
+    def gates_path(self) -> Path:
+        return self.root / "gates.yaml"
+
     # -- writing ----------------------------------------------------------
 
     def append(self, session: Session) -> None:
@@ -145,6 +153,37 @@ class Engagement:
         version = len(self.statements) + 1
         self.statements.append(Statement(version=version, text=text, reason=reason))
         self._write_statement(self.statements[-1])
+
+    def record_baseline(self, fields: dict[str, Any]) -> None:
+        """Store the measured baseline. Validity is the gate's judgement, not
+        a write condition: a partial baseline on disk is honest state, and
+        status will say exactly what it still lacks."""
+        self.baseline_path.write_text(yaml.safe_dump(fields, sort_keys=False))
+
+    def baseline(self) -> dict[str, Any] | None:
+        if not self.baseline_path.exists():
+            return None
+        return yaml.safe_load(self.baseline_path.read_text()) or None
+
+    def record_data_access(self, note: str, at: str) -> None:
+        state = self.gate_state()
+        state["data_access"] = {"note": note, "at": at}
+        self._write_gate_state(state)
+
+    def record_waiver(self, gate: str, reason: str, at: str) -> None:
+        state = self.gate_state()
+        state.setdefault("overrides", []).append(
+            {"gate": gate, "reason": reason, "at": at}
+        )
+        self._write_gate_state(state)
+
+    def gate_state(self) -> dict[str, Any]:
+        if not self.gates_path.exists():
+            return {}
+        return yaml.safe_load(self.gates_path.read_text()) or {}
+
+    def _write_gate_state(self, state: dict[str, Any]) -> None:
+        self.gates_path.write_text(yaml.safe_dump(state, sort_keys=False))
 
     def _write_statement(self, statement: Statement) -> None:
         path = self.statements_dir / f"{statement.version:03d}.md"
