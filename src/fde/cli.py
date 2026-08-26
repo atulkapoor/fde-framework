@@ -38,6 +38,15 @@ from fde.models.fact import Fact
 from fde.models.profile import Profile
 from fde.models.respondent import Respondent, Role
 from fde.registry import KINDS, RegistryError, load_registry
+from fde.scan import (
+    GPU,
+    Hardware,
+    detect,
+    finetune_feasible,
+    fits,
+    scan_facts,
+    suggest,
+)
 from fde.space import Contradiction, Space
 
 app = typer.Typer(help="Take an engagement from problem statement to a runnable project.")
@@ -505,6 +514,81 @@ def build_cmd(
             f"  {len(architecture.decisions.undecided())} component(s) raise on use -- "
             f"see ARCHITECTURE.md"
         )
+
+
+@app.command("scan")
+def scan_cmd(
+    root: Annotated[Path | None, typer.Argument(help="Engagement to record into.")] = None,
+    params_b: Annotated[float, typer.Option("--model-b", help="Model size in billions.")] = 8.0,
+    precision: Annotated[str, typer.Option(help="bf16, int8 or int4.")] = "bf16",
+    vram: Annotated[float | None, typer.Option(help="Per-card VRAM, if not on the box.")] = None,
+    gpus: Annotated[int, typer.Option(help="How many such cards.")] = 1,
+) -> None:
+    """Whether this hardware runs that model, and what it supports.
+
+    Detects by default. The flags describe a machine you have been told about
+    rather than one you are on -- useful for sizing a client's box from your own
+    laptop, and never recorded as fact, because a specification somebody quoted
+    is not a measurement and the framework decides by provenance.
+    """
+    measured = vram is None
+    hardware = (
+        detect() if measured
+        else Hardware(gpus=[GPU(f"card-{i}", vram_gb=vram) for i in range(gpus)])
+    )
+
+    if hardware.gpus:
+        for gpu in hardware.gpus:
+            typer.echo(f"  {gpu.model}  {gpu.vram_gb:.0f}GB  sm {gpu.sm}")
+    else:
+        typer.echo("  no accelerator")
+    typer.echo(f"  {hardware.total_vram_gb:.0f}GB total"
+               f"{'' if measured else '  (stated, not measured)'}")
+
+    fit = fits(hardware, params_b, precision=precision)
+    if not hardware.gpus:
+        # Against no accelerator the fit arithmetic answers a question nobody
+        # asked. What is wanted here is the size, and where it would have to run.
+        typer.echo(
+            f"\n{params_b:g}B at {precision}: {fit.weights_gb:.0f}GB of weights, "
+            f"nothing to load them onto\n"
+            f"  -> quantise and run on the {hardware.ram_gb:.0f}GB of host memory "
+            f"if nobody is waiting, or serve it somewhere else"
+        )
+    else:
+        verdict = "fits" if fit.ok else f"does not fit, short {fit.shortfall_gb:.0f}GB"
+        typer.echo(
+            f"\n{params_b:g}B at {precision}: {verdict}\n"
+            f"  {fit.weights_gb:.0f}GB weights + {fit.kv_cache_gb:.0f}GB cache "
+            f"against {fit.available_gb:.0f}GB usable"
+        )
+        if not fit.ok:
+            typer.echo("  -> quantise, shrink the model, or add cards")
+
+    typer.echo("\nsupported here")
+    for option in suggest(hardware):
+        typer.echo(f"  {option.id}\n      {option.reason}\n      costs: {option.cost}")
+
+    if hardware.gpus:
+        adapt = finetune_feasible(hardware, params_b, method="full")
+        if not adapt.ok:
+            typer.echo(f"\nfull finetune: no -- {adapt.reason}")
+
+    if root is None:
+        return
+    if not measured:
+        typer.echo("\nnot recorded: stated figures are not detected facts")
+        return
+
+    engagement = load_engagement(root)
+    engagement.append(
+        Session(
+            session_id=_next_session_id(engagement, "scan"),
+            respondent=Respondent(role=Role.SYSTEM),
+            facts=scan_facts(hardware),
+        )
+    )
+    typer.echo("\nrecorded as detected -- outranks anything stated about this box")
 
 
 @kb.command("gaps")

@@ -79,7 +79,7 @@ def test_ask_records_answers_against_the_role(tmp_path):
     valid only for that dimension, so whatever else is asked skips."""
     root = engagement(tmp_path)
     result = runner.invoke(
-        app, ["ask", str(root), "--role", "admin"], input="cannot_leave\n" + "\n" * 20
+        app, ["ask", str(root), "--role", "admin"], input="cannot_leave\n\n" * 20
     )
     assert result.exit_code == 0
     fact = load_engagement(root).profile.fact("data_residency")
@@ -149,8 +149,9 @@ def test_an_answer_that_contradicts_an_earlier_one_says_which(tmp_path):
 
 def test_ask_writes_one_session_not_one_file_per_answer(tmp_path):
     root = engagement(tmp_path)
+    # Offered to every question, legal for exactly one. See the note above.
     runner.invoke(
-        app, ["ask", str(root), "--role", "admin"], input="cannot_leave\n" + "\n" * 20
+        app, ["ask", str(root), "--role", "admin"], input="cannot_leave\n\n" * 20
     )
     assert len(list((root / "facts").iterdir())) == 1
 
@@ -166,7 +167,7 @@ def test_the_respondents_name_is_recorded_when_given(tmp_path):
     runner.invoke(
         app,
         ["ask", str(root), "--role", "admin", "--name", "R. Iyer"],
-        input="cannot_leave\n" + "\n" * 20,
+        input="cannot_leave\n\n" * 20,
     )
     assert load_engagement(root).profile.fact("data_residency").respondent.name == "R. Iyer"
 
