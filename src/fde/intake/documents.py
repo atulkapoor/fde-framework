@@ -47,10 +47,18 @@ def read_document(path: str | Path) -> str:
     suffix = path.suffix.lower()
 
     if suffix in NEEDS_A_READER:
-        extracted = _extract(suffix, path)
+        package, name = NEEDS_A_READER[suffix]
+        try:
+            extracted = _extract(suffix, path)
+        except Exception as exc:  # noqa: BLE001 - each reader raises its own kinds
+            # The module's whole contract is refusal by name. A corrupt file
+            # escaping as a pypdf traceback breaks it at the one moment it
+            # was needed.
+            raise UnreadableDocument(
+                f"{path.name}: the {name} reader could not read it -- {exc}"
+            ) from exc
         if extracted is not None:
             return _require_content(extracted, path)
-        package, name = NEEDS_A_READER[suffix]
         raise UnreadableDocument(
             f"{path.name} is a {name} file and no reader for it is installed. "
             f"Install {package}, or paste the text with --text. "

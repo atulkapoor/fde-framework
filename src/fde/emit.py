@@ -61,7 +61,7 @@ def emit(
     pairs_path: Path | None = None,
 ) -> EmitReport:
     out = Path(out)
-    _refuse_if_unsound(architecture, out)
+    _refuse_if_unsound(architecture, out, pairs_path)
 
     templates = Path(templates) if templates else TEMPLATES
     if not templates.is_dir():
@@ -93,7 +93,9 @@ def emit(
 # --- refusals ------------------------------------------------------------
 
 
-def _refuse_if_unsound(architecture: Architecture, out: Path) -> None:
+def _refuse_if_unsound(
+    architecture: Architecture, out: Path, pairs_path: Path | None = None
+) -> None:
     try:
         assert_boundary(architecture.graph)
     except BoundaryViolation as exc:
@@ -101,6 +103,15 @@ def _refuse_if_unsound(architecture: Architecture, out: Path) -> None:
 
     if out.exists() and any(out.iterdir()):
         raise BuildRefused(f"{out} is not empty; refusing to write over existing work")
+
+    # The pairs file is read last during emission, which is exactly where a
+    # malformed line must not first be discovered -- half a project would
+    # already be on disk under a success message that scrolled past.
+    if pairs_path and Path(pairs_path).exists():
+        try:
+            infer_contract(load_pairs(pairs_path))
+        except Exception as exc:  # noqa: BLE001 - json, contract, os all possible
+            raise BuildRefused(f"{pairs_path}: {exc}") from exc
 
 
 # --- code ----------------------------------------------------------------

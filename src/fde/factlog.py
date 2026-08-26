@@ -228,27 +228,48 @@ def start_engagement(base: str | Path, name: str, statement: str | None = None) 
 
 
 def load_engagement(root: str | Path) -> Engagement:
-    """Read an engagement back. Partial is valid; that is the point."""
+    """Read an engagement back. Partial is valid; that is the point.
+
+    Missing is not partial. A typo'd path that loads as a valid empty
+    engagement lets every downstream command run against nothing --
+    `architect` once happily printed a full design for a directory that did
+    not exist.
+    """
     root = Path(root)
+    if not (root / "facts").is_dir():
+        raise FileNotFoundError(
+            f"{root}: no engagement here (no facts/ directory). "
+            f"`fde start` creates one."
+        )
     engagement = Engagement(root=root)
 
     for path in sorted(engagement.statements_dir.glob("*.md")):
         version, reason, text = _parse_statement(path.read_text(), path.stem)
+        if version is None:
+            # A stray file in statements/ is somebody's note, not a version.
+            continue
         engagement.statements.append(Statement(version=version, text=text, reason=reason))
 
     engagement.rebuild()
     return engagement
 
 
-def _parse_statement(text: str, stem: str) -> tuple[int, str | None, str]:
-    version, reason = int(stem), None
+def _parse_statement(text: str, stem: str) -> tuple[int | None, str | None, str]:
+    try:
+        version: int | None = int(stem)
+    except ValueError:
+        version = None
+    reason = None
     lines = text.splitlines()
     if lines and lines[0].startswith("<!--"):
         header, lines = lines[0], lines[1:]
         for part in header.strip("<!->").split("|"):
             key, _, value = part.partition(":")
             if key.strip() == "version":
-                version = int(value.strip())
+                try:
+                    version = int(value.strip())
+                except ValueError:
+                    pass
             elif key.strip() == "reason":
                 reason = value.strip()
     return version, reason, "\n".join(lines).strip()

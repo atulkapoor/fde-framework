@@ -126,7 +126,7 @@ def status(
     root: Annotated[Path, typer.Argument(help="The engagement directory.")],
 ) -> None:
     """What is known, what is contested, and who said it."""
-    engagement = load_engagement(root)
+    engagement = _engagement(root)
     profile = engagement.profile
 
     # An empty profile is not an empty engagement: a baseline, a waiver or a
@@ -204,7 +204,7 @@ def frame(
         raise typer.Exit(1) from exc
     source = file.name if file else "brief"
     registry = load_registry(registry_root)
-    engagement = load_engagement(root)
+    engagement = _engagement(root)
 
     facts = parse_prose(body, registry, source=source)
     typer.echo(restate(facts, registry))
@@ -232,13 +232,18 @@ def samples_cmd(
     The most valuable thing a client hands over. A brief describes the problem;
     these describe the answer.
     """
-    engagement = load_engagement(root)
+    engagement = _engagement(root)
     try:
+        body = file.read_text()
         pairs = load_pairs(file)
         contract = infer_contract(pairs)
-    except (ContractConflict, ValueError) as exc:
+    except (ContractConflict, ValueError, OSError) as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
+
+    # Copied before anything is reported, so a failure here cannot arrive
+    # after a success message has already scrolled past.
+    (engagement.artifacts_dir / "pairs.jsonl").write_text(body)
 
     suite = build_eval_set(pairs)
     typer.echo(f"{len(pairs)} pairs, {len(contract.fields)} fields\n")
@@ -265,8 +270,6 @@ def samples_cmd(
             facts=facts,
         )
     )
-    # Kept beside the engagement so build can emit the golden set from them.
-    (engagement.artifacts_dir / "pairs.jsonl").write_text(file.read_text())
 
 
 @app.command("ask")
@@ -283,8 +286,14 @@ def ask(
     get past an unknown is an intake that stops.
     """
     registry = load_registry(registry_root)
-    engagement = load_engagement(root)
-    respondent = Respondent(role=Role(role), name=name)
+    engagement = _engagement(root)
+    try:
+        parsed_role = Role(role)
+    except ValueError as exc:
+        legal = ", ".join(r.value for r in Role if r is not Role.SYSTEM)
+        typer.echo(f"{role!r} is not a role here. Interviewable: {legal}", err=True)
+        raise typer.Exit(1) from exc
+    respondent = Respondent(role=parsed_role, name=name)
 
     space = Space.from_registry(registry).apply(engagement.profile)
     profile = engagement.profile
@@ -371,6 +380,23 @@ def _next_session_id(engagement, label: str) -> str:
     return f"{existing + 1:04d}-{label}"
 
 
+def _engagement(root: Path):
+    """Load an engagement or say plainly why not.
+
+    Every command goes through here: a missing directory or a corrupt session
+    file is a one-line explanation, never a traceback -- a stack trace at a
+    client site reads as the tool being broken rather than the input.
+    """
+    try:
+        return load_engagement(root)
+    except FileNotFoundError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    except ValueError as exc:
+        typer.echo(f"cannot read the engagement: {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+
 def _overrides(engagement) -> dict[str, dict]:
     """Recorded overrides, last one per component winning.
 
@@ -455,7 +481,7 @@ def baseline_cmd(
     Stored even when incomplete -- a partial baseline is honest state, and the
     gate will say exactly what it still lacks.
     """
-    engagement = load_engagement(root)
+    engagement = _engagement(root)
     try:
         fields = yaml.safe_load(file.read_text()) or {}
     except (OSError, yaml.YAMLError) as exc:
@@ -489,7 +515,7 @@ def data_access_cmd(
     if not note.strip():
         typer.echo("the note is the evidence -- say what returned real rows", err=True)
         raise typer.Exit(1)
-    engagement = load_engagement(root)
+    engagement = _engagement(root)
     engagement.record_data_access(note=note, at=date.today().isoformat())
     typer.echo("data access recorded")
 
@@ -505,7 +531,7 @@ def waive_cmd(
     You are on site and can see things a checklist cannot. The hard gate is the
     exception: nothing can waive absent credentials.
     """
-    engagement = load_engagement(root)
+    engagement = _engagement(root)
     status = _gate_status(engagement)
     try:
         status.override(gate, reason)
@@ -546,7 +572,7 @@ def restate_cmd(
         )
         raise typer.Exit(1)
 
-    engagement = load_engagement(root)
+    engagement = _engagement(root)
     body = text or file.read_text()
     engagement.revise_statement(body.strip(), reason=reason)
     typer.echo(
@@ -562,7 +588,7 @@ def architect_cmd(
 ) -> None:
     """Decide the design, and say what is still open."""
     registry = load_registry(registry_root)
-    engagement = load_engagement(root)
+    engagement = _engagement(root)
     _refuse_if_blocked(engagement, warn_only=True)
     overrides = _overrides(engagement)
     architecture = build_architecture(engagement.profile, registry, overrides=overrides)
@@ -597,7 +623,7 @@ def override_cmd(
     signal, and arguing with you would teach the framework nothing.
     """
     registry = load_registry(registry_root)
-    engagement = load_engagement(root)
+    engagement = _engagement(root)
     architecture = build_architecture(engagement.profile, registry)
 
     decision = architecture.decisions.get(component)
@@ -668,7 +694,7 @@ def observe_cmd(
     predicted or it did not, and both are observable. But only if somebody
     writes the firing down.
     """
-    engagement = load_engagement(root)
+    engagement = _engagement(root)
     values = dict(item.split("=", 1) for item in (measured or []) if "=" in item)
     record = {
         "trigger": trigger,
@@ -708,7 +734,7 @@ def retro_cmd(
     this does is make sure nothing is lost in the meantime.
     """
     registry = load_registry(registry_root)
-    engagement = load_engagement(root)
+    engagement = _engagement(root)
     overrides = _overrides(engagement)
     architecture = build_architecture(engagement.profile, registry, overrides=overrides)
 
@@ -769,7 +795,7 @@ def build_cmd(
 ) -> None:
     """Emit the project. Refuses before writing anything if it would be unsound."""
     registry = load_registry(registry_root)
-    engagement = load_engagement(root)
+    engagement = _engagement(root)
     _refuse_if_blocked(engagement)
     architecture = build_architecture(
         engagement.profile, registry, overrides=_overrides(engagement)
@@ -884,7 +910,7 @@ def scan_cmd(
         )
         return
 
-    engagement = load_engagement(root)
+    engagement = _engagement(root)
     engagement.append(
         Session(
             session_id=_next_session_id(engagement, "scan"),
@@ -919,6 +945,7 @@ def kb_ingest_case(
         raise typer.Exit(1)
 
     target = Path(root) / "cases" / f"{case_id}.md"
+    target.parent.mkdir(parents=True, exist_ok=True)
     if target.exists():
         typer.echo(f"{target}: already in the corpus. Cases are append-only; "
                    f"a new retrospective makes a new case.", err=True)

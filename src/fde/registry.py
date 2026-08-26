@@ -121,7 +121,12 @@ def _load_kind(registry: Registry, directory: Path, kind: str) -> None:
 
 
 def _parse(path: Path) -> tuple[dict[str, Any], str]:
-    post = frontmatter.load(path)
+    try:
+        post = frontmatter.load(path)
+    except Exception as exc:  # noqa: BLE001 - yaml raises its own hierarchy
+        # Loud and located. A registry error surfaces at 3am on a client
+        # site, and a raw YAML traceback does not say which file to open.
+        raise RegistryError(f"{path}: cannot parse front matter -- {exc}") from exc
     if not post.metadata:
         raise RegistryError(
             f"{path}: no YAML front matter. Registry entries need a '---' delimited "
