@@ -4,7 +4,7 @@ name: Integration
 caps: []
 required_when:
   - output_shape == decision
-  - latency_budget_ms > 0
+  - external_systems > 0
 ---
 Where the system acts on the world: tool calls, APIs, code execution, writes.
 

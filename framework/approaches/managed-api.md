@@ -9,9 +9,15 @@ avoid_when:
   - hosting == air-gapped
   - hosting == on-prem
   - human_waiting == no and corpus_size > 100000
+  - latency_budget_ms < 100
 evidence: {case_ids: [studio-style], confidence: high, last_verified: 2026-08-21}
 ---
 Somebody else's endpoint, paid per token.
+
+A p95 budget under a hundred milliseconds cannot be met across somebody
+else's network: the round trip and their queue are spent before any work
+happens. That is a physics objection, not a pricing one, which is why it is
+a rule here rather than a note in the costing.
 
 The cheapest way to be wrong cheaply: no infrastructure, no cold start, nothing
 to operate. Sustained high-volume interactive traffic is where it stays cheapest

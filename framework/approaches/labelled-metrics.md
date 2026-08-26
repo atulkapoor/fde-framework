@@ -3,7 +3,7 @@ id: labelled-metrics
 name: Labelled metrics
 complexity: 0
 components: [evaluation]
-applies_when: [output_shape == classification, output_shape == ranking]
+applies_when: [output_shape == classification, output_shape == ranking, output_shape == decision]
 avoid_when: [output_shape == freeform, output_shape == structured]
 evidence: {case_ids: [churn-scoring], confidence: high, last_verified: 2026-08-21}
 ---

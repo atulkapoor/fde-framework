@@ -3,7 +3,7 @@ id: classical-ml
 name: Classical ML
 complexity: 1
 components: [representation, reasoning]
-applies_when: [output_shape == classification, output_shape == ranking]
+applies_when: [output_shape == classification and labelled_count > 0, output_shape == ranking and labelled_count > 0]
 avoid_when: [output_shape == freeform, output_shape == structured]
 evidence: {case_ids: [churn-scoring], confidence: high, last_verified: 2026-08-21}
 ---

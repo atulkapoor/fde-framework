@@ -83,3 +83,16 @@ def _coerce(raw: str, alongside):
         except ValueError:
             return raw
     return raw
+
+
+def referenced(condition: str) -> set[str]:
+    """The dimensions a predicate reads.
+
+    Lives beside the grammar so that anything asking "what would I need to
+    know to evaluate this" parses conditions the same way `holds` does.
+    """
+    return {
+        part.split()[0]
+        for part in condition.split(" and ")
+        if part.split() and part.split()[0] != ALWAYS
+    }

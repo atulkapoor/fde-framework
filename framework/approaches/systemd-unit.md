@@ -6,7 +6,6 @@ components: [deployment]
 applies_when: [always]
 avoid_when:
   - existing_cluster == true
-  - external_systems > 2
   - container_competence == true
 evidence: {case_ids: [structured-extraction], confidence: high, last_verified: 2026-08-25}
 ---
@@ -16,6 +15,11 @@ registry.
 The floor of the ladder, so this is what nothing-known resolves to: it is the
 rung that costs least if it turns out to be wrong, and every rung above it has
 to be earned by something in the profile.
+
+Being the floor means never being ruled out by workload shape. Many external
+integrations strain a single service unit -- worth saying in the design -- but
+a team with no cluster and no container practice still needs to deploy, and a
+floor that can be knocked out leaves that team with nothing at all.
 
 Rung zero, and frequently the correct answer rather than the lesser one. For a
 single-node deployment serving one thing, this is understood by everyone who has

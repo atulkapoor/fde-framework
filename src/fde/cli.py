@@ -931,6 +931,44 @@ def kb_ingest_case(
                "pending cases")
 
 
+@kb.command("sweep")
+def kb_sweep(
+    root: Annotated[Path, typer.Option(help="Registry directory.")] = DEFAULT_ROOT,
+    samples: Annotated[int, typer.Option(help="Fully specified profiles to try.")] = 300,
+    seed: Annotated[int, typer.Option(help="Deterministic sampling seed.")] = 0,
+) -> None:
+    """Find profiles the registry cannot serve. Work items -- always exits 0.
+
+    `kb gaps` checks that approaches exist; this checks that one can fire.
+    They disagree exactly where it hurts: a component with five approaches,
+    all ruled out by one combination of honest answers, counts as covered
+    and is undecidable.
+    """
+    try:
+        registry = load_registry(root)
+    except RegistryError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+
+    from fde.graph import sweep_dead_zones
+
+    result = sweep_dead_zones(registry, samples=samples, seed=seed)
+    dead = result["dead"]
+    if not dead:
+        typer.echo(f"{samples} fully specified profiles, every component decidable")
+        return
+
+    typer.echo(f"{samples} profiles; components undecidable in some of them:\n")
+    for component, entry in dead.items():
+        typer.echo(f"  {component:16} {entry['rate']:.1%}")
+        example = ", ".join(f"{k}={v}" for k, v in sorted(entry["example"].items()))
+        typer.echo(f"      e.g. {example}")
+    typer.echo(
+        "\nSome are honest contradictions the design should surface, not fill. "
+        "`fde architect` names the conflicting facts for any specific profile."
+    )
+
+
 @kb.command("gaps")
 def kb_gaps(
     root: Annotated[Path, typer.Option(help="Registry directory.")] = DEFAULT_ROOT,

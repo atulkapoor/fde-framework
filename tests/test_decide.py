@@ -41,8 +41,11 @@ DOC_EXTRACTION = values(
     output_shape="structured", corpus_size=200_000, labelled_count=8_000,
     data_residency="cannot_leave", hosting="air-gapped",
 )
+# Labels stated, because a supervised model without them is not available and
+# the registry now refuses to pretend otherwise.
 CHURN = values(output_shape="classification", corpus_size=2_000_000,
-               interpretability_required=True, latency_budget_ms=10)
+               labelled_count=50_000, interpretability_required=True,
+               latency_budget_ms=10)
 STUDIO = values(output_shape="freeform", hosting="air-gapped", human_waiting="no")
 ROUTE = values(output_shape="decision", latency_budget_ms=200)
 

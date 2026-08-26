@@ -27,6 +27,7 @@ from fde.models.base import Confidence, Evidence
 from fde.models.profile import Profile
 from fde.models.schema import Approach, Reversibility, confidence_sufficient
 from fde.predicate import holds
+from fde.predicate import referenced as _referenced
 from fde.registry import Registry
 
 
@@ -116,12 +117,35 @@ def decide_component(
         applicable.append(approach)
 
     if not applicable:
-        # Nothing known, nothing decided. A default here would be a guess
-        # wearing a recommendation's clothes.
+        # Two different situations, and telling them apart matters. When the
+        # predicates reference things nobody has answered, more discovery is
+        # the remedy. When everything was known and every approach is still
+        # ruled out, the facts contradict each other -- and reporting that as
+        # "not enough is known" sends somebody to ask more questions that
+        # cannot help. Name the culprits instead.
+        unknowns = sorted({
+            dimension
+            for approach in candidates
+            for condition in [*approach.applies_when, *approach.avoid_when]
+            for dimension in _referenced(condition)
+            if profile.get(dimension) is None
+        })
+        if unknowns:
+            rationale = (
+                f"not enough is known to choose -- "
+                f"unanswered: {', '.join(unknowns)}"
+            )
+        else:
+            blocked = "; ".join(f"{r.id}: {r.reason}" for r in rejected)
+            rationale = (
+                f"everything is known and every approach is ruled out -- "
+                f"the facts conflict, and asking more questions cannot help. "
+                f"{blocked}"
+            )
         return Decision(
             component=component,
             approach=None,
-            rationale="not enough is known to choose",
+            rationale=rationale,
             rejected=rejected,
             considered=len(candidates),
         )
