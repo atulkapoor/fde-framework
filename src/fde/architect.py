@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from fde.decide import Decisions, decide_all
+from fde.decide import Decision, Decisions, Rejected, decide_all
 from fde.decompose import ComponentGraph, decompose
 from fde.graph import TOPOLOGY_DIMENSION
 from fde.models.profile import Disagreement, Profile
@@ -56,11 +56,15 @@ class Architecture:
 
 
 def architect(
-    profile: Profile, registry: Registry, already_running: set[str] | None = None
+    profile: Profile,
+    registry: Registry,
+    already_running: set[str] | None = None,
+    overrides: dict[str, dict] | None = None,
 ) -> Architecture:
     components = decompose(profile, registry)
     values = profile.values()
     decisions = decide_all(values, registry, components=list(components.components))
+    _apply_overrides(decisions, overrides or {})
     graph = apply_all(build_graph(decisions, registry, values=values))
     topology = values.get(TOPOLOGY_DIMENSION) or DEFAULT_TOPOLOGY
 
@@ -93,6 +97,31 @@ def architect(
         unrealizable=unrealizable,
         values=dict(values),
     )
+
+
+def _apply_overrides(decisions: Decisions, overrides: dict[str, dict]) -> None:
+    """The FDE's recorded choice replaces the recommendation.
+
+    An override that is written down and then ignored is worse than none:
+    the promise "your choice is honoured" was made at record time, and the
+    next `architect` run silently reverting it breaks both the promise and
+    the signal -- nobody can tell an honoured override from a forgotten one.
+    """
+    for component, override in overrides.items():
+        if component not in decisions:
+            continue
+        previous = decisions[component]
+        decisions[component] = Decision(
+            component=component,
+            approach=override["chosen"],
+            rationale=f"overridden on site: {override.get('because', 'no reason recorded')}",
+            rejected=(
+                [Rejected(id=previous.approach, reason="recommended, overridden on site")]
+                if previous.approach and previous.approach != override["chosen"]
+                else []
+            ),
+            considered=previous.considered,
+        )
 
 
 def _assumptions(profile: Profile, registry: Registry) -> list[str]:

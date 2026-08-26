@@ -17,7 +17,14 @@ import yaml
 
 from fde.architect import architect as build_architecture
 from fde.emit import BuildRefused, emit
-from fde.evolution import Override, Prediction, calibration, emit_case, sweep_triggers
+from fde.evolution import (
+    Observation,
+    Override,
+    Prediction,
+    calibration,
+    emit_case,
+    sweep_triggers,
+)
 from fde.factlog import Session, load_engagement, start_engagement
 from fde.gates import HardGate, input_status, validate_baseline
 from fde.graph import find_gaps, validate_links
@@ -38,6 +45,7 @@ from fde.models.base import Provenance
 from fde.models.fact import Fact
 from fde.models.profile import Profile
 from fde.models.respondent import Respondent, Role
+from fde.predicate import PredicateError, holds
 from fde.registry import KINDS, RegistryError, load_registry
 from fde.scan import (
     GPU,
@@ -363,6 +371,28 @@ def _next_session_id(engagement, label: str) -> str:
     return f"{existing + 1:04d}-{label}"
 
 
+def _overrides(engagement) -> dict[str, dict]:
+    """Recorded overrides, last one per component winning.
+
+    Read wherever an architecture is built, because an override recorded and
+    then ignored breaks the promise made when it was recorded.
+    """
+    path = engagement.root / "overrides.jsonl"
+    if not path.exists():
+        return {}
+    out: dict[str, dict] = {}
+    for line in path.read_text().splitlines():
+        if not line.strip():
+            continue
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if record.get("component") and record.get("chosen"):
+            out[record["component"]] = record
+    return out
+
+
 def _gate_status(engagement):
     """The gates, judged against everything the engagement has recorded.
 
@@ -534,13 +564,15 @@ def architect_cmd(
     registry = load_registry(registry_root)
     engagement = load_engagement(root)
     _refuse_if_blocked(engagement, warn_only=True)
-    architecture = build_architecture(engagement.profile, registry)
+    overrides = _overrides(engagement)
+    architecture = build_architecture(engagement.profile, registry, overrides=overrides)
 
     typer.echo(f"topology {architecture.topology}   [{architecture.fingerprint()}]\n")
     for component, decision in sorted(architecture.decisions.decided().items()):
         realization = architecture.realizations.get(component)
         via = f" via {realization.stack}" if realization else ""
-        typer.echo(f"  {component:16} {decision.approach}{via}")
+        mark = "  [overridden]" if component in overrides else ""
+        typer.echo(f"  {component:16} {decision.approach}{via}{mark}")
 
     if architecture.decisions.undecided():
         typer.echo(f"\nnot decided: {', '.join(architecture.decisions.undecided())}")
@@ -570,11 +602,20 @@ def override_cmd(
 
     decision = architecture.decisions.get(component)
     recommended = decision.approach if decision else None
-    conflicts = [
-        c for c in (f"data_residency={engagement.profile.get('data_residency')}",)
-        if engagement.profile.get("data_residency") == "cannot_leave"
-        and choose in ("managed-api", "managed-embedding")
-    ]
+
+    # Conflicts come from what the registry declares, not from a list kept
+    # here: the chosen approach's own avoid_when conditions, evaluated
+    # against this profile. A new rule in the registry is flagged without a
+    # code change.
+    conflicts = []
+    chosen_entry = registry.approaches.get(choose)
+    if chosen_entry:
+        for predicate in chosen_entry.avoid_when:
+            try:
+                if holds(predicate, engagement.profile, registry):
+                    conflicts.append(predicate)
+            except PredicateError as exc:
+                typer.echo(f"  cannot evaluate {predicate!r}: {exc}", err=True)
 
     record = Override(
         component=component, recommended=recommended or "nothing", chosen=choose,
@@ -584,16 +625,18 @@ def override_cmd(
         Session(
             session_id=_next_session_id(engagement, f"override-{component}"),
             respondent=Respondent(role=Role.SYSTEM),
-            facts=[Fact(f"override.{component}", choose, Provenance.OBSERVATION,
+            # A deliberate decision by the person on site. Filing it weaker
+            # than a remark in a meeting would let that remark outrank it.
+            facts=[Fact(f"override.{component}", choose, Provenance.INTERVIEW,
                         source=because)],
         )
     )
-    (engagement.root / "overrides.jsonl").open("a").write(
-        json.dumps(record.__dict__) + "\n"
-    )
+    with (engagement.root / "overrides.jsonl").open("a") as handle:
+        handle.write(json.dumps(record.__dict__) + "\n")
 
     if recommended:
         typer.echo(f"recorded: {component} {recommended} -> {choose}")
+        typer.echo("  honoured: `fde architect` and `fde build` now use your choice")
     else:
         # Nothing was recommended, so nothing was overridden. Still worth
         # recording: a component chosen where the framework had no opinion is
@@ -607,6 +650,47 @@ def override_cmd(
         # Flagged, not refused. It goes in the risk section rather than in the
         # way.
         typer.echo(f"  conflicts with {', '.join(conflicts)} -- noted in the risks")
+
+
+@app.command("observe")
+def observe_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    trigger: Annotated[str, typer.Option(help="Which trigger fired, e.g. serving.graduate.")],
+    measured: Annotated[list[str] | None, typer.Option(
+        help="What was measured, as key=value. Repeatable."
+    )] = None,
+    today: Annotated[str, typer.Option(help="When it fired, for reproducibility.")] = "",
+) -> None:
+    """Record that a predicted trigger actually fired.
+
+    Trigger calibration is the strongest signal the framework collects,
+    precisely because there is no counterfactual -- a trigger fired when
+    predicted or it did not, and both are observable. But only if somebody
+    writes the firing down.
+    """
+    engagement = load_engagement(root)
+    values = dict(item.split("=", 1) for item in (measured or []) if "=" in item)
+    record = {
+        "trigger": trigger,
+        "observed_at": today or date.today().isoformat(),
+        "measured": values,
+    }
+    with (engagement.root / "observations.jsonl").open("a") as handle:
+        handle.write(json.dumps(record) + "\n")
+    typer.echo(f"observed: {trigger} fired")
+
+
+def _jsonl(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    out = []
+    for line in path.read_text().splitlines():
+        if line.strip():
+            try:
+                out.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
+    return out
 
 
 @app.command("retro")
@@ -625,25 +709,45 @@ def retro_cmd(
     """
     registry = load_registry(registry_root)
     engagement = load_engagement(root)
-    architecture = build_architecture(engagement.profile, registry)
+    overrides = _overrides(engagement)
+    architecture = build_architecture(engagement.profile, registry, overrides=overrides)
 
     stamp = today or date.today().isoformat()
+
+    # Predictions date from when the build made them, where a build happened.
+    # A prediction invented at sweep time is always "pending" and calibrates
+    # nothing, which is how the strongest signal used to always read zero.
+    recorded = {p["trigger"]: p for p in _jsonl(engagement.root / "predictions.jsonl")}
     predictions = [
-        Prediction(trigger=f"{component}.graduate", condition=decision.rationale,
-                   predicted_at=stamp, horizon_days=90)
+        Prediction(
+            trigger=f"{component}.graduate",
+            condition=decision.rationale,
+            predicted_at=recorded.get(f"{component}.graduate", {}).get(
+                "predicted_at", stamp
+            ),
+            horizon_days=90,
+        )
         for component, decision in architecture.decisions.decided().items()
     ]
-    observations = sweep_triggers(predictions, observations=[], today=stamp)
-    report = calibration(observations)
+    by_trigger = {p.trigger: p for p in predictions}
+    observations = [
+        Observation.fired(by_trigger[o["trigger"]], at=o["observed_at"],
+                          measured=o.get("measured", {}))
+        for o in _jsonl(engagement.root / "observations.jsonl")
+        if o.get("trigger") in by_trigger
+    ]
+    swept = sweep_triggers(predictions, observations=observations, today=stamp)
+    report = calibration(swept)
 
     case = emit_case(
         engagement=root.name,
         profile=engagement.profile.values(),
         decisions={c: d.approach for c, d in architecture.decisions.decided().items()},
-        observations=observations,
+        observations=swept,
         outcome=outcome or "not stated",
         days=days or None,
         reused=sorted({r.stack for r in architecture.realizations.values()}),
+        overrides=list(overrides.values()),
     )
     (engagement.root / "case.json").write_text(json.dumps(case, indent=2, default=str))
 
@@ -651,8 +755,10 @@ def retro_cmd(
     typer.echo(f"  triggers: {report['fired']} fired, "
                f"{report['expired_unfired']} expired unfired")
     typer.echo(f"  evidence: {report['strength']} -- {report['why']}")
-    typer.echo("\nNothing in framework/ was changed. Revision needs a corpus, "
-               "and this is how the corpus gets one.")
+    if overrides:
+        typer.echo(f"  overrides: {len(overrides)} carried into the case")
+    typer.echo("\nNothing in framework/ was changed. Revision needs a corpus -- "
+               "review case.json, then `fde kb ingest-case` after sanitisation.")
 
 
 @app.command("build")
@@ -665,7 +771,9 @@ def build_cmd(
     registry = load_registry(registry_root)
     engagement = load_engagement(root)
     _refuse_if_blocked(engagement)
-    architecture = build_architecture(engagement.profile, registry)
+    architecture = build_architecture(
+        engagement.profile, registry, overrides=_overrides(engagement)
+    )
     try:
         report = emit(architecture, out, registry=registry,
                       templates=Path(registry_root) / "templates",
@@ -673,6 +781,18 @@ def build_cmd(
     except BuildRefused as exc:
         typer.echo(f"refused: {exc}", err=True)
         raise typer.Exit(1) from exc
+
+    # Predictions date from the build that made them. Recorded once per
+    # trigger: the first build's claim is the one calibration judges.
+    predictions_path = engagement.root / "predictions.jsonl"
+    already = {p["trigger"] for p in _jsonl(predictions_path)}
+    with predictions_path.open("a") as handle:
+        for component in architecture.decisions.decided():
+            trigger = f"{component}.graduate"
+            if trigger not in already:
+                handle.write(json.dumps(
+                    {"trigger": trigger, "predicted_at": date.today().isoformat()}
+                ) + "\n")
 
     typer.echo(f"wrote {out}")
     if architecture.decisions.undecided():
@@ -765,6 +885,50 @@ def scan_cmd(
         )
     )
     typer.echo("\nrecorded as detected -- outranks anything stated about this box")
+
+
+@kb.command("ingest-case")
+def kb_ingest_case(
+    case_file: Annotated[Path, typer.Argument(help="A case.json from `fde retro`.")],
+    root: Annotated[Path, typer.Option(help="Registry directory.")] = DEFAULT_ROOT,
+) -> None:
+    """Bring a captured case into the corpus -- as pending, never as reviewed.
+
+    This is the step that stops every engagement being a dead end. It is
+    human-gated on purpose: the file lands with sanitization: pending, and
+    nothing pending should ever reach a public repository. Review every field
+    for anything identifying, then set sanitization: reviewed by hand.
+    """
+    try:
+        case = json.loads(case_file.read_text())
+    except (OSError, json.JSONDecodeError) as exc:
+        typer.echo(f"cannot read {case_file}: {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+    case_id = case.get("id")
+    if not case_id:
+        typer.echo(f"{case_file}: no id field -- is this a case.json from retro?", err=True)
+        raise typer.Exit(1)
+
+    target = Path(root) / "cases" / f"{case_id}.md"
+    if target.exists():
+        typer.echo(f"{target}: already in the corpus. Cases are append-only; "
+                   f"a new retrospective makes a new case.", err=True)
+        raise typer.Exit(1)
+
+    front = {k: v for k, v in case.items() if k != "sanitization"}
+    front["sanitization"] = "pending"
+    target.write_text(
+        f"---\n{yaml.safe_dump(front, sort_keys=False)}---\n"
+        f"Ingested from an engagement retrospective, not yet reviewed.\n\n"
+        f"Before this can be committed anywhere: read every field for anything\n"
+        f"that identifies a client, re-express what does, then set\n"
+        f"`sanitization: reviewed` by hand. Pending cases are refused by the\n"
+        f"sanitisation gate.\n"
+    )
+    typer.echo(f"wrote {target}  [sanitization: pending]")
+    typer.echo("review it, then set sanitization: reviewed -- the gate refuses "
+               "pending cases")
 
 
 @kb.command("gaps")

@@ -194,6 +194,27 @@ def find_gaps(
                 )
             )
 
+    # Evidence has to point at something. A case with no profile, no decisions
+    # and no outcome supports no claim, and a confidence rating that traces to
+    # one is decoration -- reported per case, with how much leans on it.
+    citations: dict[str, int] = {}
+    for entry in [*registry.approaches.values(), *registry.patterns.values()]:
+        for case_id in _cited_cases(entry):
+            citations[case_id] = citations.get(case_id, 0) + 1
+    for case_id, count in sorted(citations.items()):
+        case = registry.cases.get(case_id)
+        if case and not (case.profile or case.decisions or case.outcome):
+            gaps.append(
+                Gap(
+                    kind="evidence_stub",
+                    detail=(
+                        f"{case_id}: cited {count} time(s) as evidence but records "
+                        f"no profile, decisions or outcome -- every confidence "
+                        f"that traces here is unsupported"
+                    ),
+                )
+            )
+
     # Every legal answer to "where does this run" must leave at least one
     # stack standing, or that answer is a hollow deliverable waiting to happen.
     topology = registry.dimensions.get(TOPOLOGY_DIMENSION)

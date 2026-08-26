@@ -136,6 +136,21 @@ def test_denylisted_names_are_absent(denylist):
     assert not hits, f"denylisted terms present: {hits}"
 
 
+def test_no_case_awaiting_review_is_tracked():
+    """A case lands from `fde kb ingest-case` as sanitization: pending, and
+    pending means nobody has read it for identifying detail yet. The commit
+    gate is what makes the ingest command safe to offer at all."""
+    pending = [
+        name for name, body in tracked_text().items()
+        if name.startswith("framework/cases/")
+        and re.search(r"^sanitization:\s*pending\b", body, re.M)
+    ]
+    assert not pending, (
+        f"cases awaiting sanitisation review are tracked: {pending} -- review "
+        f"them and set sanitization: reviewed, or untrack them"
+    )
+
+
 # --- authorship ----------------------------------------------------------
 
 

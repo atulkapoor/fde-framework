@@ -192,6 +192,7 @@ def emit_case(
     outcome: str,
     days: int | None = None,
     reused: list[str] | None = None,
+    overrides: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """A finished engagement, in a shape the corpus can hold.
 
@@ -209,6 +210,9 @@ def emit_case(
         # less than one that admits what it got wrong, and the wrong ones are
         # what revision will eventually need.
         "triggers": [o.as_dict() for o in observations],
+        # The strongest signal there is. A retrospective that loses the
+        # overrides loses the exact thing revision will want first.
+        "overrides": overrides or [],
         "outcome": outcome,
         "practice": {
             # The denominator improvement is measured against: is the Nth
@@ -216,7 +220,9 @@ def emit_case(
             "days": days,
             "reused": reused or [],
         },
-        "sanitization": "reviewed",
+        # Nobody has reviewed this yet, and saying otherwise would let an
+        # unsanitised case claim the one property that gates publication.
+        "sanitization": "pending",
     }
 
 

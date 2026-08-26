@@ -164,7 +164,11 @@ def test_the_case_is_sanitised_before_it_can_enter_the_corpus(reg=None):
         outcome="delivered",
     )
     assert "Acme" not in str(case)
-    assert case["sanitization"] == "reviewed"
+    # Pending, never reviewed: the machine anonymises the id, but only a
+    # person can say nothing identifying survives in the free-text fields,
+    # and a case that claims review nobody did would sail past the gate
+    # that keeps unsanitised material out of a public corpus.
+    assert case["sanitization"] == "pending"
 
 
 def test_the_case_records_which_predictions_were_wrong(reg=None):

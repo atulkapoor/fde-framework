@@ -312,4 +312,10 @@ class Case(BaseModel):
     profile: dict[str, Any] = Field(default_factory=dict)
     decisions: dict[str, str] = Field(default_factory=dict)
     outcome: str | None = None
+    # What emit_case captures has to survive the round trip. These were once
+    # absent, so pydantic silently dropped the trigger observations and the
+    # practice metrics on reload -- the learning loop's whole payload.
+    triggers: list[dict[str, Any]] = Field(default_factory=list)
+    overrides: list[dict[str, Any]] = Field(default_factory=list)
+    practice: dict[str, Any] = Field(default_factory=dict)
     sanitization: str = "pending"
