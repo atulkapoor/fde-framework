@@ -182,6 +182,67 @@ def test_a_read_only_pipeline_gets_no_controls(reg, tmp_path):
     assert not (tmp_path / "app" / "controls.py").exists()
 
 
+# --- failure is loud, never cosmetic ---------------------------------------
+
+
+def test_a_missing_registry_root_is_an_error_not_an_empty_registry(tmp_path):
+    """An empty registry decides nothing, everything downstream 'works', and
+    the first sign is a hollow build. The classic path is the wrong cwd."""
+    from fde.registry import RegistryError, load_registry
+
+    with pytest.raises(RegistryError, match="no registry here"):
+        load_registry(tmp_path / "nowhere")
+
+
+def test_a_missing_templates_directory_refuses_the_build(reg, tmp_path):
+    """Installed away from a source checkout, the old behaviour was to emit
+    scaffolds for everything and report success."""
+    architecture = architect(profile(**COMPLETE), reg)
+    with pytest.raises(BuildRefused, match="templates"):
+        emit(architecture, tmp_path / "out", templates=tmp_path / "not-there")
+    assert not (tmp_path / "out").exists()
+
+
+def test_scaffold_fallbacks_are_reported_not_swallowed(reg, tmp_path):
+    """A template dir that resolves nothing must not read as a finished build."""
+    empty = tmp_path / "empty-templates"
+    empty.mkdir()
+    report = emit(architect(profile(**COMPLETE), reg), tmp_path / "out", templates=empty)
+    assert report.scaffolded
+    assert set(report.scaffolded) <= set(
+        architect(profile(**COMPLETE), reg).realizations
+    )
+
+
+def test_the_emitted_evaluation_gate_can_fail(reg, tmp_path):
+    """The harness evaluates the pipeline, and an unimplemented pipeline is a
+    red build. Before this, CI ran the harness with a threshold of zero and a
+    strict less-than: a gate that could not say no."""
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text(
+        '{"id": "a", "input": "doc a", "output": {"field": 1}, "verified": true}\n'
+        '{"id": "b", "input": "doc b", "output": {"field": 2}, "verified": true}\n'
+        '{"id": "c", "input": "doc c", "output": {"field": 3}, "verified": true}\n'
+    )
+    out = tmp_path / "out"
+    emit(architect(profile(**COMPLETE), reg), out, pairs_path=pairs)
+    result = subprocess.run(
+        [sys.executable, "evals/harness.py"], cwd=out, capture_output=True, text=True,
+    )
+    assert result.returncode == 1
+    assert "not yet implemented" in result.stderr or "errored" in result.stderr
+
+
+def test_an_empty_golden_set_is_a_visible_gap_not_a_red_build(reg, tmp_path):
+    out = tmp_path / "out"
+    emit(architect(profile(**COMPLETE), reg), out)
+    result = subprocess.run(
+        [sys.executable, "evals/harness.py"], cwd=out, capture_output=True, text=True,
+    )
+    assert result.returncode == 0
+    assert "empty" in result.stderr
+
+
 # --- every legal topology builds ------------------------------------------
 
 

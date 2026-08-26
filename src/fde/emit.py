@@ -14,6 +14,7 @@ hole that imports cleanly is a hole found in production.
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
@@ -43,24 +44,41 @@ UNDECIDED_EXCEPTION = """class UndecidedComponent(RuntimeError):
 TEMPLATES = Path(__file__).resolve().parents[2] / "framework" / "templates"
 
 
+@dataclass
+class EmitReport:
+    path: Path
+    # Components that fell back to a scaffold because their template was not
+    # found. Reported rather than swallowed: a build that silently emits
+    # stubs reads as finished, and nothing about it is.
+    scaffolded: list[str] = field(default_factory=list)
+
+
 def emit(
     architecture: Architecture,
     out: Path,
     registry: Registry | None = None,
     templates: Path | None = None,
     pairs_path: Path | None = None,
-) -> Path:
+) -> EmitReport:
     out = Path(out)
     _refuse_if_unsound(architecture, out)
+
+    templates = Path(templates) if templates else TEMPLATES
+    if not templates.is_dir():
+        raise BuildRefused(
+            f"{templates}: no templates here. Pass --registry pointing at a "
+            f"registry checkout -- building without templates would emit only "
+            f"scaffolds and look finished."
+        )
     env = Environment(
-        loader=FileSystemLoader(str(templates or TEMPLATES)),
+        loader=FileSystemLoader(str(templates)),
         keep_trailing_newline=True,
         autoescape=False,  # noqa: S701 - emitting Python, not markup
     )
 
     (out / "app" / "components").mkdir(parents=True, exist_ok=True)
     _write_package(architecture, out)
-    _write_components(architecture, out, env)
+    scaffolded = _write_components(architecture, out, env)
     _write_pipeline(architecture, out)
     if architecture.graph.sensitive_nodes():
         _write_boundary(architecture, out)
@@ -69,7 +87,7 @@ def emit(
     write_ops(architecture, out, registry)
     _write_project_file(out)
     (out / "ARCHITECTURE.md").write_text(render_architecture(architecture))
-    return out
+    return EmitReport(path=out, scaffolded=scaffolded)
 
 
 # --- refusals ------------------------------------------------------------
@@ -99,7 +117,8 @@ def _write_package(architecture: Architecture, out: Path) -> None:
     (out / "app" / "components" / "__init__.py").write_text("")
 
 
-def _write_components(architecture: Architecture, out: Path, env) -> None:
+def _write_components(architecture: Architecture, out: Path, env) -> list[str]:
+    scaffolded = []
     for component, decision in sorted(architecture.decisions.items()):
         path = out / "app" / "components" / f"{component}.py"
         realization = architecture.realizations.get(component)
@@ -112,7 +131,11 @@ def _write_components(architecture: Architecture, out: Path, env) -> None:
                 _unfilled(component, architecture.unrealizable.get(component, "no realization"))
             )
             continue
-        path.write_text(_implementation(component, decision, realization, env))
+        body, was_scaffold = _implementation(component, decision, realization, env)
+        if was_scaffold:
+            scaffolded.append(component)
+        path.write_text(body)
+    return scaffolded
 
 
 def _unfilled(component: str, reason: str) -> str:
@@ -177,7 +200,7 @@ def _implementation(component: str, decision, realization, env) -> str:
     try:
         template = env.get_template(realization.template)
     except TemplateNotFound:
-        return _scaffold(component, decision, realization)
+        return _scaffold(component, decision, realization), True
 
     return template.render(
         component=component,
@@ -187,7 +210,7 @@ def _implementation(component: str, decision, realization, env) -> str:
         rationale=decision.rationale,
         class_name=_class_name(component),
         rejected=decision.rejected,
-    )
+    ), False
 
 
 def _guarded(architecture: Architecture, node_id: str) -> str:
@@ -471,12 +494,13 @@ def run_layer(name, cases, predict):
     if not cases:
         return {{"layer": name, "cases": 0, "score": None, "note": "no cases supplied"}}
 
-    correct, failures = 0, []
+    correct, errors, failures = 0, 0, []
     for case in cases:
         expected = case.get("output", case.get("expect"))
         try:
             actual = predict(case.get("input"))
         except Exception as exc:  # noqa: BLE001
+            errors += 1
             failures.append({{"id": case.get("id"), "source": classify(
                 expected, None, {{"exception": exc}})}})
             continue
@@ -490,6 +514,7 @@ def run_layer(name, cases, predict):
         "layer": name,
         "cases": len(cases),
         "score": correct / len(cases),
+        "errors": errors,
         # The shape of the failures, which is what decides the next move.
         "by_source": dict(Counter(f["source"] for f in failures)),
         "failures": failures[:10],
@@ -502,10 +527,10 @@ def main():
                         help="fail below this on the golden layer")
     args = parser.parse_args()
 
-    def predict(_):
-        raise NotImplementedError(
-            "wire this to app.pipeline.run once the components are implemented"
-        )
+    # The pipeline is the thing under evaluation. While its components are
+    # scaffolds -- or a gate is unwired -- every case errors and this run
+    # fails, which is the point: a gate that cannot say no is not a gate.
+    from app.pipeline import run as predict
 
     report = [run_layer(n, load(n), predict)
               for n in ("golden", "edge_case", "adversarial")]
@@ -518,7 +543,18 @@ def main():
             print(f"               by source: {{layer['by_source']}}")
 
     golden = next(layer for layer in report if layer["layer"] == "golden")
-    if golden["score"] is not None and golden["score"] < args.min_score:
+    if golden["cases"] == 0:
+        print("golden set is empty -- a visible gap, not a passing grade",
+              file=sys.stderr)
+        return 0
+    if golden.get("errors"):
+        print(f"{{golden['errors']}} golden case(s) errored -- the pipeline is "
+              f"not yet implemented end to end", file=sys.stderr)
+        return 1
+    if golden["score"] <= 0:
+        print("every golden case failed", file=sys.stderr)
+        return 1
+    if golden["score"] < args.min_score:
         print(f"below {{args.min_score:.1%}}", file=sys.stderr)
         return 1
     return 0

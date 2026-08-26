@@ -70,9 +70,15 @@ class Registry(BaseModel):
 
 def load_registry(root: str | Path) -> Registry:
     root = Path(root)
-    registry = Registry()
     if not root.exists():
-        return registry
+        # Loudly, not as an empty registry: an empty registry decides nothing,
+        # everything downstream "works", and the first sign is a hollow build.
+        # The classic path here is running from the wrong directory.
+        raise RegistryError(
+            f"{root}: no registry here. Pass --registry pointing at a "
+            f"registry directory (the framework/ of a source checkout)."
+        )
+    registry = Registry()
 
     for child in sorted(root.iterdir()):
         if not child.is_dir() or child.name.startswith("."):

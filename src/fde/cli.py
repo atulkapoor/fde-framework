@@ -667,8 +667,9 @@ def build_cmd(
     _refuse_if_blocked(engagement)
     architecture = build_architecture(engagement.profile, registry)
     try:
-        emit(architecture, out, registry=registry,
-             pairs_path=Path(root) / "artifacts" / "pairs.jsonl")
+        report = emit(architecture, out, registry=registry,
+                      templates=Path(registry_root) / "templates",
+                      pairs_path=Path(root) / "artifacts" / "pairs.jsonl")
     except BuildRefused as exc:
         typer.echo(f"refused: {exc}", err=True)
         raise typer.Exit(1) from exc
@@ -678,6 +679,16 @@ def build_cmd(
         typer.echo(
             f"  {len(architecture.decisions.undecided())} component(s) raise on use -- "
             f"see ARCHITECTURE.md"
+        )
+    if architecture.unrealizable:
+        typer.echo(
+            f"  unrealizable: {', '.join(sorted(architecture.unrealizable))} -- "
+            f"raise on use, reasons in ARCHITECTURE.md"
+        )
+    if report.scaffolded:
+        typer.echo(
+            f"  scaffolded (template missing): {', '.join(report.scaffolded)} -- "
+            f"contracts fixed, bodies to write"
         )
 
 
