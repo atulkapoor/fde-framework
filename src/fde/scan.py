@@ -97,31 +97,110 @@ class Feasible:
     reason: str = ""
 
 
-def detect() -> Hardware:
+@dataclass
+class Detection:
+    """What was found, and whether that counts as a measurement.
+
+    The distinction is the point. "Measured: no accelerator" and "could not
+    measure" are different facts, and only the first may ever be recorded as
+    DETECTED -- detected outranks what people say about the environment, so a
+    non-measurement recorded as one lets a false reading beat a true
+    statement, which is the single thing provenance exists to prevent.
+    """
+
+    hardware: Hardware
+    measured: bool
+    note: str = ""
+
+
+def detect() -> Detection:
     """What is actually here.
 
-    Falls back to an empty machine rather than raising: a laptop with no
-    accelerator is a real environment, and frequently the right one.
+    Probes what it can and says what it cannot. A machine whose accelerator
+    this scan has no probe for -- unified-memory silicon, a ROCm device --
+    reports an unmeasured detection rather than a confident zero.
     """
-    if not shutil.which("nvidia-smi"):
-        return Hardware(gpus=[], ram_gb=_ram_gb())
+    ram = _ram_gb()
+
+    if shutil.which("nvidia-smi"):
+        try:
+            output = subprocess.run(
+                ["nvidia-smi",
+                 "--query-gpu=name,memory.total,compute_cap",
+                 "--format=csv,noheader,nounits"],
+                capture_output=True, text=True, timeout=10, check=True,
+            ).stdout
+        except (subprocess.SubprocessError, OSError) as exc:
+            return Detection(
+                Hardware(gpus=[], ram_gb=ram), measured=False,
+                note=f"nvidia-smi is present and failed ({exc}); nothing recorded",
+            )
+        gpus, skipped = [], 0
+        for line in output.strip().splitlines():
+            parts = [p.strip() for p in line.split(",")]
+            try:
+                gpus.append(
+                    GPU(model=parts[0], vram_gb=float(parts[1]) / 1024, sm=parts[2])
+                )
+            except (IndexError, ValueError):
+                # MIG slices and some drivers report [N/A] for memory. A card
+                # that cannot be read is not a card that is not there.
+                skipped += 1
+        if skipped and not gpus:
+            return Detection(
+                Hardware(gpus=[], ram_gb=ram), measured=False,
+                note=f"{skipped} device(s) reported unreadable memory; "
+                     f"nothing recorded",
+            )
+        return Detection(Hardware(gpus=gpus, ram_gb=ram), measured=True)
+
+    unmeasurable = _unmeasurable_accelerator()
+    if unmeasurable:
+        return Detection(
+            Hardware(gpus=[], ram_gb=ram), measured=False, note=unmeasurable
+        )
+    return Detection(Hardware(gpus=[], ram_gb=ram), measured=True)
+
+
+def _unmeasurable_accelerator() -> str:
+    """Evidence of an accelerator this scan has no probe for.
+
+    Not exhaustive and not trying to be: the job is to avoid recording
+    "no accelerator" on a machine that visibly has one.
+    """
+    import platform
+    from pathlib import Path
+
+    if platform.system() == "Darwin" and _darwin_is_arm():
+        return (
+            "unified-memory accelerator present (Apple silicon); per-card "
+            "arithmetic does not apply and nothing is recorded as measured"
+        )
+    if Path("/dev/kfd").exists():
+        return (
+            "a ROCm device is present and this scan has no probe for it; "
+            "nothing is recorded as measured"
+        )
+    return ""
+
+
+def _darwin_is_arm() -> bool:
+    """Ask the kernel, not the process.
+
+    Under Rosetta, platform.machine() reports the interpreter's architecture
+    -- x86_64 on an arm machine -- so the probe meant to prevent a false
+    measurement would itself be deceived. sysctl answers for the hardware.
+    """
+    import platform
 
     try:
-        output = subprocess.run(
-            ["nvidia-smi",
-             "--query-gpu=name,memory.total,compute_cap",
-             "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=10, check=True,
-        ).stdout
+        out = subprocess.run(
+            ["sysctl", "-n", "hw.optional.arm64"],
+            capture_output=True, text=True, timeout=5,
+        ).stdout.strip()
+        return out == "1"
     except (subprocess.SubprocessError, OSError):
-        return Hardware(gpus=[], ram_gb=_ram_gb())
-
-    gpus = []
-    for line in output.strip().splitlines():
-        parts = [p.strip() for p in line.split(",")]
-        if len(parts) >= 3:
-            gpus.append(GPU(model=parts[0], vram_gb=float(parts[1]) / 1024, sm=parts[2]))
-    return Hardware(gpus=gpus, ram_gb=_ram_gb())
+        return platform.machine() == "arm64"
 
 
 def fits(

@@ -827,19 +827,22 @@ def scan_cmd(
     laptop, and never recorded as fact, because a specification somebody quoted
     is not a measurement and the framework decides by provenance.
     """
-    measured = vram is None
-    hardware = (
-        detect() if measured
-        else Hardware(gpus=[GPU(f"card-{i}", vram_gb=vram) for i in range(gpus)])
-    )
+    if vram is None:
+        detection = detect()
+        hardware, measured = detection.hardware, detection.measured
+        if detection.note:
+            typer.echo(f"  {detection.note}")
+    else:
+        hardware = Hardware(gpus=[GPU(f"card-{i}", vram_gb=vram) for i in range(gpus)])
+        measured = False
 
     if hardware.gpus:
         for gpu in hardware.gpus:
             typer.echo(f"  {gpu.model}  {gpu.vram_gb:.0f}GB  sm {gpu.sm}")
-    else:
+    elif measured:
         typer.echo("  no accelerator")
     typer.echo(f"  {hardware.total_vram_gb:.0f}GB total"
-               f"{'' if measured else '  (stated, not measured)'}")
+               f"{'' if vram is None else '  (stated, not measured)'}")
 
     fit = fits(hardware, params_b, precision=precision)
     if not hardware.gpus:
@@ -873,7 +876,12 @@ def scan_cmd(
     if root is None:
         return
     if not measured:
-        typer.echo("\nnot recorded: stated figures are not detected facts")
+        # Two ways to get here, one message discipline: a stated spec is not a
+        # measurement, and neither is a probe that could not read the machine.
+        typer.echo(
+            "\nnot recorded: only a successful measurement earns detected "
+            "provenance"
+        )
         return
 
     engagement = load_engagement(root)

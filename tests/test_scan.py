@@ -111,6 +111,78 @@ def test_the_infeasible_case_names_the_cheaper_method(reg=None):
     assert "qlora" in result.reason.lower() or "parameter" in result.reason.lower()
 
 
+# --- measured and unmeasurable are different facts ------------------------
+
+
+def test_an_accelerator_without_a_probe_is_not_a_measured_zero(monkeypatch):
+    """The poisoning case: a machine with unified-memory silicon has a real
+    accelerator, and recording accelerator=none as DETECTED would let a false
+    measurement outrank a true statement -- the one thing provenance exists
+    to prevent."""
+    import platform
+
+    from fde import scan
+
+    monkeypatch.setattr(scan.shutil, "which", lambda _: None)
+    monkeypatch.setattr(platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(platform, "machine", lambda: "arm64")
+    detection = scan.detect()
+    assert not detection.measured
+    assert "unified-memory" in detection.note
+
+
+def test_a_machine_with_no_accelerator_evidence_is_a_measured_none(monkeypatch):
+    import platform
+
+    from fde import scan
+
+    monkeypatch.setattr(scan.shutil, "which", lambda _: None)
+    monkeypatch.setattr(platform, "system", lambda: "Linux")
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+    detection = scan.detect()
+    assert detection.measured
+    assert detection.hardware.gpus == []
+
+
+def test_unreadable_device_memory_does_not_crash_or_fake_a_zero(monkeypatch):
+    """Some drivers and MIG slices report [N/A] for memory. A card that
+    cannot be read is not a card that is not there."""
+    import subprocess as sp
+    from types import SimpleNamespace
+
+    from fde import scan
+
+    monkeypatch.setattr(scan.shutil, "which", lambda _: "/usr/bin/nvidia-smi")
+    monkeypatch.setattr(
+        sp, "run",
+        lambda *a, **k: SimpleNamespace(stdout="NVIDIA A100, [N/A], 8.0\n"),
+    )
+    monkeypatch.setattr(scan.subprocess, "run",
+                        lambda *a, **k: SimpleNamespace(stdout="NVIDIA A100, [N/A], 8.0\n"))
+    detection = scan.detect()
+    assert not detection.measured
+    assert "unreadable" in detection.note
+
+
+def test_the_scan_command_records_nothing_it_did_not_measure(tmp_path, monkeypatch):
+    import platform
+
+    from typer.testing import CliRunner
+
+    from fde import scan
+    from fde.cli import app
+
+    monkeypatch.setattr(scan.shutil, "which", lambda _: None)
+    monkeypatch.setattr(platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(platform, "machine", lambda: "arm64")
+
+    runner = CliRunner()
+    runner.invoke(app, ["start", "acme", "--base", str(tmp_path)])
+    result = runner.invoke(app, ["scan", str(tmp_path / "acme")])
+    assert "not recorded" in result.output
+    assert not list((tmp_path / "acme" / "facts").glob("*scan*"))
+
+
 # --- facts ---------------------------------------------------------------
 
 
