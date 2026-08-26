@@ -2,6 +2,7 @@
 id: recall_span
 type: enum
 kind: requirement
+weight: 0.5
 asks: "How far back does the system need to remember?"
 ask_role: [user, eval_owner, admin]
 values: [within_turn, within_session, across_sessions]

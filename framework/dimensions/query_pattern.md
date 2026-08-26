@@ -2,6 +2,7 @@
 id: query_pattern
 type: enum
 kind: requirement
+weight: 2.0
 asks: "What shape are the questions people ask?"
 ask_role: [user, eval_owner, sponsor]
 values: [lookup, multi_hop, comparative]

@@ -252,3 +252,60 @@ def test_status_reports_completeness_by_decision_weight(tmp_path):
     result = runner.invoke(app, ["status", str(tmp_path / "acme")])
     assert "settled" in result.output
     assert "0%" in result.output or "2%" in result.output
+
+
+# --- the registry is the source of truth ------------------------------------
+
+
+def registry_with_dimension(tmp_path, body):
+    from fde.registry import load_registry
+
+    (tmp_path / "dimensions").mkdir(parents=True)
+    (tmp_path / "dimensions" / "custom.md").write_text(body)
+    return load_registry(tmp_path)
+
+
+def test_a_new_decisive_dimension_needs_no_code_edit(tmp_path):
+    """Weights live in the dimensions' own frontmatter. The hardcoded table
+    went stale the day a dimension was added without editing it -- which is
+    exactly what hardcoded tables do."""
+    registry = registry_with_dimension(tmp_path, (
+        "---\nid: custom\ntype: enum\nweight: 5.0\nvalues: [a, b]\n---\nbody\n"
+    ))
+    empty = completeness(profile(), registry)
+    settled = completeness(profile(custom="a"), registry)
+    assert empty == 0.0
+    assert settled == 1.0
+
+
+def test_the_boundary_gate_reads_the_registry(tmp_path):
+    """A new value that forbids egress trips offline evaluability without a
+    code change: boundary_when and needs_judge are content."""
+    registry = registry_with_dimension(tmp_path, (
+        "---\nid: custom\ntype: enum\nweight: 1.0\n"
+        "values: [sovereign, open]\nboundary_when: [sovereign]\n"
+        "needs_judge: [never]\n---\nbody\n"
+    ))
+    # add an output dimension declaring judged values
+    (tmp_path / "dimensions" / "shape.md").write_text(
+        "---\nid: shape\ntype: enum\nweight: 1.0\n"
+        "values: [prose, table]\nneeds_judge: [prose]\n---\nbody\n"
+    )
+    from fde.registry import load_registry
+
+    registry = load_registry(tmp_path)
+    blocked = input_status(
+        profile(custom="sovereign", shape="prose"), registry=registry
+    )
+    assert not blocked.gate("offline_evaluability").passed
+    fine = input_status(
+        profile(custom="open", shape="prose"), registry=registry
+    )
+    assert fine.gate("offline_evaluability").passed
+
+
+def test_without_a_registry_the_gates_still_function(tmp_path):
+    """The fallback exists so the gates work bare; it is expected to lag the
+    registry, never to disagree with it on what it does cover."""
+    status = input_status(profile(hosting="air-gapped", output_shape="freeform"))
+    assert not status.gate("offline_evaluability").passed

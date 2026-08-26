@@ -2,6 +2,7 @@
 id: accelerator
 type: enum
 kind: environment
+weight: 1.0
 asks: "What accelerator does the machine this runs on have?"
 values: [none, single, multi]
 recognises:

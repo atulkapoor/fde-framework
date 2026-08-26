@@ -2,6 +2,7 @@
 id: external_systems
 type: count
 kind: requirement
+weight: 0.5
 asks: "How many systems does this have to touch?"
 ask_role: [admin]
 recognises_near: [systems, integrations, apis, endpoints, services]

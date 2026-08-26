@@ -2,6 +2,8 @@
 id: output_shape
 type: enum
 kind: requirement
+weight: 3.0
+needs_judge: [freeform]
 asks: "What does the system produce?"
 ask_role: [eval_owner, sponsor, user]
 values: [structured, freeform, classification, ranking, decision]

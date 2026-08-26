@@ -131,6 +131,18 @@ class Dimension(BaseModel):
     # content change -- the workflow reads this to decide what gets pinned.
     boundary_when: list[str] = Field(default_factory=list)
 
+    # How much this answer moves a design. Completeness weighs answers by
+    # this rather than counting fields, because ten trivial answers is not
+    # most of the way to a design. Declared per dimension so a new decisive
+    # dimension arrives with its weight instead of waiting for a code edit
+    # somebody forgets.
+    weight: float = 0.0
+
+    # Values whose evaluation needs a model to judge the output. The offline
+    # evaluability gate crosses this with the boundary: a judged output that
+    # cannot leave needs a judge that runs inside.
+    needs_judge: list[str] = Field(default_factory=list)
+
     # Who can actually answer this. Absence means never ask that role -- one
     # source of truth, rather than an ask/never pair that drifts apart.
     ask_role: list[str] = Field(default_factory=list)

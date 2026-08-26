@@ -2,6 +2,7 @@
 id: labelled_count
 type: count
 kind: requirement
+weight: 2.0
 asks: "How many are verified or labelled?"
 recognises_near: [verified, labelled, labeled, annotated, reviewed, confirmed, ground truth]
 ask_role: ['eval_owner', 'admin']

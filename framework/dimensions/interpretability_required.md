@@ -2,6 +2,7 @@
 id: interpretability_required
 type: boolean
 kind: requirement
+weight: 1.5
 asks: "Must a decision be explainable to someone outside the team?"
 recognises:
   "true":

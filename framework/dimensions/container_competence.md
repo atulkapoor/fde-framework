@@ -2,6 +2,7 @@
 id: container_competence
 type: boolean
 kind: environment
+weight: 1.0
 asks: "Does the team that will operate this already run containers?"
 ask_role: [admin, skeptic]
 recognises:

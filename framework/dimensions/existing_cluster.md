@@ -2,6 +2,7 @@
 id: existing_cluster
 type: boolean
 kind: environment
+weight: 1.0
 asks: "Is there already a cluster this could run on?"
 ask_role: [admin]
 recognises:

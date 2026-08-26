@@ -2,6 +2,7 @@
 id: human_waiting
 type: enum
 kind: requirement
+weight: 1.0
 asks: "Is a person waiting for the result?"
 values: ["yes", "no", "mixed"]
 recognises:

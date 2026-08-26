@@ -2,6 +2,7 @@
 id: hosting
 type: enum
 kind: requirement
+weight: 2.0
 asks: "Where does this run?"
 values: [public-saas, managed-api, customer-vpc, on-prem, air-gapped]
 # Consistent with prunes below: both values rule out may_leave, so both place

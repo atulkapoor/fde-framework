@@ -2,6 +2,7 @@
 id: corpus_size
 type: count
 kind: requirement
+weight: 1.5
 asks: "How many items in total?"
 recognises_near:
   [documents, docs, document, files, records, pages, rows, accounts, items, tickets]

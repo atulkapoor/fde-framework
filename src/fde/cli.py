@@ -124,10 +124,15 @@ def start(
 @app.command("status")
 def status(
     root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    registry_root: Annotated[Path, typer.Option("--registry")] = DEFAULT_ROOT,
 ) -> None:
     """What is known, what is contested, and who said it."""
     engagement = _engagement(root)
     profile = engagement.profile
+    try:
+        registry = load_registry(registry_root)
+    except RegistryError:
+        registry = None
 
     # An empty profile is not an empty engagement: a baseline, a waiver or a
     # restated problem are all state the gates judge, facts or no facts.
@@ -141,7 +146,7 @@ def status(
             fact = profile.fact(dimension)
             typer.echo(f"  {dimension} = {fact.value}   [{_who(fact)}]")
 
-    status = _gate_status(engagement)
+    status = _gate_status(engagement, registry)
     typer.echo(f"\n{status.completeness:.0%} of what gets decided is settled")
 
     if status.overridden:
@@ -419,7 +424,7 @@ def _overrides(engagement) -> dict[str, dict]:
     return out
 
 
-def _gate_status(engagement):
+def _gate_status(engagement, registry=None):
     """The gates, judged against everything the engagement has recorded.
 
     Waivers stored on disk are re-applied here rather than baked into the
@@ -431,6 +436,7 @@ def _gate_status(engagement):
         engagement.profile,
         baseline=engagement.baseline(),
         data_access=bool(state.get("data_access")),
+        registry=registry,
         original_statement=(
             engagement.original_statement().text if engagement.original_statement() else None
         ),
@@ -446,8 +452,8 @@ def _gate_status(engagement):
     return status
 
 
-def _refuse_if_blocked(engagement, *, warn_only: bool = False) -> None:
-    status = _gate_status(engagement)
+def _refuse_if_blocked(engagement, registry=None, *, warn_only: bool = False) -> None:
+    status = _gate_status(engagement, registry)
     blocking = status.blocked_by()
     if not blocking:
         return
@@ -589,7 +595,7 @@ def architect_cmd(
     """Decide the design, and say what is still open."""
     registry = load_registry(registry_root)
     engagement = _engagement(root)
-    _refuse_if_blocked(engagement, warn_only=True)
+    _refuse_if_blocked(engagement, registry, warn_only=True)
     overrides = _overrides(engagement)
     architecture = build_architecture(engagement.profile, registry, overrides=overrides)
 
@@ -796,7 +802,7 @@ def build_cmd(
     """Emit the project. Refuses before writing anything if it would be unsound."""
     registry = load_registry(registry_root)
     engagement = _engagement(root)
-    _refuse_if_blocked(engagement)
+    _refuse_if_blocked(engagement, registry)
     architecture = build_architecture(
         engagement.profile, registry, overrides=_overrides(engagement)
     )

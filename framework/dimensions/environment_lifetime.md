@@ -2,6 +2,7 @@
 id: environment_lifetime
 type: enum
 kind: requirement
+weight: 0.5
 asks: "Does this environment need to be destroyed cleanly, or does it live?"
 ask_role: [admin, sponsor]
 values: [ephemeral, permanent]

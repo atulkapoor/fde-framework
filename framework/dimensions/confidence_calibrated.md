@@ -2,6 +2,7 @@
 id: confidence_calibrated
 type: boolean
 kind: requirement
+weight: 1.0
 asks: "Has the cheap path's confidence been measured against known answers?"
 ask_role: [eval_owner, admin]
 recognises:

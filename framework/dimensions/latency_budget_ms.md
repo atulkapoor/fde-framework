@@ -2,6 +2,7 @@
 id: latency_budget_ms
 type: duration_ms
 kind: requirement
+weight: 1.5
 asks: "What is the latency budget, at p95, under expected peak load?"
 recognises_near: [respond, response, latency, return, answer, complete, within, under]
 ask_role: ['user', 'sponsor']

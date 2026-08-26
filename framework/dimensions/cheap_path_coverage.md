@@ -2,6 +2,7 @@
 id: cheap_path_coverage
 type: ratio
 kind: requirement
+weight: 1.0
 asks: "What share of records can the exact, rule-based path settle on its own?"
 ask_role: [eval_owner, admin]
 recognises_near: [have an identifier, exact match, carry a reference, unambiguous]

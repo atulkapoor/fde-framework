@@ -2,6 +2,7 @@
 id: input_format
 type: enum
 kind: requirement
+weight: 2.0
 asks: "What arrives, and in what form?"
 ask_role: [admin, user, eval_owner]
 values: [structured_data, documents, scanned_documents, text, images, streams]

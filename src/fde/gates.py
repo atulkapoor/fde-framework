@@ -33,9 +33,12 @@ BASELINE_FIELDS = (
     "business_metric",
 )
 
-# Dimensions weighted by how much they move a design. Ten trivial answers is
-# not most of the way there, and counting fields says it is.
-DECISIVE = {
+# Fallbacks for callers with no registry in hand. The registry is the source
+# of truth -- dimensions declare `weight:` and `needs_judge:` in their own
+# frontmatter, so a new decisive dimension arrives with its weight instead of
+# waiting for an edit here that somebody forgets. These copies exist only so
+# the gates still function bare, and they are expected to fall behind.
+FALLBACK_DECISIVE = {
     "output_shape": 3.0,
     "data_residency": 3.0,
     "input_format": 2.0,
@@ -50,8 +53,35 @@ DECISIVE = {
     "recall_span": 0.5,
 }
 
-# Output shapes whose evaluation needs a model to judge them.
-NEEDS_A_JUDGE = {"freeform"}
+FALLBACK_NEEDS_A_JUDGE = {"output_shape": ["freeform"]}
+FALLBACK_BOUNDARY = {"hosting": ["air-gapped", "on-prem"],
+                     "data_residency": ["cannot_leave"]}
+
+
+def _weights(registry) -> dict[str, float]:
+    if registry is None or not getattr(registry, "dimensions", None):
+        return FALLBACK_DECISIVE
+    declared = {
+        d.id: d.weight for d in registry.dimensions.values() if d.weight > 0
+    }
+    return declared or FALLBACK_DECISIVE
+
+
+def _judged(registry) -> dict[str, list[str]]:
+    if registry is None or not getattr(registry, "dimensions", None):
+        return FALLBACK_NEEDS_A_JUDGE
+    return {
+        d.id: d.needs_judge for d in registry.dimensions.values() if d.needs_judge
+    } or FALLBACK_NEEDS_A_JUDGE
+
+
+def _boundary(registry) -> dict[str, list[str]]:
+    if registry is None or not getattr(registry, "dimensions", None):
+        return FALLBACK_BOUNDARY
+    return {
+        d.id: d.boundary_when
+        for d in registry.dimensions.values() if d.boundary_when
+    } or FALLBACK_BOUNDARY
 
 
 class HardGate(Exception):
@@ -152,15 +182,16 @@ def validate_baseline(baseline: dict[str, Any] | None) -> Result:
     return Result(True)
 
 
-def completeness(profile: Profile) -> float:
+def completeness(profile: Profile, registry=None) -> float:
     """How much of what actually gets decided is settled.
 
     Weighted rather than counted. Answering ten incidental questions is not
     most of the way to a design, and a percentage built from field counts will
-    say that it is.
+    say that it is. Weights come from the dimensions' own frontmatter.
     """
-    total = sum(DECISIVE.values())
-    have = sum(w for d, w in DECISIVE.items() if profile.resolved(d))
+    weights = _weights(registry)
+    total = sum(weights.values())
+    have = sum(w for d, w in weights.items() if profile.resolved(d))
     return round(have / total, 3)
 
 
@@ -170,10 +201,12 @@ def input_status(
     data_access: bool | None = None,
     original_statement: str | None = None,
     current_statement: str | None = None,
+    registry=None,
 ) -> Status:
     """Known, assumed, missing -- and whether this is worth starting."""
     known = sorted(profile.values())
     contested = [d.dimension for d in profile.disagreements()]
+    weights = _weights(registry)
 
     return Status(
         gates=[
@@ -181,13 +214,13 @@ def input_status(
             _baseline(baseline),
             _client_readiness(profile),
             _scope_drift(original_statement, current_statement),
-            _offline_evaluability(profile),
+            _offline_evaluability(profile, registry),
         ],
         known=known,
-        missing=sorted(d for d in DECISIVE if not profile.resolved(d)),
+        missing=sorted(d for d in weights if not profile.resolved(d)),
         assumed=contested,
         missing_roles=_missing_roles(profile),
-        completeness=completeness(profile),
+        completeness=completeness(profile, registry),
     )
 
 
@@ -270,16 +303,24 @@ def _scope_drift(original: str | None, current: str | None) -> Gate:
     )
 
 
-def _offline_evaluability(profile: Profile) -> Gate:
+def _offline_evaluability(profile: Profile, registry=None) -> Gate:
     """Whether the metric can run where the system runs.
 
     An air-gapped deployment whose evaluation needs a hosted judge has no
     evaluation, and that is discovered at deployment when it is expensive.
+    Both halves read the registry: which values place the engagement inside a
+    boundary, and which output values need a model to judge them.
     """
-    air_gapped = profile.get("hosting") in ("air-gapped", "on-prem")
-    needs_judge = profile.get("output_shape") in NEEDS_A_JUDGE
+    inside = any(
+        profile.get(dimension) in values
+        for dimension, values in _boundary(registry).items()
+    )
+    needs_judge = any(
+        profile.get(dimension) in values
+        for dimension, values in _judged(registry).items()
+    )
 
-    if not (air_gapped and needs_judge):
+    if not (inside and needs_judge):
         return Gate("offline_evaluability", True)
     return Gate(
         "offline_evaluability",

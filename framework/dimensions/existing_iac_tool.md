@@ -2,6 +2,7 @@
 id: existing_iac_tool
 type: enum
 kind: environment
+weight: 0.5
 asks: "What does the team already use to manage infrastructure?"
 ask_role: [admin]
 values: [terraform, ansible, pulumi, cloudformation, none]

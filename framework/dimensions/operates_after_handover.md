@@ -2,6 +2,7 @@
 id: operates_after_handover
 type: enum
 kind: requirement
+weight: 1.0
 asks: "Who operates this after we leave?"
 ask_role: [admin, sponsor, skeptic]
 values: [platform_team, app_team, vendor, nobody_yet]
