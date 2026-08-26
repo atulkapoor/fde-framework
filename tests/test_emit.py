@@ -182,6 +182,41 @@ def test_a_read_only_pipeline_gets_no_controls(reg, tmp_path):
     assert not (tmp_path / "app" / "controls.py").exists()
 
 
+# --- every legal topology builds ------------------------------------------
+
+
+def test_every_hosting_answer_yields_a_realizable_project(reg, tmp_path):
+    """The regression: stacks said 'managed', the dimension said 'managed-api',
+    and one legal answer to the most-asked question produced an architecture
+    with every component decided and nothing buildable -- silently."""
+    for value in reg.dimensions["hosting"].values:
+        architecture = architect(profile(
+            hosting=value, output_shape="structured", input_format="documents",
+        ), reg)
+        assert not architecture.unrealizable, (
+            f"hosting={value}: {architecture.unrealizable}"
+        )
+
+
+def test_an_unrealizable_component_does_not_break_the_import(reg, tmp_path):
+    """When realization fails, the module raises on use -- the pipeline must
+    not reference a class the module does not define."""
+    architecture = architect(profile(
+        hosting="customer-vpc", output_shape="structured", input_format="documents",
+    ), reg)
+    victim = next(iter(architecture.realizations))
+    architecture.unrealizable[victim] = "forced for this test"
+    architecture.realizations.pop(victim)
+    architecture.graph.nodes[victim].unfilled = True
+
+    emit(architecture, tmp_path)
+    result = subprocess.run(
+        [sys.executable, "-c", "import app.pipeline"],
+        cwd=tmp_path, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
 def test_an_open_topology_needs_no_boundary_module(reg, tmp_path):
     emit(architect(profile(**OPEN), reg), tmp_path)
     assert not (tmp_path / "app" / "boundary.py").exists()

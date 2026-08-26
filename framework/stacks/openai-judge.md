@@ -2,7 +2,7 @@
 id: openai-judge
 name: Hosted judge
 licence: Proprietary
-topologies: [managed, public-saas, customer-vpc]
+topologies: [managed-api, public-saas, customer-vpc]
 last_verified: 2026-08-21
 reversibility: one_way
 ---

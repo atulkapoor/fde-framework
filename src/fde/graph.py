@@ -18,6 +18,11 @@ from pydantic import BaseModel
 
 from fde.registry import Registry
 
+# The dimension whose answer becomes the deployment topology. Stacks declare
+# which topologies they run in using this dimension's vocabulary, and the
+# validator holds both sides to it.
+TOPOLOGY_DIMENSION = "hosting"
+
 # A stack unchecked for this long is a liability: tools churn in months.
 STALE_AFTER_DAYS = 365
 
@@ -86,6 +91,27 @@ def validate_links(registry: Registry) -> list[LinkError]:
                             message=(
                                 f"dimension {dimension.id!r} value {value!r} prunes "
                                 f"unknown dimension {other!r}"
+                            ),
+                        )
+                    )
+
+    # Stacks and the topology dimension must speak one vocabulary. Two
+    # spellings of the same place is how a legal answer to "where does this
+    # run" once produced an architecture with zero realizations, silently.
+    topology = registry.dimensions.get(TOPOLOGY_DIMENSION)
+    if topology and topology.values:
+        legal = set(topology.values)
+        for stack in registry.stacks.values():
+            for declared in stack.topologies:
+                if declared not in legal:
+                    errors.append(
+                        LinkError(
+                            source=stack.id,
+                            message=(
+                                f"stack {stack.id!r} declares topology {declared!r}, "
+                                f"which is not a value of {TOPOLOGY_DIMENSION!r} "
+                                f"({', '.join(topology.values)}) -- it can never be "
+                                f"selected"
                             ),
                         )
                     )
@@ -167,6 +193,23 @@ def find_gaps(
                     ),
                 )
             )
+
+    # Every legal answer to "where does this run" must leave at least one
+    # stack standing, or that answer is a hollow deliverable waiting to happen.
+    topology = registry.dimensions.get(TOPOLOGY_DIMENSION)
+    if topology and registry.stacks:
+        for value in topology.values:
+            if not any(value in s.topologies for s in registry.stacks.values()):
+                gaps.append(
+                    Gap(
+                        kind="unservable_topology",
+                        detail=(
+                            f"{value}: a legal answer to {TOPOLOGY_DIMENSION!r} "
+                            f"that no stack can run in -- everything decided "
+                            f"there is unrealizable"
+                        ),
+                    )
+                )
 
     covered = {p.component for p in registry.patterns.values()}
     for component in registry.components:

@@ -16,6 +16,7 @@ from dataclasses import dataclass, field
 
 from fde.decide import Decisions, decide_all
 from fde.decompose import ComponentGraph, decompose
+from fde.graph import TOPOLOGY_DIMENSION
 from fde.models.profile import Disagreement, Profile
 from fde.moves import apply_all
 from fde.realization import (
@@ -61,7 +62,7 @@ def architect(
     values = profile.values()
     decisions = decide_all(values, registry, components=list(components.components))
     graph = apply_all(build_graph(decisions, registry, values=values))
-    topology = values.get("hosting") or DEFAULT_TOPOLOGY
+    topology = values.get(TOPOLOGY_DIMENSION) or DEFAULT_TOPOLOGY
 
     realizations, licences, unrealizable = {}, {}, {}
     for component, decision in decisions.decided().items():
@@ -71,6 +72,11 @@ def architect(
             )
         except (NoRealization, UnsupportedTopology) as exc:
             unrealizable[component] = str(exc)
+            # The pipeline must not reference a class the module does not
+            # define. Unrealizable behaves like undecided: the module exists,
+            # says why, and raises on use.
+            if component in graph.nodes:
+                graph.nodes[component].unfilled = True
             continue
         realizations[component] = chosen
         licences[chosen.stack] = registry.stacks[chosen.stack].licence

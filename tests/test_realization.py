@@ -89,9 +89,10 @@ def test_a_topology_nothing_supports_is_reported_rather_than_fudged(reg):
 
 
 def test_the_no_framework_realization_runs_anywhere(reg):
-    """It is the fallback, so it cannot itself be topology-constrained."""
+    """It is the fallback, so it cannot itself be topology-constrained --
+    every legal answer to the topology question must include it."""
     plain = reg.stacks["plain-python"]
-    assert {"air-gapped", "on-prem", "customer-vpc", "managed"} <= set(plain.topologies)
+    assert set(reg.dimensions["hosting"].values) <= set(plain.topologies)
 
 
 # --- licences ------------------------------------------------------------
