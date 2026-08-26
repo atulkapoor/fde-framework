@@ -184,3 +184,73 @@ def test_the_deploy_directory_says_which_decisions_produced_it(reg, tmp_path):
     out = build(reg, tmp_path, hosting="on-prem", container_competence=False,
                 provisioning_api=False, external_systems=1)
     assert "systemd-unit" in (out / "deploy" / "README.md").read_text()
+
+
+# --- every registry approach has an emission path --------------------------
+
+
+def test_a_manual_runbook_shop_gets_a_runbook(reg, tmp_path):
+    """manual-runbook was in the registry with no branch in the emitter, so
+    an engagement that decided it got an empty deploy/ and no complaint."""
+    from fde.deploy import write_deploy
+
+    architecture = architect(profile(
+        **BASE, hosting="on-prem", provisioning_api=False,
+        environment_lifetime="permanent", existing_iac_tool="none",
+        existing_cluster=False, container_competence=False,
+    ), reg)
+    if architecture.decisions.get("provisioning") is None or \
+            architecture.decisions["provisioning"].approach != "manual-runbook":
+        pytest.skip("this profile no longer decides manual-runbook")
+    write_deploy(architecture, tmp_path)
+    runbook = tmp_path / "deploy" / "runbook.md"
+    assert runbook.exists()
+    assert "runbook that lies" in runbook.read_text()
+
+
+def test_every_decided_provisioning_approach_emits_something(reg, tmp_path):
+    """The registry can grow an approach faster than the emitter grows a
+    branch. Whatever is decided, deploy/ must not be silently empty of it."""
+    from fde.decide import Decision, Decisions
+    from fde.deploy import write_deploy
+    from fde.workflow import build_graph
+
+    for approach in ("terraform-module", "ansible-playbook", "gitops",
+                     "manual-runbook", "future-thing"):
+        out = tmp_path / approach
+        decisions = Decisions({
+            "provisioning": Decision("provisioning", approach, "forced"),
+            "deployment": Decision("deployment", "systemd-unit", "forced"),
+        })
+        architecture = architect(profile(**BASE), reg)
+        architecture.decisions = decisions
+        architecture.graph = build_graph(decisions, reg)
+        write_deploy(architecture, out)
+        emitted = [p.name for p in (out / "deploy").rglob("*") if p.is_file()]
+        markers = {
+            "terraform-module": "main.tf",
+            "ansible-playbook": "site.yml",
+            "gitops": "gitops.md",
+            "manual-runbook": "runbook.md",
+            "future-thing": "UNEMITTED-provisioning.md",
+        }
+        assert markers[approach] in emitted, (approach, emitted)
+
+
+def test_the_air_gapped_terraform_module_carries_its_mirror(reg, tmp_path):
+    """Air-gapped means no registry to reach; the module must say where
+    providers come from instead."""
+    from fde.decide import Decision, Decisions
+    from fde.deploy import write_deploy
+    from fde.workflow import build_graph
+
+    decisions = Decisions({
+        "provisioning": Decision("provisioning", "terraform-module", "forced"),
+    })
+    architecture = architect(profile(**BASE, hosting="air-gapped"), reg)
+    architecture.decisions = decisions
+    architecture.graph = build_graph(decisions, reg)
+    write_deploy(architecture, tmp_path)
+    body = (tmp_path / "deploy" / "terraform" / "main.tf").read_text()
+    assert "filesystem_mirror" in body
+    assert (tmp_path / "deploy" / "terraform" / "vendor").is_dir()

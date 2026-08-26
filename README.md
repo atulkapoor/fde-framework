@@ -11,18 +11,22 @@ in something you can actually deploy.
 
 ---
 
-## Status: early
+## Status: built, unproven
 
-The substrate works. Most of the pipeline does not exist yet.
+The pipeline exists end to end: intake (prose, documents, sample pairs,
+role-scoped interview, hardware scan) → fact log with provenance → permutation
+space → gates → decide → architect → build (code, evals, deploy assets,
+runbook) → retro and case capture. Overrides are honoured on the next run,
+trigger observations feed calibration, and a reviewed case can enter the
+corpus.
 
 | | |
 |---|---|
-| ✅ Working | Registry schemas · markdown+YAML loader with located errors · cross-link validation · gap detection · `fde kb` |
-| 🚧 Next | Fact log · prose intake · the permutation space · role-scoped interview |
-| 📋 Designed, unbuilt | Decide · architect · build · evals · deploy · evolution capture |
+| ✅ Working | Registry + validation · fact log · prose/document/sample intake · interview · space pruning · five gates (one hard) · decide with cited evidence · architect · `fde build` emitting a runnable project with evals, deploy and ops assets · hardware scan · costing · evolution capture |
+| 🚧 Honest gaps | The evidence corpus is four unpopulated cases (`fde kb gaps` says so) · rule *revision* awaits a corpus with outcomes · `fde kb sweep` lists profile shapes no approach serves |
 
-90 tests, no production users. Treat it as a design being built in the open
-rather than something to adopt.
+600+ tests, no production users yet. Treat it as a working system being
+hardened in the open.
 
 ---
 
@@ -82,11 +86,18 @@ cd fde-framework
 python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 ```
 
-## Try what exists
+## Try it
 
 ```bash
+.venv/bin/fde start acme --statement "Extract fields from supplier invoices."
+.venv/bin/fde ask engagements/acme --role admin      # role-scoped interview
+.venv/bin/fde status engagements/acme                # gates, gaps, disagreements
+.venv/bin/fde architect engagements/acme             # the design, with rationale
+.venv/bin/fde build engagements/acme --out project   # refuses until gates clear
+
 .venv/bin/fde kb validate --root framework   # parse and cross-link the registry
 .venv/bin/fde kb gaps     --root framework   # what the corpus is missing
+.venv/bin/fde kb sweep    --root framework   # profiles no approach can serve
 .venv/bin/pytest -q
 ```
 

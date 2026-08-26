@@ -921,6 +921,51 @@ def scan_cmd(
     typer.echo("\nrecorded as detected -- outranks anything stated about this box")
 
 
+@app.command("cost")
+def cost_cmd(
+    requests_per_day: Annotated[int, typer.Option(help="Expected daily volume.")],
+    params_b: Annotated[float, typer.Option("--model-b", help="Model size in billions.")] = 8.0,
+    human_waiting: Annotated[
+        bool, typer.Option(help="Is somebody waiting on each request?")
+    ] = True,
+    today: Annotated[str, typer.Option(help="For staleness checks; defaults to today.")] = "",
+) -> None:
+    """Size the fleet and compare hosting, with every figure dated.
+
+    The naive figure is shown beside the real one because the gap is the
+    finding: redundancy, peak and prefill multiply a fleet, and pricing each
+    replica as one card quotes a large model at a third of its cost.
+    """
+    from fde.costing import compare_hosting, size_for
+
+    stamp = today or date.today().isoformat()
+    plan = size_for(requests_per_day, params_b, today=stamp)
+    comparison = compare_hosting(
+        requests_per_day, params_b, human_waiting=human_waiting, today=stamp
+    )
+
+    typer.echo(
+        f"{params_b:g}B at {requests_per_day:,}/day"
+        f"{' (interactive)' if human_waiting else ' (batch, nobody waiting)'}\n"
+    )
+    typer.echo(f"  naive:  {plan['naive_replicas']} replica(s)")
+    typer.echo(
+        f"  real:   {plan['replicas']} replica(s) x {plan['gpus_per_replica']} "
+        f"card(s) = {plan['gpus']} cards"
+    )
+    for name, why in plan["factors"].items():
+        typer.echo(f"      {name}: {why}")
+
+    typer.echo(
+        f"\n  self-hosted  ${comparison['self_hosted_monthly']:,.0f}/mo\n"
+        f"  managed      ${comparison['managed_monthly']:,.0f}/mo\n"
+        f"  -> {comparison['recommendation']}: {comparison['why']}"
+    )
+    typer.echo(
+        f"\n  as of {plan['as_of']} -- {plan['rederive']}"
+    )
+
+
 @kb.command("ingest-case")
 def kb_ingest_case(
     case_file: Annotated[Path, typer.Argument(help="A case.json from `fde retro`.")],

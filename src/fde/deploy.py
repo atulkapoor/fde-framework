@@ -39,6 +39,8 @@ def write_deploy(architecture, out: Path) -> None:
     elif substrate == "kubernetes-manifests":
         _container(out, deploy, air_gapped)
         _manifests(deploy)
+    elif substrate:
+        _unemitted(deploy, "deployment", substrate)
 
     if provisioner == "terraform-module":
         _terraform(deploy, air_gapped)
@@ -46,9 +48,28 @@ def write_deploy(architecture, out: Path) -> None:
         _ansible(deploy)
     elif provisioner == "gitops":
         _gitops(deploy)
+    elif provisioner == "manual-runbook":
+        _manual_runbook(deploy)
+    elif provisioner:
+        _unemitted(deploy, "provisioning", provisioner)
 
     _readme(deploy, substrate, provisioner, architecture.topology)
     _teardown(deploy, substrate, provisioner)
+
+
+def _unemitted(deploy: Path, component: str, approach: str) -> None:
+    """An approach the registry knows and this emitter does not.
+
+    Written down rather than skipped: the registry can grow a deployment
+    approach faster than this module grows a branch for it, and an empty
+    deploy directory reads as a finished one.
+    """
+    (deploy / f"UNEMITTED-{component}.md").write_text(
+        f"# {approach}: decided, not emitted\n\n"
+        f"The registry decided {approach!r} for {component}, and this version "
+        f"of the emitter has no assets for it. The decision stands -- write "
+        f"the assets by hand, and consider contributing the emitter branch.\n"
+    )
 
 
 # --- substrate -----------------------------------------------------------
@@ -231,6 +252,21 @@ def _ansible(deploy: Path) -> None:
         "# somebody already did.\n"
         "[app]\n"
         "# app-01.internal\n"
+    )
+
+
+def _manual_runbook(deploy: Path) -> None:
+    (deploy / "runbook.md").write_text(
+        "# Provisioning runbook\n\n"
+        "Chosen because nothing here can be provisioned through an API --\n"
+        "somebody files a ticket, somebody racks a machine -- so the honest\n"
+        "artefact is the list of steps a person follows, written down once\n"
+        "instead of re-derived per environment.\n\n"
+        "Fill in each step as it is learned. A runbook nobody updates is a\n"
+        "runbook that lies.\n\n"
+        "## Request\n\n1. _who to ask, and for what_\n\n"
+        "## Verify\n\n1. _what proves the environment is usable_\n\n"
+        "## Hand back\n\n1. _how this environment is returned or destroyed_\n"
     )
 
 
