@@ -126,6 +126,62 @@ def test_the_generated_project_asserts_its_own_boundary(built):
     assert "in_boundary" in (built / "app" / "boundary.py").read_text()
 
 
+def test_an_air_gap_alone_earns_a_boundary(reg, tmp_path):
+    """The regression that motivated deriving sensitivity from the profile.
+
+    This exact profile -- air-gapped, nobody having said the word residency --
+    used to produce zero sensitive nodes, because sensitivity was inferred
+    from a substring of the decision rationale. The engagement the boundary
+    machinery exists for got no boundary, silently."""
+    emit(architect(profile(
+        hosting="air-gapped", input_format="documents", output_shape="structured",
+    ), reg), tmp_path)
+    assert (tmp_path / "app" / "boundary.py").exists()
+
+
+# --- the moves reach the code ---------------------------------------------
+
+
+MUTATIVE = dict(output_shape="decision", latency_budget_ms=200, external_systems=2)
+
+
+def test_approval_gates_and_critics_survive_into_the_pipeline(reg, tmp_path):
+    """The moves insert them; the pipeline must keep them. A gate that lives
+    only in the design document guards nothing."""
+    emit(architect(profile(**MUTATIVE), reg), tmp_path)
+    pipeline = (tmp_path / "app" / "pipeline.py").read_text()
+    assert "ApprovalGate" in pipeline
+    assert "Critic" in pipeline
+    assert (tmp_path / "app" / "controls.py").exists()
+
+
+def test_the_gate_carries_the_idempotency_key(reg, tmp_path):
+    """The key matters more than the gate: a gate stops the wrong thing once,
+    a key means doing it twice cannot charge twice."""
+    emit(architect(profile(**MUTATIVE), reg), tmp_path)
+    assert "idempotency_key=" in (tmp_path / "app" / "pipeline.py").read_text()
+
+
+def test_the_controls_fail_closed_until_wired(reg, tmp_path):
+    """An approval gate that defaults to yes is decoration. The first run must
+    say what has not been decided yet, not do the irreversible thing."""
+    emit(architect(profile(**MUTATIVE), reg), tmp_path)
+    result = subprocess.run(
+        [sys.executable, "-c",
+         "from app.controls import ApprovalGate\nApprovalGate('x').run({})"],
+        cwd=tmp_path, capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "NeedsApproval" in result.stderr
+
+
+def test_a_read_only_pipeline_gets_no_controls(reg, tmp_path):
+    emit(architect(profile(
+        output_shape="structured", corpus_size=100, data_residency="may_leave",
+    ), reg), tmp_path)
+    assert not (tmp_path / "app" / "controls.py").exists()
+
+
 def test_an_open_topology_needs_no_boundary_module(reg, tmp_path):
     emit(architect(profile(**OPEN), reg), tmp_path)
     assert not (tmp_path / "app" / "boundary.py").exists()

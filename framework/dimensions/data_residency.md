@@ -4,6 +4,7 @@ type: enum
 kind: requirement
 asks: "Can client data leave their environment?"
 values: [cannot_leave, may_leave]
+boundary_when: [cannot_leave]
 recognises:
   cannot_leave:
     - data cannot leave

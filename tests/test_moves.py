@@ -43,7 +43,11 @@ def graph_for(reg, values):
     profile = Profile()
     profile.ingest([Fact(k, v, Provenance.ARTIFACT) for k, v in values.items()])
     components = decompose(profile, reg)
-    return build_graph(decide_all(values, reg, components=list(components.components)), reg)
+    return build_graph(
+        decide_all(values, reg, components=list(components.components)),
+        reg,
+        values=values,
+    )
 
 
 # --- the graph itself ----------------------------------------------------

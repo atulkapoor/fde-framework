@@ -60,7 +60,7 @@ def architect(
     components = decompose(profile, registry)
     values = profile.values()
     decisions = decide_all(values, registry, components=list(components.components))
-    graph = apply_all(build_graph(decisions, registry))
+    graph = apply_all(build_graph(decisions, registry, values=values))
     topology = values.get("hosting") or DEFAULT_TOPOLOGY
 
     realizations, licences, unrealizable = {}, {}, {}

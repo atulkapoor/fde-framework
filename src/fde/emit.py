@@ -190,20 +190,79 @@ def _implementation(component: str, decision, realization, env) -> str:
     )
 
 
+def _guarded(architecture: Architecture, node_id: str) -> str:
+    """The component a control node stands in front of.
+
+    Followed transitively: a gate inserted before a step can later find a
+    critic inserted between them, and the gate still guards the step, not
+    the critic.
+    """
+    current, hops = node_id, 0
+    while hops < len(architecture.graph.nodes):
+        node = architecture.graph.nodes.get(current)
+        if node is not None and node.component:
+            return current
+        successor = next(
+            (t for s, t in architecture.graph.edges if s == current), None
+        )
+        if successor is None:
+            return current
+        current, hops = successor, hops + 1
+    return current
+
+
 def _write_pipeline(architecture: Architecture, out: Path) -> None:
-    ordered = [n for n in architecture.graph.ordered() if n.component]
+    """Every node the moves produced, not only the components.
+
+    An earlier version kept component nodes alone, which silently dropped the
+    approval gates and critics the moves had inserted -- the pipeline ran the
+    irreversible step with nothing in front of it, and the design document
+    described protections the code did not have.
+    """
+    ordered = [
+        n for n in architecture.graph.ordered()
+        if n.component or n.type in ("ApprovalGate", "Critic")
+    ]
+    controls = [n for n in ordered if not n.component]
+    if controls:
+        _write_controls(architecture, out)
+
+    component_names = sorted({n.component for n in ordered if n.component})
     imports = "\n".join(
-        f"from app.components import {n.component}" for n in ordered
+        f"from app.components import {name}" for name in component_names
     )
-    steps = "\n".join(
-        f"    ({n.component!r}, {n.component}.{_class_name(n.component)}()),"
-        for n in ordered
-        if not n.unfilled
-    )
+    if controls:
+        imports = f"from app import controls\n{imports}"
+
+    lines = []
+    for n in ordered:
+        if n.type == "ApprovalGate":
+            guarded = _guarded(architecture, n.id)
+            key = architecture.graph.nodes.get(guarded)
+            key_arg = (
+                f", idempotency_key={key.idempotency_key!r}"
+                if key and key.idempotency_key else ""
+            )
+            lines.append(
+                f"    ({n.id!r}, controls.ApprovalGate(guards={guarded!r}{key_arg})),"
+            )
+        elif n.type == "Critic":
+            lines.append(
+                f"    ({n.id!r}, controls.Critic("
+                f"guards={_guarded(architecture, n.id)!r})),"
+            )
+        elif not n.unfilled:
+            lines.append(
+                f"    ({n.component!r}, {n.component}.{_class_name(n.component)}()),"
+            )
+    steps = "\n".join(lines)
+
     return (out / "app" / "pipeline.py").write_text(
         f'"""The order things run in.\n\n'
         f"Ordered by what caps what: a step whose quality bounds another comes\n"
         f"first, so when an answer is wrong there is somewhere to look.\n"
+        f"Approval gates and critics are steps like any other -- removing one\n"
+        f"is a visible diff, not an oversight.\n"
         f'"""\n\n'
         f"{imports}\n\n"
         f"STEPS = [\n{steps}\n]\n\n\n"
@@ -212,6 +271,76 @@ def _write_pipeline(architecture: Architecture, out: Path) -> None:
         f"        payload = step.run(payload)\n"
         f"    return payload\n"
     )
+
+
+_CONTROLS = '''"""Fail closed, by construction.
+
+An approval gate that defaults to yes is decoration, and a critic that
+defaults to silence is a rubber stamp. Both refuse until wired, so the first
+run tells you what has not been decided yet -- instead of quietly doing the
+irreversible thing.
+"""
+
+
+class NeedsApproval(RuntimeError):
+    """A step that changes the world, with nobody having said yes."""
+
+
+class CriticRejected(RuntimeError):
+    """The check in front of an irreversible step said no."""
+
+
+class ApprovalGate:
+    """Sits in front of a step that changes something outside the system.
+
+    Wire `approve` to a human or a policy. The idempotency key belongs to the
+    guarded action: pass it with the side-effect call so that re-running the
+    same action is a no-op rather than a second charge.
+    """
+
+    def __init__(self, guards, idempotency_key=None, approve=None):
+        self.guards = guards
+        self.idempotency_key = idempotency_key
+        self._approve = approve
+
+    def run(self, payload):
+        if self._approve is None:
+            raise NeedsApproval(
+                f"{self.guards!r} changes the world and nothing approves it yet. "
+                f"Construct this gate with approve=<callable> in pipeline.py."
+            )
+        if not self._approve(payload):
+            raise NeedsApproval(f"approval for {self.guards!r} was refused")
+        return payload
+
+
+class Critic:
+    """Sits in front of a step whose failure is an apology, not a rollback.
+
+    Wire `review` to return a list of problems; an empty list lets the
+    payload through. A mistake caught here becomes a regression case; one
+    caught after becomes an apology.
+    """
+
+    def __init__(self, guards, review=None):
+        self.guards = guards
+        self._review = review
+
+    def run(self, payload):
+        if self._review is None:
+            raise CriticRejected(
+                f"{self.guards!r} is irreversible and nothing reviews it yet. "
+                f"Construct this critic with review=<callable> in pipeline.py."
+            )
+        problems = self._review(payload)
+        if problems:
+            raise CriticRejected(f"{self.guards!r}: {problems}")
+        return payload
+'''
+
+
+def _write_controls(architecture: Architecture, out: Path) -> None:
+    (out / "app" / "controls.py").write_text(_CONTROLS)
 
 
 def _write_boundary(architecture: Architecture, out: Path) -> None:

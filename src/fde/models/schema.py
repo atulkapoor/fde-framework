@@ -126,6 +126,11 @@ class Dimension(BaseModel):
     # documents are documents; saying both is one answer, not two.
     refines: dict[str, str] = Field(default_factory=dict)
 
+    # Values that place the engagement inside a data boundary. Declared here
+    # rather than inferred in code, so a new value that forbids egress is a
+    # content change -- the workflow reads this to decide what gets pinned.
+    boundary_when: list[str] = Field(default_factory=list)
+
     # Who can actually answer this. Absence means never ask that role -- one
     # source of truth, rather than an ask/never pair that drifts apart.
     ask_role: list[str] = Field(default_factory=list)

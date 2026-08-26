@@ -111,10 +111,10 @@ class WorkflowGraph:
         )
 
 
-def build_graph(decisions, registry: Registry) -> WorkflowGraph:
+def build_graph(decisions, registry: Registry, values: dict | None = None) -> WorkflowGraph:
     """Decisions into a graph, ordered by what caps what."""
     graph = WorkflowGraph()
-    sensitive = _is_sensitive(decisions)
+    sensitive = _is_sensitive(values or {}, registry)
 
     for component, decision in decisions.items():
         # Undecided components become nodes too, marked unfilled. A component
@@ -146,12 +146,20 @@ def _node_type(approach: str | None) -> str:
             "serverless-gpu": "RentedModel"}.get(approach, "Step")
 
 
-def _is_sensitive(decisions) -> bool:
+def _is_sensitive(values: dict, registry: Registry) -> bool:
     """Sensitivity is a property of the engagement, not of one node: if data
-    may not leave, everything that touches it inherits that."""
+    may not leave, everything that touches it inherits that.
+
+    Read from what the profile says, through what the registry declares.
+    An earlier version inferred it from which approach was chosen, which
+    missed the exact case the boundary exists for: an air-gapped engagement
+    whose serving happened to be decided some other way got no boundary at
+    all, silently.
+    """
     return any(
-        d.approach == "self-hosted" or "cannot_leave" in (d.rationale or "")
-        for d in decisions.values()
+        values.get(dimension) in entry.boundary_when
+        for dimension, entry in registry.dimensions.items()
+        if entry.boundary_when
     )
 
 
