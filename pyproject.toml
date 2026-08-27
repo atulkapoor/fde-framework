@@ -1,8 +1,25 @@
 [project]
-name = "fde"
+# Distribution name matches the repository and stays unique on any index;
+# the import package and the CLI command remain the short `fde`.
+name = "fde-framework"
 version = "0.1.0"
-description = "A framework that takes an engagement from problem statement to a runnable, deployable project."
+description = "A framework for Forward Deployed Engineers: from problem statement to a deployable AI project, every decision traced to a fact."
+readme = "README.md"
 requires-python = ">=3.11"
+keywords = [
+    "forward-deployed-engineer", "fde", "ai-engineering", "llm",
+    "code-generation", "air-gapped", "on-premises", "evaluation",
+    "client-engagements", "decision-engine",
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Code Generators",
+]
+
 dependencies = [
     "pydantic>=2.7",
     "typer>=0.12",
@@ -16,6 +33,11 @@ dev = ["pytest>=8", "ruff>=0.6"]
 
 [project.scripts]
 fde = "fde.cli:app"
+
+[project.urls]
+Homepage = "https://github.com/atulkapoor/fde-framework"
+Repository = "https://github.com/atulkapoor/fde-framework"
+Issues = "https://github.com/atulkapoor/fde-framework/issues"
 
 [build-system]
 requires = ["hatchling"]

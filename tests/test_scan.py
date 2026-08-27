@@ -331,3 +331,33 @@ def test_stated_hardware_is_not_recorded_as_a_detected_fact(tmp_path):
     )
     assert "not recorded" in result.output
     assert not list((tmp_path / "acme" / "facts").glob("*scan*"))
+
+
+def test_a_kernel_with_no_answer_falls_back_to_the_process_arch(monkeypatch):
+    """On a non-Darwin host, sysctl exists and errors with empty output
+    rather than raising -- which is not the same as answering no. This is
+    why the Apple-silicon tests passed on a Mac and failed in CI."""
+    from types import SimpleNamespace
+
+    from fde import scan
+
+    monkeypatch.setattr(scan.subprocess, "run",
+                        lambda *a, **k: SimpleNamespace(stdout=""))
+    import platform
+    monkeypatch.setattr(platform, "machine", lambda: "arm64")
+    assert scan._darwin_is_arm() is True
+    monkeypatch.setattr(platform, "machine", lambda: "x86_64")
+    assert scan._darwin_is_arm() is False
+
+
+def test_an_intel_mac_answers_no_even_under_rosetta_style_confusion(monkeypatch):
+    """A real '0' from the kernel beats whatever the process claims."""
+    from types import SimpleNamespace
+
+    from fde import scan
+
+    monkeypatch.setattr(scan.subprocess, "run",
+                        lambda *a, **k: SimpleNamespace(stdout="0\n"))
+    import platform
+    monkeypatch.setattr(platform, "machine", lambda: "arm64")
+    assert scan._darwin_is_arm() is False

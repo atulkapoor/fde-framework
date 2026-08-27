@@ -198,9 +198,14 @@ def _darwin_is_arm() -> bool:
             ["sysctl", "-n", "hw.optional.arm64"],
             capture_output=True, text=True, timeout=5,
         ).stdout.strip()
-        return out == "1"
     except (subprocess.SubprocessError, OSError):
-        return platform.machine() == "arm64"
+        out = ""
+    if out in ("0", "1"):
+        return out == "1"
+    # The kernel gave no answer -- a non-Darwin sysctl exists and errors with
+    # empty output rather than raising, which is not the same as saying no.
+    # The process architecture is the only signal left.
+    return platform.machine() == "arm64"
 
 
 def fits(
