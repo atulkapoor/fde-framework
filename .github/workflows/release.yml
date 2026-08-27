@@ -1,0 +1,33 @@
+# Publishes to PyPI on a version tag, via trusted publishing -- no token
+# lives anywhere. One-time setup on PyPI first: add a "trusted publisher"
+# for atulkapoor/fde-framework, workflow release.yml, environment pypi.
+# Then `git tag v0.1.0 && git push origin v0.1.0` is the whole release.
+name: release
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - run: pip install -e ".[dev]"
+      - run: ruff check src tests
+      - run: pytest -q
+      - run: pip install build && python -m build
+      - uses: actions/upload-artifact@v4
+        with: {name: dist, path: dist/}
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write   # trusted publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with: {name: dist, path: dist/}
+      - uses: pypa/gh-action-pypi-publish@release/v1

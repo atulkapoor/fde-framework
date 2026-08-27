@@ -44,6 +44,9 @@ ALLOWED = (
     # Synthetic worked engagements only -- the same no-client-material rules
     # apply, and the PII/credential scans below run on these too.
     "examples/",
+    # Hand-authored SVG wordmarks. Vector text only -- a binary image could
+    # smuggle anything, and the binary-file check below refuses those anyway.
+    "assets/",
 )
 
 SECRET_PATTERNS = {

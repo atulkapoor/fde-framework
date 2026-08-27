@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.svg">
+  <img src="assets/banner-light.svg" alt="fde — a framework for Forward Deployed Engineers" width="760">
+</picture>
+
 # fde — a framework for Forward Deployed Engineers
 
 [![CI](https://github.com/atulkapoor/fde-framework/actions/workflows/ci.yml/badge.svg)](https://github.com/atulkapoor/fde-framework/actions/workflows/ci.yml)
@@ -51,21 +56,31 @@ fde build acme --out project     # code + evals + deploy assets + runbook
 
 ## Status: built, unproven
 
-The pipeline exists end to end: intake (prose, documents, sample pairs,
-role-scoped interview, hardware scan) → fact log with provenance → permutation
-space → gates → decide → architect → build (code, evals, deploy assets,
-runbook) → retro and case capture. Overrides are honoured on the next run,
-trigger observations feed calibration, and a reviewed case can enter the
-corpus.
+Those are different claims, and the difference is the point.
 
-| | |
-|---|---|
-| ✅ Working | Registry + validation · fact log · prose/document/sample intake · interview · space pruning · six gates (one hard) · decide with cited evidence · architect · `fde build` emitting a runnable project with evals, deploy and ops assets · hardware scan · costing · evolution capture · a generated `RISKS.md` naming every waived gate and overridden recommendation |
-| 🚧 Honest gaps | The evidence corpus is four unpopulated cases (`fde kb gaps` says so) · rule *revision* awaits a corpus with outcomes · `fde kb sweep` lists profile shapes no approach serves |
+**Built**: the pipeline exists end to end — intake (prose, documents, sample
+pairs, role-scoped interview, hardware scan) → fact log with provenance →
+permutation space → six gates → decide → architect → build (code, evals,
+deploy and ops assets, `RISKS.md`, `COMPLIANCE.md`) → retro and case
+capture. Overrides are honoured on the next run, trigger observations feed
+calibration, and a reviewed case can enter the corpus. ~700 tests; three
+adversarial review rounds (108 findings, each fixed and pinned as a
+regression test); CI gates on the suite, lint, and a sanitisation scan of
+the tree *and its history*; the evidence corpus is anchored to publicly
+documented production deployments; every decision is reproducible from its
+inputs.
 
-680+ tests, no production users yet. Treat it as a working system being
-hardened in the open — it has survived three adversarial review rounds, and
-every defect found is pinned as a regression test.
+**Unproven** means exactly one thing: no production engagement has yet run
+through it start to finish. The proof loop is wired and waiting — `fde
+retro` captures measured outcomes, human-reviewed cases grow the corpus,
+and rule *revision* begins when there are retrospectives to revise against,
+not before. Pretending earlier would be borrowing rigour rather than having
+it.
+
+What that means for you today: the generated projects are real and the
+decisions are defensible, but you are an early adopter, not a reference
+customer — and the first measured retrospectives will be worth more to this
+framework than any feature.
 
 ---
 
