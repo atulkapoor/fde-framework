@@ -1,15 +1,36 @@
-# fde
+# fde — a framework for Forward Deployed Engineers
 
-A framework that takes an engagement from a problem statement to a runnable,
-deployable project — with every decision traced to a fact, and every fact traced
-to a source.
+**fde** is an open-source framework for Forward Deployed Engineers: it takes a
+client engagement from a problem statement to a runnable, deployable AI
+project — with every decision traced to a fact, and every fact traced to a
+source.
 
 Forward deployed engineers arrive with incomplete information, a client who may
-not know what they need, and a deadline. This is the tooling for that: structured
-intake, a decision engine that cites its evidence, and code generation that ends
-in something you can actually deploy.
+not know what they need, and a deadline. This is the tooling for that:
+structured discovery and requirements intake, a decision engine that cites its
+evidence, and code generation that ends in something you can actually deploy —
+including on-premise, inside a customer VPC, or fully air-gapped.
+
+```bash
+fde start acme --statement "Extract fields from supplier invoices."
+fde ask acme --role admin        # role-scoped discovery interview
+fde architect acme               # the design, with cited rationale
+fde build acme --out project     # code + evals + deploy assets + runbook
+```
 
 ---
+
+## Who this is for
+
+- **Forward deployed engineers and solutions engineers** delivering AI systems
+  inside client environments, where discovery, deployment constraints and
+  handover matter as much as the model.
+- **Consultancies and AI delivery teams** who want engagement knowledge to
+  compound — every retrospective can enter a shared corpus as an anonymised
+  case.
+- **Platform teams** shipping LLM systems into regulated, on-premise, or
+  air-gapped environments, where "call a hosted API" is not an option and the
+  evaluation has to run where the system runs.
 
 ## Status: built, unproven
 
@@ -22,11 +43,12 @@ corpus.
 
 | | |
 |---|---|
-| ✅ Working | Registry + validation · fact log · prose/document/sample intake · interview · space pruning · five gates (one hard) · decide with cited evidence · architect · `fde build` emitting a runnable project with evals, deploy and ops assets · hardware scan · costing · evolution capture |
+| ✅ Working | Registry + validation · fact log · prose/document/sample intake · interview · space pruning · five gates (one hard) · decide with cited evidence · architect · `fde build` emitting a runnable project with evals, deploy and ops assets · hardware scan · costing · evolution capture · a generated `RISKS.md` naming every waived gate and overridden recommendation |
 | 🚧 Honest gaps | The evidence corpus is four unpopulated cases (`fde kb gaps` says so) · rule *revision* awaits a corpus with outcomes · `fde kb sweep` lists profile shapes no approach serves |
 
-600+ tests, no production users yet. Treat it as a working system being
-hardened in the open.
+660+ tests, no production users yet. Treat it as a working system being
+hardened in the open — it has survived three adversarial review rounds, and
+every defect found is pinned as a regression test.
 
 ---
 
@@ -52,11 +74,16 @@ the most valuable thing discovery produces.
 **Processing** prunes a space of possibilities as facts arrive, decomposes the
 problem into components, and decides an approach, pattern and stack for each —
 with cited evidence, ranked rejected alternatives, and a measurable trigger for
-when to graduate to something more sophisticated.
+when to graduate to something more sophisticated. Five gates stand before
+building: verified data access (the one that cannot be waived), a re-measurable
+baseline, a named evaluation owner, scope drift against the original statement,
+and offline evaluability for air-gapped deployments.
 
-**Output** is a project: code, an evaluation harness seeded from the client's own
-examples, deployment artifacts for whichever substrate was actually chosen, and
-the documents explaining all three.
+**Output** is a project: code, an evaluation harness seeded from the client's
+own examples, deployment artifacts for whichever substrate was actually chosen
+(systemd unit, Docker Compose, Kubernetes manifests), approval gates and
+critics in front of anything irreversible, and the documents explaining all
+three — including a risk page naming every gate that was waived and why.
 
 ## What it will not do
 
@@ -76,7 +103,8 @@ new dimension, because geography changes what you must produce, not how you
 decide.
 
 **Guess.** Every claim carries evidence, a date, and a re-derivation rule. Where
-the framework has no evidence, it says so.
+the framework has no evidence, it says so — undecidable components ship as
+modules that raise with the reason attached, never as silent gaps.
 
 ## Install
 
@@ -94,6 +122,9 @@ python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 .venv/bin/fde status engagements/acme                # gates, gaps, disagreements
 .venv/bin/fde architect engagements/acme             # the design, with rationale
 .venv/bin/fde build engagements/acme --out project   # refuses until gates clear
+
+.venv/bin/fde scan engagements/acme                  # what this hardware runs
+.venv/bin/fde cost --requests-per-day 500000 --model-b 70   # dated fleet sizing
 
 .venv/bin/fde kb validate --root framework   # parse and cross-link the registry
 .venv/bin/fde kb gaps     --root framework   # what the corpus is missing
@@ -118,8 +149,50 @@ realization per stack says *how*, as a template plus a claim to satisfy a typed
 interface. Swapping the stack changes the emitted code and not the architecture,
 and there is a test asserting exactly that.
 
+## FAQ
+
+**What is a Forward Deployed Engineer?**
+An engineer who works inside a client's environment to deliver a working
+system — part solutions architect, part implementer, part translator between
+what a client asks for and what they need. The role is common in AI companies
+shipping into enterprises; this framework encodes the craft of running such an
+engagement well.
+
+**Does the framework itself call an LLM?**
+No. Intake parsing, decision-making and code generation are deterministic —
+the same profile always produces the same project, so a diff between two
+builds means a decision changed. LLMs appear in the *generated* systems where
+the profile justifies one, behind interfaces that make them swappable.
+
+**Does it work air-gapped?**
+Yes, by design. The framework runs from plain files with no server or network
+dependency, the registry knows which stacks can run inside an air gap, and the
+offline-evaluability gate refuses a design whose metric cannot run where the
+system runs.
+
+**How is this different from a project template?**
+A template gives everyone the same starting point. This decides — from
+discovered facts, with cited evidence and named rejected alternatives — and
+then generates. Two clients with different constraints get different
+architectures, and the document explains why.
+
+**How does it improve over time?**
+Every engagement captures its overrides (when the FDE chose differently),
+trigger calibration (did predicted graduations fire?), and an anonymised case.
+Cases enter the corpus only after human sanitisation review; rules are revised
+only when a corpus of outcomes exists — capture now, revise later, never
+pretend.
+
+**What does "self-evolving" mean here, concretely?**
+Three recorded signals — overrides, trigger observations, case outcomes — and
+a human-gated path from a retrospective into the shared knowledge base.
+Nothing in `framework/` changes by itself; the corpus grows, and revision
+against it is a deliberate, evidenced act.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). The short version: contributions enter
 against a contract, and **client material never enters this repository** — only
-patterns re-expressed in the framework's own words.
+patterns re-expressed in the framework's own words. Sanitisation is enforced in
+CI: allowed paths only, history checked, credential and personal-data patterns,
+and no unreviewed case can be committed.

@@ -1,0 +1,54 @@
+# fde — a framework for Forward Deployed Engineers
+
+> fde is an open-source Python framework that takes a client AI engagement
+> from a problem statement to a runnable, deployable project: structured
+> discovery intake with provenance, a deterministic decision engine that
+> cites evidence and names rejected alternatives, and code generation that
+> emits a working project with an evaluation harness, deployment assets,
+> an operations runbook, and a risk page. It supports on-premise,
+> customer-VPC and air-gapped deployment, and never calls an LLM itself —
+> the same profile always produces the same project.
+
+Key facts:
+
+- Intake surfaces: free-flow prose, documents (PDF/docx), sample
+  input/output pairs, a role-scoped interview (sponsor, eval owner, user,
+  admin, skeptic), and a hardware scan. All emit Facts into one Profile.
+- Provenance ordering is dimension-dependent: measurements outrank
+  statements about the environment; stated requirements outrank
+  measurements. Two respondents disagreeing is reported as a finding, not
+  silently resolved.
+- Five gates precede building: verified data access (hard — cannot be
+  waived), a re-measurable baseline, a named evaluation owner, scope drift
+  measured against the original statement, and offline evaluability for
+  air-gapped systems. Waivers are recorded with reasons and shipped in the
+  generated RISKS.md.
+- The knowledge registry (framework/) is data, not code: dimensions,
+  approaches, patterns, stacks, interfaces, templates, cases. Patterns are
+  stable; stacks churn; swapping a stack changes emitted code, not the
+  architecture.
+- Decisions are simplest-first with cited evidence; undecidable components
+  ship as modules that raise with the reason attached. `fde kb sweep`
+  reports profile shapes no approach can serve.
+- Self-evolution is capture-first: overrides, trigger calibration and
+  anonymised cases are recorded per engagement; cases enter the corpus only
+  after human sanitisation review; rules are revised only against a corpus
+  of outcomes.
+
+## Documentation
+
+- [README](https://github.com/atulkapoor/fde-framework/blob/main/README.md):
+  what it is, who it is for, install, quickstart, FAQ
+- [CONTRIBUTING](https://github.com/atulkapoor/fde-framework/blob/main/CONTRIBUTING.md):
+  the contribution contract; client material never enters the repository
+- [SECURITY](https://github.com/atulkapoor/fde-framework/blob/main/SECURITY.md):
+  reporting vulnerabilities; the sanitisation model
+
+## Key source
+
+- [framework/](https://github.com/atulkapoor/fde-framework/tree/main/framework):
+  the knowledge registry — every entry is markdown with YAML front matter
+  and a prose rationale
+- [src/fde/](https://github.com/atulkapoor/fde-framework/tree/main/src/fde):
+  intake, gates, decision engine, architect, emitter, deploy/ops
+  generation, evolution capture

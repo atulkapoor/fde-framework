@@ -36,6 +36,9 @@ ALLOWED = (
     "CONTRIBUTING.md",
     "CODE_OF_CONDUCT.md",
     "SECURITY.md",
+    # The llms.txt convention: a root file describing the project for AI
+    # crawlers. Authored framework material, same rules as the README.
+    "llms.txt",
 )
 
 SECRET_PATTERNS = {
