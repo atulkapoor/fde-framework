@@ -39,6 +39,11 @@ ALLOWED = (
     # The llms.txt convention: a root file describing the project for AI
     # crawlers. Authored framework material, same rules as the README.
     "llms.txt",
+    "ARCHITECTURE.md",
+    "CHANGELOG.md",
+    # Synthetic worked engagements only -- the same no-client-material rules
+    # apply, and the PII/credential scans below run on these too.
+    "examples/",
 )
 
 SECRET_PATTERNS = {

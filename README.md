@@ -1,5 +1,9 @@
 # fde — a framework for Forward Deployed Engineers
 
+[![CI](https://github.com/atulkapoor/fde-framework/actions/workflows/ci.yml/badge.svg)](https://github.com/atulkapoor/fde-framework/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)
+![Status](https://img.shields.io/badge/status-alpha-orange)
+
 **fde** is an open-source framework for Forward Deployed Engineers: it takes a
 client engagement from a problem statement to a runnable, deployable AI
 project — with every decision traced to a fact, and every fact traced to a
@@ -43,10 +47,10 @@ corpus.
 
 | | |
 |---|---|
-| ✅ Working | Registry + validation · fact log · prose/document/sample intake · interview · space pruning · five gates (one hard) · decide with cited evidence · architect · `fde build` emitting a runnable project with evals, deploy and ops assets · hardware scan · costing · evolution capture · a generated `RISKS.md` naming every waived gate and overridden recommendation |
+| ✅ Working | Registry + validation · fact log · prose/document/sample intake · interview · space pruning · six gates (one hard) · decide with cited evidence · architect · `fde build` emitting a runnable project with evals, deploy and ops assets · hardware scan · costing · evolution capture · a generated `RISKS.md` naming every waived gate and overridden recommendation |
 | 🚧 Honest gaps | The evidence corpus is four unpopulated cases (`fde kb gaps` says so) · rule *revision* awaits a corpus with outcomes · `fde kb sweep` lists profile shapes no approach serves |
 
-660+ tests, no production users yet. Treat it as a working system being
+680+ tests, no production users yet. Treat it as a working system being
 hardened in the open — it has survived three adversarial review rounds, and
 every defect found is pinned as a regression test.
 
@@ -74,10 +78,11 @@ the most valuable thing discovery produces.
 **Processing** prunes a space of possibilities as facts arrive, decomposes the
 problem into components, and decides an approach, pattern and stack for each —
 with cited evidence, ranked rejected alternatives, and a measurable trigger for
-when to graduate to something more sophisticated. Five gates stand before
+when to graduate to something more sophisticated. Six gates stand before
 building: verified data access (the one that cannot be waived), a re-measurable
 baseline, a named evaluation owner, scope drift against the original statement,
-and offline evaluability for air-gapped deployments.
+offline evaluability for air-gapped deployments, and licence compatibility
+against what the client intends to ship.
 
 **Output** is a project: code, an evaluation harness seeded from the client's
 own examples, deployment artifacts for whichever substrate was actually chosen
@@ -136,6 +141,48 @@ python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"
 check. `--lenient` exists for the hour when you are mid-way through authoring
 content and the links do not resolve yet.
 
+A complete worked engagement — real transcript, synthetic client — lives in
+[examples/supplier-statements](examples/supplier-statements/).
+
+## Common commands
+
+| | |
+|---|---|
+| `fde start <name> --statement "..."` | begin an engagement |
+| `fde frame <eng> --file brief.pdf` | prose or documents → facts, played back for correction |
+| `fde samples <eng> --file pairs.jsonl` | input/output pairs → contract, metrics, golden set |
+| `fde ask <eng> --role admin` | role-scoped interview, ordered by what changes the design |
+| `fde scan <eng>` | measure the hardware; only measurements earn DETECTED |
+| `fde status <eng>` | gates, gaps, waivers, disagreements |
+| `fde baseline / data-access / waive / restate` | satisfy or knowingly wave a gate |
+| `fde architect <eng>` | the design, rationale and rejections |
+| `fde build <eng> --out project` | emit; refuses while gates block |
+| `fde override --component X --choose Y --because "..."` | your call, recorded and honoured |
+| `fde observe / retro` | record trigger firings; capture the case |
+| `fde cost --requests-per-day N --model-b B` | dated fleet sizing |
+| `fde kb validate / gaps / sweep` | registry health, work items, dead zones |
+
+## Troubleshooting
+
+**`no registry here`** — the default `--registry framework` is relative; run
+from the repository root or pass the path.
+
+**`build` refuses with gates listed** — that is the point. `fde status`
+names each gate and its remedy; soft gates take `fde waive <gate> --reason`,
+data access takes only credentials that returned real rows.
+
+**A component module raises `UndecidedComponent`** — nothing could be
+decided for it; the raise message names the unanswered question. Answer it
+and rebuild — holes are loud here, never silent.
+
+**`fde kb sweep` shows undecidable profiles** — some are honest
+contradictions (data cannot leave + nobody to operate). `fde architect` on
+that profile names the conflicting facts.
+
+**The evaluation harness fails CI** — it evaluates the emitted pipeline;
+it fails until the components are implemented end to end. A gate that
+cannot say no is not a gate.
+
 ## Design
 
 The registry under `framework/` is data, not code. Adding a stack, a pattern, a
@@ -188,6 +235,14 @@ Three recorded signals — overrides, trigger observations, case outcomes — an
 a human-gated path from a retrospective into the shared knowledge base.
 Nothing in `framework/` changes by itself; the corpus grows, and revision
 against it is a deliberate, evidenced act.
+
+## Learn more
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) — module map, the data/mechanism boundary, how to extend the registry
+- [CHANGELOG.md](CHANGELOG.md) — what exists and how it was hardened
+- [examples/supplier-statements](examples/supplier-statements/) — a full engagement transcript
+- [SECURITY.md](SECURITY.md) — reporting, and what counts as security-grade here
+- [llms.txt](llms.txt) — the project summarised for AI assistants
 
 ## Contributing
 
