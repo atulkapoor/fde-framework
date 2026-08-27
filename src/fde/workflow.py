@@ -59,13 +59,35 @@ class WorkflowGraph:
     # -- reading ----------------------------------------------------------
 
     def ordered(self) -> list[Node]:
-        seen, out = set(), []
+        """Topological order, deterministically tie-broken by insertion.
+
+        Topological and not edge-list order, and the difference once shipped:
+        insert_before appends its rewired edges to the end of the list, so a
+        critic inserted in front of an irreversible step *linearised after
+        it* -- the emitted pipeline did the unrecoverable thing and then
+        reviewed it. The order things run in must be the order the edges
+        mean, not the order they were written down.
+        """
+        indegree = {i: 0 for i in self.nodes}
         for source, target in self.edges:
-            for node_id in (source, target):
-                if node_id not in seen and node_id in self.nodes:
-                    seen.add(node_id)
-                    out.append(self.nodes[node_id])
-        out.extend(n for i, n in self.nodes.items() if i not in seen)
+            if source in self.nodes and target in self.nodes:
+                indegree[target] += 1
+
+        ready = [i for i in self.nodes if indegree[i] == 0]
+        out: list[Node] = []
+        while ready:
+            current = ready.pop(0)
+            out.append(self.nodes[current])
+            for source, target in self.edges:
+                if source == current and target in indegree:
+                    indegree[target] -= 1
+                    if indegree[target] == 0:
+                        ready.append(target)
+
+        # A cycle would strand nodes; emit them at the end rather than lose
+        # them silently -- a dropped step is worse than an oddly placed one.
+        emitted = {n.id for n in out}
+        out.extend(n for i, n in self.nodes.items() if i not in emitted)
         return out
 
     def predecessors(self, node_id: str) -> list[Node]:

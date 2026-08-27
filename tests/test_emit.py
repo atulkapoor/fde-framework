@@ -417,3 +417,108 @@ def test_the_harness_can_fail_a_build(built):
         cwd=built, capture_output=True, text=True,
     )
     assert result.returncode in (0, 1)   # 0 only when there is nothing to score
+
+
+# --- the review's catches --------------------------------------------------
+
+
+def test_the_critic_runs_before_the_step_it_guards(reg, tmp_path):
+    """ordered() once walked edges in insertion order, so the critic
+    linearised after the irreversible step: the pipeline charged the
+    customer, then reviewed. The order things run in must be the order the
+    edges mean."""
+    emit(architect(profile(**MUTATIVE), reg), tmp_path)
+    pipeline = (tmp_path / "app" / "pipeline.py").read_text()
+    steps = [line for line in pipeline.splitlines() if line.startswith("    (")]
+    positions = {name: i for i, line in enumerate(steps)
+                 for name in ("approve-integration", "critic-integration", "'integration'")
+                 if line.strip().startswith(f"('{name.strip(chr(39))}'")}
+    assert positions["approve-integration"] < positions["critic-integration"]
+    assert positions["critic-integration"] < positions["'integration'"]
+
+
+def test_no_control_guards_a_step_that_is_not_in_the_pipeline(reg, tmp_path):
+    """A gate in front of nothing reads as a governed integration that does
+    not exist."""
+    architecture = architect(profile(hosting="air-gapped", output_shape="decision"), reg)
+    emit(architecture, tmp_path)
+    pipeline = (tmp_path / "app" / "pipeline.py").read_text()
+    if "('integration'," not in pipeline:
+        assert "approve-integration" not in pipeline
+        assert "critic-integration" not in pipeline
+
+
+def test_the_pipeline_imports_only_what_it_runs(reg, tmp_path):
+    emit(architect(profile(hosting="air-gapped", output_shape="decision"), reg), tmp_path)
+    pipeline = (tmp_path / "app" / "pipeline.py").read_text()
+    for line in pipeline.splitlines():
+        if line.startswith("from app.components import "):
+            name = line.rsplit(" ", 1)[1]
+            assert f"('{name}'," in pipeline, f"dead import: {name}"
+
+
+def test_importing_the_pipeline_enforces_the_boundary(reg, tmp_path):
+    """A boundary module nothing imports is a boundary reviewed in a
+    document. The entrypoint the emitter itself writes must trip it."""
+    emit(architect(profile(
+        hosting="air-gapped", input_format="documents", output_shape="structured",
+    ), reg), tmp_path)
+    boundary = tmp_path / "app" / "boundary.py"
+    body = boundary.read_text().replace(
+        "'perception': 'in_boundary'", "'perception': 'external'"
+    )
+    boundary.write_text(body)
+    result = subprocess.run(
+        [sys.executable, "-c", "import app.pipeline"],
+        cwd=tmp_path, capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert "may not leave" in result.stderr
+
+
+def test_the_generated_project_declares_its_packages(reg, tmp_path):
+    """The emitted CI's first real step is pip install -e .; a flat layout
+    with four top-level directories made setuptools refuse to guess, so CI
+    died before the evaluation it exists to gate ever ran. Explicit packages
+    and an explicit build backend are what remove the guess."""
+    emit(architect(profile(**COMPLETE), reg), tmp_path)
+    body = (tmp_path / "pyproject.toml").read_text()
+    assert "[build-system]" in body
+    assert 'packages = ["app", "app.components"]' in body
+
+
+def test_pairs_without_ids_refuse_before_anything_is_written(reg, tmp_path):
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text('{"input": "x", "output": {"f": 1}}\n')
+    out = tmp_path / "out"
+    with pytest.raises(BuildRefused, match="id"):
+        emit(architect(profile(**COMPLETE), reg), out, pairs_path=pairs)
+    assert not out.exists() or not any(out.iterdir())
+
+
+def test_a_profile_the_registry_cannot_realize_refuses_rather_than_a_noop(reg, tmp_path):
+    """hosting='mars' once emitted an empty STEPS list that imported
+    cleanly and returned its input unchanged -- the exact hole the emitter
+    says it exists to prevent."""
+    with pytest.raises(BuildRefused, match="unrecognised value"):
+        emit(architect(profile(hosting="mars", output_shape="structured"), reg), tmp_path)
+
+
+def test_the_teardown_covers_substrate_and_provisioner_both(reg, tmp_path):
+    """Choosing terraform -- the one tool that can destroy what it made --
+    used to suppress the substrate's manual steps entirely."""
+    from fde.decide import Decision, Decisions
+    from fde.deploy import write_deploy
+    from fde.workflow import build_graph
+
+    decisions = Decisions({
+        "deployment": Decision("deployment", "systemd-unit", "forced"),
+        "provisioning": Decision("provisioning", "terraform-module", "forced"),
+    })
+    architecture = architect(profile(**COMPLETE), reg)
+    architecture.decisions = decisions
+    architecture.graph = build_graph(decisions, reg)
+    write_deploy(architecture, tmp_path)
+    teardown = (tmp_path / "deploy" / "TEARDOWN.md").read_text()
+    assert "terraform destroy" in teardown
+    assert "systemctl disable" in teardown

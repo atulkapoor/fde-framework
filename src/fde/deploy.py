@@ -18,9 +18,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-# Pinned by digest. A moving tag means two builds of the same commit can differ,
-# which turns a reproducibility question into an archaeology one.
-PYTHON_BASE = "python@sha256:0000000000000000000000000000000000000000000000000000000000000000"
+# Buildable as emitted; pin before production. A moving tag means two builds
+# of the same commit can differ, which turns a reproducibility question into
+# an archaeology one -- but an unresolvable placeholder digest means nothing
+# builds at all, which is worse. The Dockerfile carries the instruction.
+PYTHON_BASE = "python:3.12-slim"
 
 
 def write_deploy(architecture, out: Path) -> None:
@@ -45,7 +47,7 @@ def write_deploy(architecture, out: Path) -> None:
     if provisioner == "terraform-module":
         _terraform(deploy, air_gapped)
     elif provisioner == "ansible-playbook":
-        _ansible(deploy)
+        _ansible(deploy, substrate)
     elif provisioner == "gitops":
         _gitops(deploy)
     elif provisioner == "manual-runbook":
@@ -109,9 +111,10 @@ def _container(out: Path, deploy: Path, air_gapped: bool) -> None:
         if air_gapped else ""
     )
     (out / "Dockerfile").write_text(
-        "# Pinned by digest rather than by tag. A moving tag means two builds of\n"
-        "# the same commit can differ, which turns a reproducibility question\n"
-        "# into an archaeology one.\n"
+        "# Buildable as emitted. Before production, pin by digest\n"
+        "# (FROM python@sha256:...): a moving tag means two builds of the same\n"
+        "# commit can differ, which turns a reproducibility question into an\n"
+        "# archaeology one.\n"
         f"{registry}"
         f"FROM {PYTHON_BASE}\n\n"
         "WORKDIR /opt/app\n"
@@ -124,7 +127,9 @@ def _container(out: Path, deploy: Path, air_gapped: bool) -> None:
         "USER app\n\n"
         'CMD ["python", "-m", "app.pipeline"]\n'
     )
-    (deploy / ".dockerignore").write_text(".venv\n__pycache__\n*.pyc\n.git\n")
+    # At the context root: compose builds with context .., so a
+    # .dockerignore inside deploy/ is a file Docker never reads.
+    (out / ".dockerignore").write_text(".venv\n__pycache__\n*.pyc\n.git\n")
 
 
 def _compose(deploy: Path) -> None:
@@ -214,9 +219,29 @@ def _terraform(deploy: Path, air_gapped: bool) -> None:
         (directory / "vendor" / ".gitkeep").write_text("")
 
 
-def _ansible(deploy: Path) -> None:
+def _ansible(deploy: Path, substrate: str | None = None) -> None:
     directory = deploy / "ansible"
     directory.mkdir(exist_ok=True)
+    # The unit-file tasks exist only when the substrate emitted a unit file:
+    # a playbook copying deploy/systemd/ beside a compose substrate fails on
+    # its first task, against a file this emitter never wrote.
+    unit_tasks = (
+        "    - name: Install the service unit\n"
+        "      ansible.builtin.copy:\n"
+        "        src: ../systemd/app.service\n"
+        "        dest: /etc/systemd/system/app.service\n"
+        "      notify: restart app\n"
+        "  handlers:\n"
+        "    - name: restart app\n"
+        "      ansible.builtin.systemd:\n"
+        "        name: app\n"
+        "        state: restarted\n"
+        "        daemon_reload: true\n"
+        "        enabled: true\n"
+        if substrate == "systemd-unit" else
+        "    # The substrate deploys through its own mechanism; this playbook\n"
+        "    # only stages the application onto the host.\n"
+    )
     (directory / "site.yml").write_text(
         "# Chosen because this is what the team already operates. They maintain\n"
         "# it after the engagement ends, and the tool they cannot maintain is\n"
@@ -234,18 +259,7 @@ def _ansible(deploy: Path) -> None:
         "        src: ../../app\n"
         "        dest: /opt/app/\n"
         "        owner: app\n"
-        "    - name: Install the service unit\n"
-        "      ansible.builtin.copy:\n"
-        "        src: ../systemd/app.service\n"
-        "        dest: /etc/systemd/system/app.service\n"
-        "      notify: restart app\n"
-        "  handlers:\n"
-        "    - name: restart app\n"
-        "      ansible.builtin.systemd:\n"
-        "        name: app\n"
-        "        state: restarted\n"
-        "        daemon_reload: true\n"
-        "        enabled: true\n"
+        f"{unit_tasks}"
     )
     (directory / "inventory.ini").write_text(
         "# Hosts that already exist. Nothing here creates a machine, because\n"
@@ -303,42 +317,53 @@ def _readme(deploy: Path, substrate: str | None, provisioner: str | None,
 
 
 def _teardown(deploy: Path, substrate: str | None, provisioner: str | None) -> None:
-    """Written whatever the tool.
+    """Written whatever the tools -- both of them.
 
-    Only one provisioning option knows what it created. Where the tool has no
-    destroy, the manual steps go here rather than being left implied -- an FDE
-    who cannot cleanly undo a demo has a problem.
+    The substrate and the provisioner each leave things behind, and a
+    teardown that covers only one is how a demo's service unit outlives the
+    engagement. An earlier version branched on provisioner *or* substrate:
+    choosing Terraform -- the one tool that can destroy what it made --
+    was exactly what suppressed the substrate's manual steps.
     """
+    substrate_steps = {
+        "systemd-unit": "sudo systemctl disable --now app\n"
+                        "sudo rm /etc/systemd/system/app.service\n"
+                        "sudo systemctl daemon-reload\n"
+                        "sudo rm -rf /opt/app /var/lib/app\n"
+                        "sudo userdel app\n",
+        "compose": "cd deploy && docker compose down --volumes\n"
+                   "docker image rm $(docker compose config --images)\n",
+        "kubernetes-manifests": "kubectl delete -f deploy/manifests\n"
+                                "# check for retained PersistentVolumes\n"
+                                "kubectl get pv | grep app\n",
+    }.get(substrate or "", "# nothing was deployed\n")
+
+    sections = [
+        "## The application\n\n"
+        "The substrate has no concept of un-doing, so these are manual and "
+        "written out rather than left implied.\n\n"
+        f"```bash\n{substrate_steps}```\n"
+    ]
     if provisioner == "terraform-module":
-        steps = (
+        sections.append(
+            "## The environment\n\n"
             "```bash\ncd deploy/terraform\nterraform destroy\n```\n\n"
             "This tool tracks what it created, so this takes it away cleanly. "
             "Check that no state remains in a remote backend afterwards.\n"
         )
     else:
-        steps = (
-            "This provisioner has no concept of un-doing, so the steps are "
-            "manual and are written out rather than left implied.\n\n"
-            "```bash\n"
-            + {
-                "systemd-unit": "sudo systemctl disable --now app\n"
-                                "sudo rm /etc/systemd/system/app.service\n"
-                                "sudo systemctl daemon-reload\n"
-                                "sudo rm -rf /opt/app /var/lib/app\n"
-                                "sudo userdel app\n",
-                "compose": "cd deploy && docker compose down --volumes\n"
-                           "docker image rm $(docker compose config --images)\n",
-                "kubernetes-manifests": "kubectl delete -f deploy/manifests\n"
-                                        "# check for retained PersistentVolumes\n"
-                                        "kubectl get pv | grep app\n",
-            }.get(substrate or "", "# nothing was deployed\n")
-            + "```\n\n"
-            "Then confirm nothing was left behind: data directories, secrets in "
-            "a vault, DNS entries, and anything created by hand during the "
-            "engagement.\n"
+        sections.append(
+            "## The environment\n\n"
+            "This provisioner has no destroy. Whatever it configured -- users, "
+            "packages, mounts -- is removed by hand, or by re-running the "
+            "provisioning against a clean target.\n"
         )
-
-    (deploy / "TEARDOWN.md").write_text(f"# Taking it away\n\n{steps}")
+    sections.append(
+        "Then confirm nothing was left behind: data directories, secrets in "
+        "a vault, DNS entries, and anything created by hand during the "
+        "engagement.\n"
+    )
+    (deploy / "TEARDOWN.md").write_text("# Taking it away\n\n" + "\n".join(sections))
 
 
 def _approach(architecture, component: str) -> str | None:

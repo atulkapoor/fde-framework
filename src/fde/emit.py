@@ -104,6 +104,17 @@ def _refuse_if_unsound(
     if out.exists() and any(out.iterdir()):
         raise BuildRefused(f"{out} is not empty; refusing to write over existing work")
 
+    # An architecture in which nothing runs is a no-op wearing a project's
+    # clothes: it imports cleanly, returns its input unchanged, and passes an
+    # empty evaluation. The usual cause is a profile value the registry does
+    # not declare, which decides nothing all the way down.
+    if architecture.decisions and not architecture.realizations:
+        raise BuildRefused(
+            "no component has an implementation -- every step is undecided or "
+            "unrealizable. Check the profile's values against the registry's "
+            "declared ones; an unrecognised value decides nothing, silently."
+        )
+
     # The pairs file is read last during emission, which is exactly where a
     # malformed line must not first be discovered -- half a project would
     # already be on disk under a success message that scrolled past.
@@ -253,24 +264,42 @@ def _write_pipeline(architecture: Architecture, out: Path) -> None:
     irreversible step with nothing in front of it, and the design document
     described protections the code did not have.
     """
+    def _runs(node) -> bool:
+        node_entry = architecture.graph.nodes.get(node)
+        return node_entry is not None and node_entry.component and not node_entry.unfilled
+
     ordered = [
         n for n in architecture.graph.ordered()
         if n.component or n.type in ("ApprovalGate", "Critic")
     ]
-    controls = [n for n in ordered if not n.component]
+    # A control guarding a step that is not in the pipeline is worse than
+    # absent: a reader sees a governed integration that does not exist.
+    controls = [
+        n for n in ordered
+        if not n.component and _runs(_guarded(architecture, n.id))
+    ]
     if controls:
         _write_controls(architecture, out)
+    control_ids = {n.id for n in controls}
 
-    component_names = sorted({n.component for n in ordered if n.component})
+    running = sorted({n.component for n in ordered if n.component and not n.unfilled})
     imports = "\n".join(
-        f"from app.components import {name}" for name in component_names
+        f"from app.components import {name}" for name in running
     )
     if controls:
         imports = f"from app import controls\n{imports}"
+    if architecture.graph.sensitive_nodes():
+        # Importing the pipeline is what starts the system, so this is where
+        # the placement check has to live -- a boundary module nothing
+        # imports is a boundary reviewed in a document.
+        imports = (
+            "from app import boundary  # noqa: F401 -- placement checked at import\n"
+            + imports
+        )
 
     lines = []
     for n in ordered:
-        if n.type == "ApprovalGate":
+        if n.type == "ApprovalGate" and n.id in control_ids:
             guarded = _guarded(architecture, n.id)
             key = architecture.graph.nodes.get(guarded)
             key_arg = (
@@ -280,12 +309,12 @@ def _write_pipeline(architecture: Architecture, out: Path) -> None:
             lines.append(
                 f"    ({n.id!r}, controls.ApprovalGate(guards={guarded!r}{key_arg})),"
             )
-        elif n.type == "Critic":
+        elif n.type == "Critic" and n.id in control_ids:
             lines.append(
                 f"    ({n.id!r}, controls.Critic("
                 f"guards={_guarded(architecture, n.id)!r})),"
             )
-        elif not n.unfilled:
+        elif n.component and not n.unfilled:
             lines.append(
                 f"    ({n.component!r}, {n.component}.{_class_name(n.component)}()),"
             )
@@ -577,11 +606,20 @@ if __name__ == "__main__":
 
 
 def _write_project_file(out: Path) -> None:
+    # Packages named explicitly: the tree also holds evals/, deploy/ and
+    # ops/, and setuptools refuses a flat layout with several top-level
+    # directories -- so the emitted CI's `pip install -e .` died at install,
+    # before the evaluation it exists to gate ever ran.
     (out / "pyproject.toml").write_text(
         "[project]\n"
         'name = "generated"\n'
         'version = "0.1.0"\n'
-        'requires-python = ">=3.11"\n'
+        'requires-python = ">=3.11"\n\n'
+        "[build-system]\n"
+        'requires = ["setuptools>=68"]\n'
+        'build-backend = "setuptools.build_meta"\n\n'
+        "[tool.setuptools]\n"
+        'packages = ["app", "app.components"]\n'
     )
 
 

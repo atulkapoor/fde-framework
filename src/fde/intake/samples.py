@@ -76,11 +76,22 @@ def load_pairs(path: str | Path) -> list[dict[str, Any]]:
     for number, line in enumerate(Path(path).read_text().splitlines(), start=1):
         if not line.strip():
             continue
-        record = json.loads(line)
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"{path}:{number} is not valid JSON -- {exc}") from exc
         if "output" not in record:
             raise ValueError(
                 f"{path}:{number} has no 'output'. A pair without the answer is an "
                 f"input, and an input teaches nothing about what correct looks like."
+            )
+        if "id" not in record:
+            # Everything downstream keys on it: the golden set, the failure
+            # report, the needs-attention queue. Discovered here with a line
+            # number, not later as a KeyError with half a project on disk.
+            raise ValueError(
+                f"{path}:{number} has no 'id'. Every pair needs one so a "
+                f"failure can be pointed at."
             )
         pairs.append(record)
     return pairs

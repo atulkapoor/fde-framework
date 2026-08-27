@@ -129,14 +129,24 @@ def _runbook(architecture, registry) -> str:
 
 
 def _first_place_to_look(architecture, registry) -> str:
-    """The earliest component whose quality bounds the rest."""
-    if registry is None:
-        return "perception"
+    """The earliest *decided* component whose quality bounds the rest.
+
+    Restricted to what is actually in the system: the caps chain runs
+    through components that may be undecided here, and a 3am instruction
+    pointing at a module whose only content is a raise helps nobody.
+    """
     decided = set(architecture.decisions.decided())
+    fallback = min(decided) if decided else "the first step in app/pipeline.py"
+    if registry is None:
+        return "perception" if "perception" in decided else fallback
     candidates = [c for c in ("reasoning", "representation", "retrieval") if c in decided]
     if not candidates:
-        return "perception"
-    return earliest_cap(candidates[0], registry.components)
+        return "perception" if "perception" in decided else fallback
+    earliest = earliest_cap(candidates[0], registry.components)
+    if earliest in decided:
+        return earliest
+    # Walk back down toward the decided part of the chain.
+    return candidates[0]
 
 
 # --- objectives ----------------------------------------------------------
@@ -303,15 +313,12 @@ def _ci(architecture, out: Path) -> None:
         "      - run: pip install -e .\n\n"
         f"{boundary_step}"
         "      # Gating on tests alone measures whether the code runs, not\n"
-        "      # whether it is right. The evaluation is the one that says so.\n"
+        "      # whether it is right. The evaluation is the one that says so --\n"
+        "      # and it prints every layer, adversarial included, so scoring\n"
+        "      # well on golden and badly on adversarial is visible in this\n"
+        "      # step's own output rather than averaged away.\n"
         "      - name: Evaluate\n"
-        "        run: python evals/harness.py --min-score 0.0\n\n"
-        "      # Tracked separately and never averaged in. Scoring well on golden\n"
-        "      # and badly on adversarial means nobody has attacked it yet.\n"
-        "      - name: Adversarial cases\n"
-        "        run: python evals/harness.py --min-score 0.0 2>&1 | tee eval.txt\n"
-        "      - name: Report\n"
-        "        run: grep adversarial eval.txt || true\n"
+        "        run: python evals/harness.py --min-score 0.0\n"
     )
 
 
