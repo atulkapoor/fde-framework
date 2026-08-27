@@ -38,4 +38,4 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
   irreversible step it guards.
 
 ## [0.1.0] — unreleased target
-First tagged release: pending LICENSE decision and public flip.
+First tagged release. The repository is public under Apache 2.0.
