@@ -63,27 +63,42 @@ def test_unmeasured_structured_extraction_reaches_a_model(reg):
     assert decision.approach == "llm"
 
 
-def test_supervised_approaches_ask_whether_labels_exist(reg):
-    """finetune and classical-ml literally cannot work without labels, and
-    neither used to test the one dimension that says whether any exist."""
-    without = decide_component("reasoning", {
+def test_unlabelled_classification_still_gets_its_features_built(reg):
+    """A label requirement is a modelling requirement. Bolting it onto an
+    approach that also serves representation once killed feature-building
+    for every unlabelled classification engagement -- representation needs
+    no labels."""
+    decision = decide_component("representation", {
         "output_shape": "classification", "labelled_count": 0,
+        "corpus_size": 5_000, "confidence_calibrated": False,
+        "cheap_path_coverage": 0.5,
     }, reg)
-    assert without.approach != "classical-ml"
-    with_labels = decide_component("representation", {
-        "output_shape": "classification", "labelled_count": 50_000,
-    }, reg)
-    assert with_labels.approach == "classical-ml"
+    assert decision.approach == "classical-ml"
 
 
-def test_a_tight_latency_budget_rules_out_a_remote_endpoint(reg):
-    """The budget dimension now decides something: sub-100ms cannot be met
-    across somebody else's network, which is physics rather than pricing."""
+def test_finetune_is_reached_by_override_not_first_decision(reg):
+    """Simplest-first means the prompted model always wins the opening move
+    -- the corpus's own rule. The test is that llm wins, not that finetune
+    is merely 'not chosen' (an assertion None would satisfy)."""
+    decision = decide_component("reasoning", {
+        "output_shape": "freeform", "labelled_count": 200_000,
+    }, reg)
+    assert decision.approach == "llm"
+    assert any(r.id == "finetune" for r in decision.rejected)
+
+
+def test_a_tight_latency_budget_selects_your_own_hardware(reg):
+    """Sub-100ms cannot cross somebody else's network and cannot survive a
+    cold start -- so the answer is running it yourself, not a dead zone. An
+    earlier version asserted `!= managed-api`, which None satisfied: the
+    test certified the exact outcome it was written to prevent."""
     decision = decide_component("serving", {
         "output_shape": "freeform", "data_residency": "may_leave",
         "latency_budget_ms": 50, "human_waiting": "yes",
+        "accelerator": "single", "operates_after_handover": "platform_team",
+        "hosting": "customer-vpc", "corpus_size": 10_000,
     }, reg)
-    assert decision.approach != "managed-api"
+    assert decision.approach == "self-hosted"
 
 
 # --- honesty where no approach can fire ------------------------------------
@@ -91,10 +106,13 @@ def test_a_tight_latency_budget_rules_out_a_remote_endpoint(reg):
 
 def test_a_true_conflict_is_named_not_blamed_on_ignorance(reg):
     """Everything known, every approach ruled out: saying 'not enough is
-    known' sends somebody to ask questions that cannot help."""
+    known' sends somebody to ask questions that cannot help. The profile
+    uses a declared query_pattern value -- an earlier version used a value
+    the dimension does not have, so 'fully specified' was itself a lie."""
+    assert "comparative" in reg.dimensions["query_pattern"].values
     decision = decide_component("embedding", {
         "data_residency": "cannot_leave", "operates_after_handover": "nobody_yet",
-        "corpus_size": 100_000, "query_pattern": "semantic",
+        "corpus_size": 100_000, "query_pattern": "comparative",
         "output_shape": "structured", "hosting": "on-prem",
     }, reg)
     assert decision.approach is None
@@ -103,10 +121,12 @@ def test_a_true_conflict_is_named_not_blamed_on_ignorance(reg):
     assert "cannot_leave" in decision.rationale
 
 
-def test_missing_answers_are_still_reported_as_missing(reg):
+def test_missing_answers_are_reported_as_missing(reg):
+    """Unconditional -- a former version was `if approach is None:`, which
+    disarms itself the day the profile starts deciding."""
     decision = decide_component("serving", {"output_shape": "freeform"}, reg)
-    if decision.approach is None:
-        assert "unanswered" in decision.rationale
+    assert decision.approach is None
+    assert "unanswered" in decision.rationale
 
 
 # --- the sweep -------------------------------------------------------------

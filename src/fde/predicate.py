@@ -10,6 +10,14 @@ Two rules matter more than the grammar:
   the normal state during intake; the gates decide whether that is acceptable.
 - **A predicate that cannot be read is an error, never false.** Silently false
   would drop a component and nobody would ever notice.
+
+One consequence deserves stating because it inverts by context. Unknown-is-false
+makes `applies_when` fail closed (an approach is not admitted on ignorance) and
+makes `avoid_when` fail **open** -- a conjunctive avoid with one unknown atom
+does not fire even when the other atom is known bad, so the approach is
+*permitted* on ignorance. Author conjunctive avoids only where a lower rung
+exists to win by simplicity anyway, or split them into single-atom lines, each
+of which fires on its own.
 """
 
 from __future__ import annotations

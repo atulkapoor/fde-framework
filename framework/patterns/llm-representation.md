@@ -1,12 +1,12 @@
 ---
 id: llm-representation
 component: representation
-approach: llm
+approach: llm-extraction
 realizations:
   - {stack: plain-python, template: representation/llm.plain.py.j2, provides: Mapper}
 evidence: {case_ids: [structured-extraction], confidence: medium, last_verified: 2026-08-27}
 ---
-Implements llm for representation, satisfying Mapper.
+Implements llm-extraction for representation, satisfying Mapper.
 
 The opening move for structured extraction before anything has been measured:
 a model decoding into the declared contract, behind the same Mapper interface

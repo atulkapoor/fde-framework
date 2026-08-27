@@ -3,7 +3,11 @@ id: self-hosted
 name: Self-hosted
 complexity: 2
 components: [serving]
-applies_when: [data_residency == cannot_leave, hosting == air-gapped, hosting == on-prem]
+applies_when:
+  - data_residency == cannot_leave
+  - hosting == air-gapped
+  - hosting == on-prem
+  - latency_budget_ms < 100
 avoid_when:
   - operates_after_handover == nobody_yet
   - accelerator == none and human_waiting == yes

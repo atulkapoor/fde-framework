@@ -101,6 +101,7 @@ def decide_component(
 
     applicable: list[Approach] = []
     rejected: list[Rejected] = []
+    still_askable: list[Approach] = []
 
     for approach in candidates:
         blocked = [c for c in approach.avoid_when if holds(c, profile, registry)]
@@ -113,6 +114,9 @@ def decide_component(
             rejected.append(
                 Rejected(approach.id, f"nothing here matches {' or '.join(approach.applies_when)}")
             )
+            # Not ruled out -- just not ruled in. If its applies conditions
+            # reference something unanswered, an answer could still admit it.
+            still_askable.append(approach)
             continue
         applicable.append(approach)
 
@@ -123,10 +127,15 @@ def decide_component(
         # ruled out, the facts contradict each other -- and reporting that as
         # "not enough is known" sends somebody to ask more questions that
         # cannot help. Name the culprits instead.
+        # Only dimensions whose answer could still admit an approach: the
+        # applies conditions of candidates that were not ruled out. Collecting
+        # from every candidate's every predicate once told a user to go ask
+        # four questions none of which could change the outcome -- the exact
+        # misdirection this branch exists to prevent.
         unknowns = sorted({
             dimension
-            for approach in candidates
-            for condition in [*approach.applies_when, *approach.avoid_when]
+            for approach in still_askable
+            for condition in approach.applies_when
             for dimension in _referenced(condition)
             if profile.get(dimension) is None
         })

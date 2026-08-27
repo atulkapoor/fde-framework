@@ -195,6 +195,21 @@ def find_gaps(
                 )
             )
 
+    # A dimension without a weight is invisible to completeness and to the
+    # missing-questions list -- not wrong, just silently absent, which is the
+    # failure mode weights-in-frontmatter were meant to end.
+    for dimension in registry.dimensions.values():
+        if dimension.weight <= 0:
+            gaps.append(
+                Gap(
+                    kind="unweighted_dimension",
+                    detail=(
+                        f"{dimension.id}: no weight declared, so completeness "
+                        f"ignores it and the interview never lists it as missing"
+                    ),
+                )
+            )
+
     # Evidence has to point at something. A case with no profile, no decisions
     # and no outcome supports no claim, and a confidence rating that traces to
     # one is decoration -- reported per case, with how much leans on it.

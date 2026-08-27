@@ -14,6 +14,13 @@ respond, not *what* is true; anything that changes weekly belongs in retrieval,
 not in weights. Train only on verified pairs -- unverified rows are an asset,
 but they are mined rather than trained on.
 
+**Reached by graduation or override, never by the first decision.** The
+prompted model is simpler and applies wherever this does, so
+simplest-first always chooses it first -- which is this corpus's own
+rule: try the model before adapting it, and let the measured gap argue
+for adaptation. Until calibrated graduation triggers exist, the road
+here is `fde override`, with the measured gap as the reason.
+
 The label count is in the applies condition because it is the whole question:
 adaptation without enough verified pairs is not available, whatever the output
 shape, and an approach that never asked how many labels exist would recommend

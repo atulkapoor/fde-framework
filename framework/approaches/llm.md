@@ -2,7 +2,7 @@
 id: llm
 name: Prompted model
 complexity: 2
-components: [reasoning, representation]
+components: [reasoning]
 applies_when: [output_shape == freeform, output_shape == structured]
 avoid_when: [output_shape == classification, output_shape == decision]
 evidence: {case_ids: [studio-style], confidence: medium, last_verified: 2026-08-21}

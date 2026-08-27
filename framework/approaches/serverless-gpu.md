@@ -4,7 +4,11 @@ name: Serverless GPU
 complexity: 1
 components: [serving]
 applies_when: [human_waiting == no]
-avoid_when: [human_waiting == yes, data_residency == cannot_leave, hosting == air-gapped]
+avoid_when:
+  - human_waiting == yes
+  - data_residency == cannot_leave
+  - hosting == air-gapped
+  - latency_budget_ms < 100
 evidence: {case_ids: [studio-style], confidence: medium, last_verified: 2026-08-21}
 ---
 Rented GPUs that scale to zero between jobs.
