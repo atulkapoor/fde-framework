@@ -28,6 +28,7 @@ from typing import Any
 
 import yaml
 
+from fde.models.base import says_something
 from fde.models.fact import Fact
 from fde.models.profile import Profile
 from fde.models.respondent import Respondent
@@ -166,7 +167,7 @@ class Engagement:
         return yaml.safe_load(self.baseline_path.read_text()) or None
 
     def record_data_access(self, note: str, at: str) -> None:
-        state = self.gate_state()
+        state = self._raw_gate_state()
         state["data_access"] = {"note": note, "at": at}
         self._write_gate_state(state)
 
@@ -178,20 +179,23 @@ class Engagement:
         gate's reason at the moment of waiving -- when that changes, the
         waiver no longer covers it, because nobody agreed to the new problem.
         """
-        state = self.gate_state()
-        waivers = [w for w in state.get("overrides", []) if w.get("gate") != gate]
+        state = self._raw_gate_state()
+        waivers = [
+            w for w in state.get("overrides", [])
+            if not (isinstance(w, dict) and w.get("gate") == gate)
+        ]
         waivers.append({"gate": gate, "reason": reason, "at": at, "against": against})
         state["overrides"] = waivers
         self._write_gate_state(state)
 
-    def gate_state(self) -> dict[str, Any]:
-        """Recorded gate state, shape-checked.
+    def _raw_gate_state(self) -> dict[str, Any]:
+        """The file as written, for read-modify-write.
 
-        Hand-editing this file is expected -- it is plain YAML in an
-        engagement directory. What must not happen is a hand-edited shape
-        reaching the gate logic as a traceback, or an unrecognised shape
-        being read as permission. Anything that does not parse to the
-        expected structure is dropped, loudly ignored rather than trusted.
+        Writers must not round-trip through the normalising reader: it is a
+        filter, and filtering on write silently deleted hand-written content
+        -- a mis-named attestation block vanished the moment somebody waived
+        an unrelated gate. Unknown keys and odd shapes pass through a write
+        untouched; only the reader ignores them.
         """
         if not self.gates_path.exists():
             return {}
@@ -199,18 +203,34 @@ class Engagement:
             raw = yaml.safe_load(self.gates_path.read_text())
         except yaml.YAMLError as exc:
             raise ValueError(f"{self.gates_path}: cannot read gate state -- {exc}") from exc
+        if raw is None:
+            return {}
         if not isinstance(raw, dict):
             raise ValueError(
                 f"{self.gates_path}: expected a mapping of gate state, "
                 f"found {type(raw).__name__}"
             )
+        return raw
+
+    def gate_state(self) -> dict[str, Any]:
+        """Recorded gate state, normalised for the gate logic.
+
+        Hand-editing this file is expected -- it is plain YAML in an
+        engagement directory. Two things must not happen: a hand-edited
+        shape reaching the gate logic as a traceback, and an unrecognised
+        shape being read as permission. So every field the logic will touch
+        comes out of here with its type guaranteed, and everything else is
+        ignored on read (never deleted -- writers use the raw file).
+        """
+        raw = self._raw_gate_state()
 
         state: dict[str, Any] = {}
         access = raw.get("data_access")
-        # Only a well-formed attestation counts. A bare truthy value -- a
-        # string saying access is *promised*, say -- must never read as
-        # evidence that credentials returned rows.
-        if isinstance(access, dict) and str(access.get("note", "")).strip():
+        # Only a well-formed attestation counts: a mapping whose note a
+        # person could read. A bare truthy value, a note of 0.0, or a
+        # zero-width space must never read as evidence that credentials
+        # returned rows -- that is the exact bypass this reader closes.
+        if isinstance(access, dict) and says_something(access.get("note")):
             state["data_access"] = access
 
         waivers = raw.get("overrides", [])
@@ -220,11 +240,27 @@ class Engagement:
                 f"found {type(waivers).__name__}. A hand-edit that quietly "
                 f"does nothing is worse than one that is refused."
             )
-        if waivers:
-            state["overrides"] = [
-                w for w in waivers
-                if isinstance(w, dict) and w.get("gate") and str(w.get("reason", "")).strip()
-            ]
+        kept = []
+        for waiver in waivers:
+            if not isinstance(waiver, dict):
+                continue
+            if not isinstance(waiver.get("gate"), str):
+                continue
+            if not says_something(waiver.get("reason")):
+                continue
+            against = waiver.get("against")
+            kept.append({
+                "gate": waiver["gate"],
+                "reason": waiver["reason"],
+                "at": str(waiver.get("at", "")),
+                # Normalised to a string always. An explicit `against: null`
+                # once meant "applies to whatever the gate says, forever" --
+                # the unbounded waiver, reachable by typing one fewer word.
+                # An empty string fails every match, so it fails closed.
+                "against": against if isinstance(against, str) else "",
+            })
+        if kept:
+            state["overrides"] = kept
         return state
 
     def _write_gate_state(self, state: dict[str, Any]) -> None:

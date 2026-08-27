@@ -19,6 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from fde.models.base import says_something
 from fde.models.profile import Profile
 
 # What makes a baseline usable. Fewer than these and a post-launch comparison
@@ -140,10 +141,10 @@ class Status:
                 f"move here, and designing against data nobody has seen is how "
                 f"three weeks disappear."
             )
-        if not reason.strip():
+        if not says_something(reason):
             raise ValueError(
-                f"overriding {name} needs a reason; a gate waved through without "
-                f"one is a gate nobody considered"
+                f"overriding {name} needs a reason a person could read; a gate "
+                f"waved through without one is a gate nobody considered"
             )
         if target.passed:
             raise ValueError(

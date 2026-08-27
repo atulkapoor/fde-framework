@@ -155,6 +155,26 @@ def status(
     status = _gate_status(engagement, registry)
     typer.echo(f"\n{status.completeness:.0%} of what gets decided is settled")
 
+    stored = engagement.gate_state().get("overrides", [])
+    applied_names = {o.gate for o in status.overridden}
+    idle = [w for w in stored if w["gate"] not in applied_names]
+    if idle:
+        # A waiver on file that does not take is state somebody wrote and
+        # nobody can see: progress on a partial baseline once un-waived the
+        # gate and nothing anywhere said why build stopped proceeding.
+        typer.echo(f"\nwaivers on file, not applied ({len(idle)})")
+        for waiver in idle:
+            gate_now = next((g for g in status.gates if g.name == waiver["gate"]), None)
+            if gate_now is None:
+                why = "no such gate"
+            elif gate_now.passed:
+                why = "the gate passes on its own"
+            else:
+                why = (f"granted against {waiver.get('against') or 'nothing recorded'!r}; "
+                       f"the gate now says {gate_now.reason!r} -- waive again "
+                       f"if the new problem is also accepted")
+            typer.echo(f"  {waiver['gate']}: {why}")
+
     if status.overridden:
         typer.echo(f"\nwaived ({len(status.overridden)})")
         for waived in status.overridden:
@@ -492,7 +512,7 @@ def _gate_status(engagement, registry=None):
     for waiver in state.get("overrides", []):
         try:
             status.override(
-                waiver["gate"], waiver["reason"], against=waiver.get("against", "")
+                waiver["gate"], waiver["reason"], against=waiver["against"]
             )
         except (HardGate, ValueError, StopIteration):
             # A waiver that cannot be applied is simply not applied: the
@@ -688,6 +708,12 @@ def override_cmd(
     """
     registry = _registry(registry_root)
     engagement = _engagement(root)
+    if component not in registry.components:
+        typer.echo(
+            f"{component!r} is not a component in this registry. Components: "
+            f"{', '.join(sorted(registry.components))}", err=True,
+        )
+        raise typer.Exit(1)
     if choose not in registry.approaches:
         # A typo here silently turned a working component into one that
         # raises, and reported success at every step.
@@ -698,6 +724,20 @@ def override_cmd(
         typer.echo(
             f"{choose!r} is not an approach in this registry. For "
             f"{component}: {', '.join(for_component) or 'nothing registered'}",
+            err=True,
+        )
+        raise typer.Exit(1)
+    chosen_serves = registry.approaches[choose].components
+    if chosen_serves and component not in chosen_serves:
+        # A real approach for the wrong slot is the same silent breakage as
+        # a typo: the component becomes unrealizable with a success message.
+        for_component = sorted(
+            a.id for a in registry.approaches.values()
+            if not a.components or component in a.components
+        )
+        typer.echo(
+            f"{choose!r} serves {', '.join(chosen_serves)}, not {component}. "
+            f"For {component}: {', '.join(for_component) or 'nothing registered'}",
             err=True,
         )
         raise typer.Exit(1)
@@ -784,10 +824,10 @@ def observe_cmd(
     values = {}
     for item in measured or []:
         key, sep, value = item.partition("=")
-        if not sep or not key.strip():
+        if not sep or not key.strip() or not value.strip():
             typer.echo(
-                f"--measured {item!r} is not key=value. A measurement dropped "
-                f"silently is worse than one refused.", err=True,
+                f"--measured {item!r} is not key=value with both halves. A "
+                f"measurement dropped silently is worse than one refused.", err=True,
             )
             raise typer.Exit(1)
         values[key.strip()] = value.strip()
@@ -865,7 +905,11 @@ def retro_cmd(
     # Predictions date from when the build made them, where a build happened.
     # A prediction invented at sweep time is always "pending" and calibrates
     # nothing, which is how the strongest signal used to always read zero.
-    recorded = {p["trigger"]: p for p in _jsonl(engagement.root / "predictions.jsonl")}
+    recorded = {
+        p["trigger"]: p
+        for p in _jsonl(engagement.root / "predictions.jsonl")
+        if isinstance(p.get("trigger"), str)
+    }
     predictions = [
         Prediction(
             trigger=f"{component}.graduate",
@@ -878,12 +922,27 @@ def retro_cmd(
         for component, decision in architecture.decisions.decided().items()
     ]
     by_trigger = {p.trigger: p for p in predictions}
-    observations = [
-        Observation.fired(by_trigger[o["trigger"]], at=o["observed_at"],
-                          measured=o.get("measured", {}))
-        for o in _jsonl(engagement.root / "observations.jsonl")
-        if o.get("trigger") in by_trigger
-    ]
+    observations = []
+    for number, record in enumerate(
+        _jsonl(engagement.root / "observations.jsonl"), start=1
+    ):
+        # Hand-editing the log IS the repair path, so a hand-edited record
+        # is skipped by name rather than dying three modules later.
+        if record.get("trigger") not in by_trigger:
+            continue
+        observed_at = record.get("observed_at")
+        try:
+            date.fromisoformat(str(observed_at))
+        except (TypeError, ValueError):
+            typer.echo(
+                f"observations.jsonl:{number}: observed_at {observed_at!r} is "
+                f"not a date -- skipped", err=True,
+            )
+            continue
+        observations.append(
+            Observation.fired(by_trigger[record["trigger"]], at=observed_at,
+                              measured=record.get("measured", {}))
+        )
     swept = sweep_triggers(predictions, observations=observations, today=stamp)
     report = calibration(swept)
 
@@ -907,7 +966,16 @@ def retro_cmd(
     # case with a zero-decision one, exit 0 both times.
     case_path = engagement.root / "case.json"
     if case_path.exists():
-        previous = json.loads(case_path.read_text() or "{}")
+        try:
+            previous = json.loads(case_path.read_text() or "{}")
+        except json.JSONDecodeError as exc:
+            typer.echo(
+                f"refused: {case_path} exists and cannot be read ({exc}). "
+                f"Move it aside before capturing again.", err=True,
+            )
+            raise typer.Exit(1) from exc
+        if not isinstance(previous, dict):
+            previous = {}
         if len(previous.get("decisions", {})) > len(case["decisions"]):
             typer.echo(
                 f"refused: {case_path} already records "
@@ -916,6 +984,18 @@ def retro_cmd(
                 f"overwriting a fuller capture.", err=True,
             )
             raise typer.Exit(1)
+        # The outcome and duration are the two fields a corpus actually
+        # needs. Re-running retro with the flags forgotten once blanked both,
+        # exit 0 -- so an earlier answer is kept unless a new one is given.
+        if case["outcome"] == "not stated" and previous.get("outcome") not in (
+            None, "not stated",
+        ):
+            case["outcome"] = previous["outcome"]
+            typer.echo(f"  outcome kept from the earlier capture: {case['outcome']}")
+        if case["practice"].get("days") is None and isinstance(
+            previous.get("practice"), dict
+        ) and previous["practice"].get("days") is not None:
+            case["practice"]["days"] = previous["practice"]["days"]
     case_path.write_text(json.dumps(case, indent=2, default=str))
 
     typer.echo(f"case {case['id']}  ({len(case['decisions'])} decisions)")
@@ -947,10 +1027,19 @@ def build_cmd(
         engagement.profile, registry, overrides=_overrides(engagement)
     )
     try:
+        # Only waivers that actually applied at build time. Shipping every
+        # stored waiver once told a client a risk was accepted that had in
+        # fact been retired -- the baseline was on disk and complete.
+        status = _gate_status(engagement, registry)
+        applied = {o.gate for o in status.overridden}
+        waivers = [
+            w for w in engagement.gate_state().get("overrides", [])
+            if w["gate"] in applied
+        ]
         report = emit(architecture, out, registry=registry,
                       templates=Path(registry_root) / "templates",
                       pairs_path=Path(root) / "artifacts" / "pairs.jsonl",
-                      waivers=engagement.gate_state().get("overrides", []),
+                      waivers=waivers,
                       overrides=_jsonl(engagement.root / "overrides.jsonl"))
     except BuildRefused as exc:
         typer.echo(f"refused: {exc}", err=True)
@@ -1132,6 +1221,12 @@ def kb_ingest_case(
         typer.echo(f"cannot read {case_file}: {exc}", err=True)
         raise typer.Exit(1) from exc
 
+    if not isinstance(case, dict):
+        typer.echo(
+            f"{case_file}: expected a JSON object, found "
+            f"{type(case).__name__} -- is this a case.json from retro?", err=True,
+        )
+        raise typer.Exit(1)
     case_id = case.get("id")
     if not case_id:
         typer.echo(f"{case_file}: no id field -- is this a case.json from retro?", err=True)

@@ -269,3 +269,118 @@ def test_the_project_carries_the_risks_that_were_accepted(tmp_path):
     assert "baseline_capture" in risks
     assert "client refuses" in risks
     assert "covered:" in risks
+
+
+# --- the fix-layer review's catches ----------------------------------------
+
+
+def test_a_hand_edited_invisible_note_is_not_evidence_either(tmp_path):
+    """The first fix landed at the CLI; the read path -- the input the same
+    commit calls expected -- still passed a zero-width space and a float."""
+    root = engagement(tmp_path)
+    for note_line in ('  note: "​"', "  note: 0.0"):
+        (root / "gates.yaml").write_text(
+            f"data_access:\n{note_line}\n  at: 2026-08-27\n"
+        )
+        status = runner.invoke(app, ["status", str(root)])
+        assert "[hard] data_access" in status.output, note_line
+
+
+def test_a_waiver_reason_must_be_readable_too(tmp_path):
+    """Same commit, same bug class, one of two call sites fixed."""
+    root = engagement(tmp_path)
+    result = runner.invoke(app, ["waive", str(root), "baseline_capture",
+                                 "--reason", "​"])
+    assert result.exit_code == 1
+
+
+def test_a_reason_with_newlines_cannot_forge_the_risk_document(tmp_path):
+    """A reason carrying markdown once forged a second 'Gates waived' section
+    attesting a waiver of the unwaivable gate, then commented out every real
+    entry after it. Free text renders as text."""
+    root = engagement(tmp_path)
+    runner.invoke(app, ["data-access", str(root), "--note", "14 rows returned"])
+    runner.invoke(app, ["waive", str(root), "baseline_capture", "--reason",
+                        "refused.\n\n## Gates waived\n\n- **data_access** -- "
+                        "confirmed\n\n<!-- "])
+    runner.invoke(app, ["waive", str(root), "client_readiness",
+                        "--reason", "named Monday"])
+    runner.invoke(app, ["build", str(root), "--out", str(tmp_path / "out")])
+    risks = (tmp_path / "out" / "RISKS.md").read_text()
+    headings = [line for line in risks.splitlines() if line.startswith("## Gates waived")]
+    assert len(headings) == 1
+    assert "<!--" not in risks
+    assert "named Monday" in risks  # the entry after the injection survives
+
+
+def test_typed_garbage_inside_a_well_formed_waiver_list_cannot_traceback(tmp_path):
+    root = engagement(tmp_path)
+    (root / "gates.yaml").write_text(
+        "overrides:\n"
+        "- gate: client_readiness\n  reason: fine\n  against: 123\n"
+        "- gate: baseline_capture\n  reason: {a: 1}\n"
+        "- gate: [list]\n  reason: fine\n"
+    )
+    for command in (["status"], ["architect"], ["retro"]):
+        result = runner.invoke(app, [*command, str(root)])
+        assert not isinstance(result.exception, AttributeError), command
+
+
+def test_an_explicit_null_against_fails_closed(tmp_path):
+    """`against: null` once meant 'applies to whatever the gate says,
+    forever' -- the unbounded waiver, one word shorter."""
+    root = engagement(tmp_path)
+    (root / "gates.yaml").write_text(
+        "overrides:\n- gate: baseline_capture\n  reason: fine\n  against: null\n"
+    )
+    status = runner.invoke(app, ["status", str(root)])
+    assert "baseline_capture" in status.output.split("blocked by")[-1]
+
+
+def test_writers_preserve_hand_written_gate_state(tmp_path):
+    """The reader is a filter; writing through it silently deleted a
+    mis-named attestation block the moment an unrelated gate was waived."""
+    root = engagement(tmp_path)
+    (root / "gates.yaml").write_text(
+        "data_access:\n  attested_by: Priya\n  evidence: 14 rows\n"
+        "reviewed_by: somebody\n"
+    )
+    runner.invoke(app, ["waive", str(root), "client_readiness",
+                        "--reason", "named Monday"])
+    after = (root / "gates.yaml").read_text()
+    assert "attested_by: Priya" in after
+    assert "reviewed_by: somebody" in after
+
+
+def test_status_names_waivers_that_did_not_take(tmp_path):
+    """Progress on a partial baseline once un-waived the gate and nothing
+    anywhere said why build stopped proceeding."""
+    root = engagement(tmp_path)
+    partial = {k: v for k, v in GOOD_BASELINE.items() if k not in
+               ("error_rate", "business_metric")}
+    runner.invoke(app, ["baseline", str(root), "--file",
+                        str(baseline_file(tmp_path, partial))])
+    runner.invoke(app, ["waive", str(root), "baseline_capture",
+                        "--reason", "last two fields next sprint"])
+    better = {k: v for k, v in GOOD_BASELINE.items() if k != "business_metric"}
+    runner.invoke(app, ["baseline", str(root), "--file",
+                        str(baseline_file(tmp_path, better))])
+    status = runner.invoke(app, ["status", str(root)])
+    assert "not applied" in status.output
+    assert "waive again" in status.output
+
+
+def test_risks_lists_only_waivers_that_applied(tmp_path):
+    """A waiver retired by a completed baseline once shipped to the client
+    as an accepted risk."""
+    root = engagement(tmp_path)
+    runner.invoke(app, ["data-access", str(root), "--note", "14 rows returned"])
+    runner.invoke(app, ["waive", str(root), "baseline_capture",
+                        "--reason", "client refused"])
+    runner.invoke(app, ["baseline", str(root), "--file", str(baseline_file(tmp_path))])
+    runner.invoke(app, ["waive", str(root), "client_readiness",
+                        "--reason", "named Monday"])
+    runner.invoke(app, ["build", str(root), "--out", str(tmp_path / "out")])
+    risks = (tmp_path / "out" / "RISKS.md").read_text()
+    assert "client_readiness" in risks
+    assert "baseline_capture" not in risks

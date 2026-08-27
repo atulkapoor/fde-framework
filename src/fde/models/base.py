@@ -72,3 +72,15 @@ class Evidence(BaseModel):
     last_verified: date | None = None
     verify_at_source: bool = False
     note: str | None = None
+
+
+def says_something(text: object) -> bool:
+    """Whether this is a sentence or an empty gesture.
+
+    str.strip() removes ASCII whitespace and nothing else, so a zero-width
+    space passes it -- which was once enough to satisfy the one gate the
+    framework says cannot be worked around. Checked here, once, because the
+    first fix landed at one call site and the same bypass stayed open at the
+    other two.
+    """
+    return isinstance(text, str) and any(ch.isalnum() for ch in text)

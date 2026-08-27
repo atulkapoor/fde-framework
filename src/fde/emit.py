@@ -101,39 +101,59 @@ def _write_risks(out: Path, waivers, overrides, architecture: Architecture) -> N
     receiving the project could not tell that the baseline gate had been
     waived, let alone that the baseline file was then deleted.
     """
+    def flat(text) -> str:
+        # One line, always, and no HTML. A reason carrying its own newlines
+        # once forged a second "Gates waived" section attesting a waiver of
+        # the gate that cannot be waived; an inline `<!--` would comment out
+        # every real entry after it even on one line. Free text renders as
+        # text, never as structure.
+        return " ".join(str(text or "").split()).replace("<", "&lt;")
+
+    undecided = architecture.decisions.undecided()
     lines = ["# Risks accepted", ""]
-    if not waivers and not overrides and not architecture.unrealizable:
+    if not waivers and not overrides and not architecture.unrealizable and not undecided:
         lines += [
             "No gate was waived, no recommendation overridden, and every "
-            "decided component has an implementation.",
+            "component in scope has an implementation.",
         ]
     if waivers:
         lines += ["## Gates waived", "",
-                  "Each was blocking. Somebody decided to proceed anyway, and "
-                  "this is who said what.", ""]
+                  "Each was blocking at build time. Somebody decided to "
+                  "proceed anyway, and this is who said what.", ""]
         for waiver in waivers:
             lines.append(
-                f"- **{waiver.get('gate')}** ({waiver.get('at', 'undated')}) -- "
-                f"{waiver.get('reason')}"
+                f"- **{flat(waiver.get('gate'))}** "
+                f"({flat(waiver.get('at')) or 'undated'}) -- "
+                f"{flat(waiver.get('reason'))}"
             )
             if waiver.get("against"):
-                lines.append(f"  - covered: {waiver['against']}")
+                lines.append(f"  - covered: {flat(waiver['against'])}")
         lines.append("")
     if overrides:
         lines += ["## Recommendations overridden", ""]
         for override in overrides:
             lines.append(
-                f"- **{override.get('component')}**: "
-                f"{override.get('recommended')} -> {override.get('chosen')} "
-                f"-- {override.get('because')}"
+                f"- **{flat(override.get('component'))}**: "
+                f"{flat(override.get('recommended'))} -> "
+                f"{flat(override.get('chosen'))} -- {flat(override.get('because'))}"
             )
             for conflict in override.get("conflicts_with") or []:
-                lines.append(f"  - conflicts with `{conflict}`")
+                lines.append(f"  - conflicts with `{flat(conflict)}`")
+        lines.append("")
+    if undecided:
+        lines += ["## In scope, undecided", "",
+                  "These components are needed and nothing could be chosen "
+                  "for them. Their modules raise on use. This is the largest "
+                  "risk in the project and it belongs on this page.", ""]
+        lines += [
+            f"- **{component}** -- {flat(architecture.decisions[component].rationale)}"
+            for component in undecided
+        ]
         lines.append("")
     if architecture.unrealizable:
         lines += ["## Decided without an implementation", ""]
         lines += [
-            f"- **{component}** -- {reason}"
+            f"- **{component}** -- {flat(reason)}"
             for component, reason in sorted(architecture.unrealizable.items())
         ]
         lines.append("")

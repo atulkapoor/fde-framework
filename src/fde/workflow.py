@@ -86,8 +86,10 @@ class WorkflowGraph:
 
         # A cycle would strand nodes; emit them at the end rather than lose
         # them silently -- a dropped step is worse than an oddly placed one.
-        emitted = {n.id for n in out}
-        out.extend(n for i, n in self.nodes.items() if i not in emitted)
+        # Compared by node identity, not dict key: a node stored under a key
+        # other than its id would otherwise be emitted twice.
+        emitted = {id(n) for n in out}
+        out.extend(n for n in self.nodes.values() if id(n) not in emitted)
         return out
 
     def predecessors(self, node_id: str) -> list[Node]:
