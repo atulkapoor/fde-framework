@@ -33,3 +33,5 @@ seed/
 
 # Sanitisation denylist. Contains the names it exists to keep out.
 .sanitisation-denylist
+.coverage
+coverage.xml
