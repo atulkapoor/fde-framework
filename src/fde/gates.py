@@ -398,7 +398,7 @@ def _licence_compatibility(
     if posture == "open":
         return Gate("licence_compatibility", True)
     if posture == "internal_only":
-        network = {s: l for s, l in tainted.items() if "AGPL" in l.upper()}
+        network = {s: lic for s, lic in tainted.items() if "AGPL" in lic.upper()}
         if not network:
             return Gate("licence_compatibility", True)
         return Gate(
