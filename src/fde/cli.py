@@ -8,6 +8,7 @@ through authoring content and the links do not resolve yet.
 from __future__ import annotations
 
 import json
+import re
 from datetime import date
 from pathlib import Path
 from typing import Annotated
@@ -46,7 +47,7 @@ from fde.models.fact import Fact
 from fde.models.profile import Profile
 from fde.models.respondent import Respondent, Role
 from fde.predicate import PredicateError, holds
-from fde.registry import KINDS, RegistryError, load_registry
+from fde.registry import KINDS, RegistryError, is_empty, load_registry
 from fde.scan import (
     GPU,
     Hardware,
@@ -63,6 +64,9 @@ kb = typer.Typer(help="Inspect the knowledge base in framework/.")
 app.add_typer(kb, name="kb")
 
 DEFAULT_ROOT = Path("framework")
+
+# What `fde retro` writes, and the only shape ingest will treat as a filename.
+CASE_ID = re.compile(r"case-[0-9a-f]{6,32}")
 
 
 @kb.command("validate")
@@ -387,6 +391,16 @@ def _next_session_id(engagement, label: str) -> str:
     return f"{existing + 1:04d}-{label}"
 
 
+def _says_something(text: str | None) -> bool:
+    """Whether this is a sentence or an empty gesture.
+
+    str.strip() removes ASCII whitespace and nothing else, so a zero-width
+    space passes it -- which was enough to satisfy the one gate the
+    framework says cannot be worked around.
+    """
+    return bool(text) and any(ch.isalnum() for ch in text)
+
+
 def _registry(root: Path):
     """Load the registry or say plainly why not.
 
@@ -395,10 +409,20 @@ def _registry(root: Path):
     -- which deserves the one-line answer, not a stack trace.
     """
     try:
-        return load_registry(root)
+        registry = load_registry(root)
     except RegistryError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
+    if is_empty(registry):
+        # An entry-less directory is the wrong directory, not a partial
+        # registry. Deciding from one produces an architecture of nothing,
+        # and retro would rewrite a captured case with it.
+        typer.echo(
+            f"{root}: no registry entries here, so nothing can be decided "
+            f"from it. Point --registry at a registry.", err=True,
+        )
+        raise typer.Exit(1)
+    return registry
 
 
 def _engagement(root: Path):
@@ -409,7 +433,12 @@ def _engagement(root: Path):
     client site reads as the tool being broken rather than the input.
     """
     try:
-        return load_engagement(root)
+        engagement = load_engagement(root)
+        # Read once here so a hand-edited gates.yaml fails as a sentence
+        # from whichever command touched it, not as a TypeError deep in the
+        # gate logic.
+        engagement.gate_state()
+        return engagement
     except FileNotFoundError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
@@ -462,8 +491,12 @@ def _gate_status(engagement, registry=None):
     )
     for waiver in state.get("overrides", []):
         try:
-            status.override(waiver["gate"], waiver["reason"])
+            status.override(
+                waiver["gate"], waiver["reason"], against=waiver.get("against", "")
+            )
         except (HardGate, ValueError, StopIteration):
+            # A waiver that cannot be applied is simply not applied: the
+            # gate stays standing, visibly, rather than vanishing.
             continue
     return status
 
@@ -534,8 +567,12 @@ def data_access_cmd(
     attestation without one is a promise, and the gate exists because promises
     are what cost three weeks.
     """
-    if not note.strip():
-        typer.echo("the note is the evidence -- say what returned real rows", err=True)
+    if not _says_something(note):
+        typer.echo(
+            "the note is the evidence -- say what returned real rows. "
+            "(Invisible characters are not a note; str.strip() does not "
+            "remove them, so this is checked properly.)", err=True,
+        )
         raise typer.Exit(1)
     engagement = _engagement(root)
     engagement.record_data_access(note=note, at=date.today().isoformat())
@@ -556,6 +593,7 @@ def waive_cmd(
     engagement = _engagement(root)
     status = _gate_status(engagement)
     try:
+        against = status.gate(gate).reason
         status.override(gate, reason)
     except HardGate as exc:
         typer.echo(str(exc), err=True)
@@ -568,8 +606,12 @@ def waive_cmd(
         typer.echo(f"no gate named {gate!r}. The gates: {names}", err=True)
         raise typer.Exit(1) from None
 
-    engagement.record_waiver(gate=gate, reason=reason, at=date.today().isoformat())
-    typer.echo(f"waived {gate} -- recorded for the risk section")
+    engagement.record_waiver(
+        gate=gate, reason=reason, at=date.today().isoformat(), against=against
+    )
+    typer.echo(f"waived {gate} -- recorded, and carried into the project's RISKS.md")
+    typer.echo(f"  covers: {against}")
+    typer.echo("  if this gate blocks for a different reason later, it blocks again")
 
 
 @app.command("restate")
@@ -646,7 +688,25 @@ def override_cmd(
     """
     registry = _registry(registry_root)
     engagement = _engagement(root)
-    architecture = build_architecture(engagement.profile, registry)
+    if choose not in registry.approaches:
+        # A typo here silently turned a working component into one that
+        # raises, and reported success at every step.
+        for_component = sorted(
+            a.id for a in registry.approaches.values()
+            if not a.components or component in a.components
+        )
+        typer.echo(
+            f"{choose!r} is not an approach in this registry. For "
+            f"{component}: {', '.join(for_component) or 'nothing registered'}",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    # Against live state, overrides included: computing "what was
+    # recommended" from a world where earlier overrides do not exist files a
+    # revert as an override of the rule it agrees with.
+    existing = _overrides(engagement)
+    architecture = build_architecture(engagement.profile, registry, overrides=existing)
 
     decision = architecture.decisions.get(component)
     recommended = decision.approach if decision else None
@@ -669,16 +729,10 @@ def override_cmd(
         component=component, recommended=recommended or "nothing", chosen=choose,
         because=because, overrode_rule=recommended or "none", conflicts_with=conflicts,
     )
-    engagement.append(
-        Session(
-            session_id=_next_session_id(engagement, f"override-{component}"),
-            respondent=Respondent(role=Role.SYSTEM),
-            # A deliberate decision by the person on site. Filing it weaker
-            # than a remark in a meeting would let that remark outrank it.
-            facts=[Fact(f"override.{component}", choose, Provenance.INTERVIEW,
-                        source=because)],
-        )
-    )
+    # No pseudo-dimension fact. overrides.jsonl is the record -- append-only,
+    # carrying the reason and what it overrode -- and `override.<component>`
+    # in the fact log put a non-dimension beside real answers in `status`
+    # and in the profile a future corpus would match engagements against.
     with (engagement.root / "overrides.jsonl").open("a") as handle:
         handle.write(json.dumps(record.__dict__) + "\n")
 
@@ -717,10 +771,41 @@ def observe_cmd(
     writes the firing down.
     """
     engagement = _engagement(root)
-    values = dict(item.split("=", 1) for item in (measured or []) if "=" in item)
+
+    stamp = today or date.today().isoformat()
+    try:
+        date.fromisoformat(stamp)
+    except ValueError as exc:
+        # Written unchecked, this lands in an append-only log and every later
+        # retro dies on it, with no repair command.
+        typer.echo(f"--today {stamp!r} is not a date (YYYY-MM-DD): {exc}", err=True)
+        raise typer.Exit(1) from exc
+
+    values = {}
+    for item in measured or []:
+        key, sep, value = item.partition("=")
+        if not sep or not key.strip():
+            typer.echo(
+                f"--measured {item!r} is not key=value. A measurement dropped "
+                f"silently is worse than one refused.", err=True,
+            )
+            raise typer.Exit(1)
+        values[key.strip()] = value.strip()
+
+    # Warned, not refused: build may not have run yet. But a misspelled
+    # trigger that is stored and then silently never counted is the shape of
+    # a signal nobody knows they lost.
+    predicted = {p["trigger"] for p in _jsonl(engagement.root / "predictions.jsonl")}
+    if predicted and trigger not in predicted:
+        typer.echo(
+            f"warning: {trigger!r} was never predicted here, so it will not "
+            f"be counted. Predicted: {', '.join(sorted(predicted)) or 'nothing'}",
+            err=True,
+        )
+
     record = {
         "trigger": trigger,
-        "observed_at": today or date.today().isoformat(),
+        "observed_at": stamp,
         "measured": values,
     }
     with (engagement.root / "observations.jsonl").open("a") as handle:
@@ -761,6 +846,21 @@ def retro_cmd(
     architecture = build_architecture(engagement.profile, registry, overrides=overrides)
 
     stamp = today or date.today().isoformat()
+    try:
+        date.fromisoformat(stamp)
+    except ValueError as exc:
+        typer.echo(f"--today {stamp!r} is not a date (YYYY-MM-DD)", err=True)
+        raise typer.Exit(1) from exc
+
+    # A retrospective on an engagement that never cleared its gates is worth
+    # capturing -- "we never got data access" is a finding. What it must not
+    # do is enter the corpus looking like a delivered engagement.
+    blocked = _gate_status(engagement, registry).blocked_by()
+    if blocked:
+        typer.echo(
+            f"note: {', '.join(blocked)} never cleared, so this case records "
+            f"an engagement that was never built.", err=True,
+        )
 
     # Predictions date from when the build made them, where a build happened.
     # A prediction invented at sweep time is always "pending" and calibrates
@@ -795,16 +895,40 @@ def retro_cmd(
         outcome=outcome or "not stated",
         days=days or None,
         reused=sorted({r.stack for r in architecture.realizations.values()}),
-        overrides=list(overrides.values()),
+        # Every override, in order -- not the last per component. A revert is
+        # a signal about the rule too, and keeping only the survivor drops
+        # the interesting half of the pair.
+        overrides=_jsonl(engagement.root / "overrides.jsonl"),
+        blocked_gates=blocked,
     )
-    (engagement.root / "case.json").write_text(json.dumps(case, indent=2, default=str))
+
+    # Never silently over an earlier capture: case.json is the only place a
+    # retrospective lives, and a typo'd --registry once rewrote a six-decision
+    # case with a zero-decision one, exit 0 both times.
+    case_path = engagement.root / "case.json"
+    if case_path.exists():
+        previous = json.loads(case_path.read_text() or "{}")
+        if len(previous.get("decisions", {})) > len(case["decisions"]):
+            typer.echo(
+                f"refused: {case_path} already records "
+                f"{len(previous['decisions'])} decisions and this run found "
+                f"{len(case['decisions'])}. Check --registry before "
+                f"overwriting a fuller capture.", err=True,
+            )
+            raise typer.Exit(1)
+    case_path.write_text(json.dumps(case, indent=2, default=str))
 
     typer.echo(f"case {case['id']}  ({len(case['decisions'])} decisions)")
     typer.echo(f"  triggers: {report['fired']} fired, "
                f"{report['expired_unfired']} expired unfired")
     typer.echo(f"  evidence: {report['strength']} -- {report['why']}")
-    if overrides:
-        typer.echo(f"  overrides: {len(overrides)} carried into the case")
+    if case["overrides"]:
+        typer.echo(f"  overrides: {len(case['overrides'])} carried into the case")
+    if report.get("impossible"):
+        typer.echo(
+            f"  ignored: {len(report['impossible'])} observation(s) dated "
+            f"before the prediction they answer"
+        )
     typer.echo("\nNothing in framework/ was changed. Revision needs a corpus -- "
                "review case.json, then `fde kb ingest-case` after sanitisation.")
 
@@ -825,7 +949,9 @@ def build_cmd(
     try:
         report = emit(architecture, out, registry=registry,
                       templates=Path(registry_root) / "templates",
-                      pairs_path=Path(root) / "artifacts" / "pairs.jsonl")
+                      pairs_path=Path(root) / "artifacts" / "pairs.jsonl",
+                      waivers=engagement.gate_state().get("overrides", []),
+                      overrides=_jsonl(engagement.root / "overrides.jsonl"))
     except BuildRefused as exc:
         typer.echo(f"refused: {exc}", err=True)
         raise typer.Exit(1) from exc
@@ -1010,9 +1136,28 @@ def kb_ingest_case(
     if not case_id:
         typer.echo(f"{case_file}: no id field -- is this a case.json from retro?", err=True)
         raise typer.Exit(1)
+    if not CASE_ID.fullmatch(str(case_id)):
+        # The id becomes a filename. Untrusted JSON deciding where a file
+        # lands is how `../` and absolute paths write outside the registry
+        # -- and a case that arrives from elsewhere is exactly the untrusted
+        # input this command exists to accept.
+        typer.echo(
+            f"{case_file}: {case_id!r} is not a case id. Expected the "
+            f"anonymised form `fde retro` writes (case-<hex>).", err=True,
+        )
+        raise typer.Exit(1)
 
-    target = Path(root) / "cases" / f"{case_id}.md"
-    target.parent.mkdir(parents=True, exist_ok=True)
+    cases_dir = Path(root) / "cases"
+    if not cases_dir.is_dir():
+        # Never conjure a registry: a typo'd --root once created a whole
+        # tree from nothing and reported success.
+        typer.echo(
+            f"{root}: not a registry (no cases/ directory). Point --root at "
+            f"one rather than at a path to be created.", err=True,
+        )
+        raise typer.Exit(1)
+
+    target = cases_dir / f"{case_id}.md"
     if target.exists():
         typer.echo(f"{target}: already in the corpus. Cases are append-only; "
                    f"a new retrospective makes a new case.", err=True)

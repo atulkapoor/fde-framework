@@ -181,3 +181,91 @@ def test_version_one_survives_restatement(tmp_path):
     engagement_after = load_engagement(root)
     assert engagement_after.original_statement().text == "Extract fields from statements."
     assert engagement_after.current_statement().text == "Broader scope."
+
+
+# --- what the adversarial review found -------------------------------------
+
+
+def test_invisible_characters_are_not_an_attestation(tmp_path):
+    """str.strip() removes ASCII whitespace and nothing else, so a
+    zero-width space satisfied the one gate the framework says cannot be
+    worked around."""
+    root = engagement(tmp_path)
+    result = runner.invoke(app, ["data-access", str(root), "--note", "​ "])
+    assert result.exit_code == 1
+    status = runner.invoke(app, ["status", str(root)])
+    assert "[hard] data_access" in status.output
+
+
+def test_a_hand_written_data_access_claim_is_not_evidence(tmp_path):
+    """Any truthy value used to pass -- including a string saying access was
+    promised and nothing had been seen."""
+    root = engagement(tmp_path)
+    (root / "gates.yaml").write_text(
+        yaml.safe_dump({"data_access": "promised for next week, nothing seen yet"})
+    )
+    status = runner.invoke(app, ["status", str(root)])
+    assert "[hard] data_access" in status.output
+
+
+def test_corrupt_gate_state_is_a_sentence_not_a_traceback(tmp_path):
+    root = engagement(tmp_path)
+    for body in ("overrides: {gate: x}", "just a string", "[]", "{{{ not yaml"):
+        (root / "gates.yaml").write_text(body)
+        result = runner.invoke(app, ["status", str(root)])
+        assert result.exit_code == 1, body
+        assert "gates.yaml" in result.output or "gate state" in result.output
+
+
+def test_a_gate_that_is_not_blocking_cannot_be_waived(tmp_path):
+    """A waiver banked against a future problem is a waiver nobody granted
+    for the problem that actually arrives."""
+    root = engagement(tmp_path)
+    runner.invoke(app, ["baseline", str(root), "--file", str(baseline_file(tmp_path))])
+    result = runner.invoke(app, ["waive", str(root), "baseline_capture",
+                                 "--reason", "pre-emptive"])
+    assert result.exit_code == 1
+    assert "nothing to waive" in result.output
+
+
+def test_a_waiver_lapses_when_the_reason_changes(tmp_path):
+    """Somebody agreed to a stated problem, not to a gate name for the life
+    of the engagement. A second restatement must re-block."""
+    root = engagement(tmp_path)
+    runner.invoke(app, ["restate", str(root), "--text", "Also reconcile them.",
+                        "--reason", "first expansion"])
+    runner.invoke(app, ["waive", str(root), "scope_drift", "--reason", "agreed in writing"])
+    settled = runner.invoke(app, ["status", str(root)]).output
+    assert "scope_drift" not in settled.split("blocked by")[-1]
+
+    runner.invoke(app, [
+        "restate", str(root),
+        "--text", "Also reconcile them, file the return, and add a chatbot on top.",
+        "--reason", "second expansion",
+    ])
+    assert "scope_drift" in runner.invoke(app, ["status", str(root)]).output
+
+
+def test_waiving_twice_records_one_waiver(tmp_path):
+    root = engagement(tmp_path)
+    for reason in ("client refuses", "client still refuses"):
+        runner.invoke(app, ["waive", str(root), "baseline_capture", "--reason", reason])
+    waivers = load_engagement(root).gate_state()["overrides"]
+    assert len(waivers) == 1
+    assert waivers[0]["reason"] == "client still refuses"
+
+
+def test_the_project_carries_the_risks_that_were_accepted(tmp_path):
+    """Four docstrings promise waivers land in a risk section. There was no
+    risk section: a client could not tell the baseline gate had been waived."""
+    root = engagement(tmp_path)
+    runner.invoke(app, ["data-access", str(root), "--note", "14 rows from the replica"])
+    runner.invoke(app, ["waive", str(root), "baseline_capture",
+                        "--reason", "client refuses; measuring post-hoc"])
+    runner.invoke(app, ["waive", str(root), "client_readiness",
+                        "--reason", "eval owner starts Monday"])
+    runner.invoke(app, ["build", str(root), "--out", str(tmp_path / "out")])
+    risks = (tmp_path / "out" / "RISKS.md").read_text()
+    assert "baseline_capture" in risks
+    assert "client refuses" in risks
+    assert "covered:" in risks

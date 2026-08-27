@@ -147,13 +147,33 @@ def calibration(observations: list[Observation]) -> dict[str, Any]:
     """
     fired = [o for o in observations if o.status == "fired"]
     expired = [o for o in observations if o.status == "expired_unfired"]
-    deltas = [abs(o.delta_days - o.horizon_days) for o in fired if o.delta_days is not None]
+
+    # An observation dated before the prediction it answers is a data error,
+    # not a fast trigger. Feeding a negative delta to the median moves the
+    # calibration figure with a number that describes nothing.
+    impossible = [o for o in fired if o.delta_days is not None and o.delta_days < 0]
+    usable = [o for o in fired if o not in impossible]
+    deltas = [abs(o.delta_days - o.horizon_days) for o in usable if o.delta_days is not None]
+
+    # Strength describes this evidence, not the method. Trigger calibration
+    # is strong *when there is any* -- printing "strong" over zero
+    # observations was a constant claiming to be a finding.
+    if fired or expired:
+        strength = "strong"
+        why = "predicted against observed; nothing counterfactual to model"
+    else:
+        strength = "none"
+        why = (
+            "nothing has fired and nothing has expired yet -- no evidence "
+            "either way, which is not the same as agreement"
+        )
 
     return {
-        "strength": "strong",
-        "why": "predicted against observed; nothing counterfactual to model",
+        "strength": strength,
+        "why": why,
         "fired": len(fired),
         "expired_unfired": len(expired),
+        "impossible": [o.trigger for o in impossible],
         "median_delta_days": median(deltas) if deltas else 0,
         "well_calibrated": bool(deltas) and median(deltas) <= CALIBRATION_TOLERANCE_DAYS,
     }
@@ -193,6 +213,7 @@ def emit_case(
     days: int | None = None,
     reused: list[str] | None = None,
     overrides: list[dict[str, Any]] | None = None,
+    blocked_gates: list[str] | None = None,
 ) -> dict[str, Any]:
     """A finished engagement, in a shape the corpus can hold.
 
@@ -214,6 +235,9 @@ def emit_case(
         # overrides loses the exact thing revision will want first.
         "overrides": overrides or [],
         "outcome": outcome,
+        # Which gates never cleared. A case from an engagement that was never
+        # built must not read like one that was.
+        "blocked_gates": blocked_gates or [],
         "practice": {
             # The denominator improvement is measured against: is the Nth
             # solution faster than the first, and how much came off the shelf.

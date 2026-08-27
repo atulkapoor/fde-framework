@@ -170,17 +170,62 @@ class Engagement:
         state["data_access"] = {"note": note, "at": at}
         self._write_gate_state(state)
 
-    def record_waiver(self, gate: str, reason: str, at: str) -> None:
+    def record_waiver(self, gate: str, reason: str, at: str, against: str = "") -> None:
+        """One waiver per gate, bound to the state it was granted against.
+
+        Replaces rather than appends: waiving twice is one decision restated,
+        and two identical lines in a risk section is noise. `against` is the
+        gate's reason at the moment of waiving -- when that changes, the
+        waiver no longer covers it, because nobody agreed to the new problem.
+        """
         state = self.gate_state()
-        state.setdefault("overrides", []).append(
-            {"gate": gate, "reason": reason, "at": at}
-        )
+        waivers = [w for w in state.get("overrides", []) if w.get("gate") != gate]
+        waivers.append({"gate": gate, "reason": reason, "at": at, "against": against})
+        state["overrides"] = waivers
         self._write_gate_state(state)
 
     def gate_state(self) -> dict[str, Any]:
+        """Recorded gate state, shape-checked.
+
+        Hand-editing this file is expected -- it is plain YAML in an
+        engagement directory. What must not happen is a hand-edited shape
+        reaching the gate logic as a traceback, or an unrecognised shape
+        being read as permission. Anything that does not parse to the
+        expected structure is dropped, loudly ignored rather than trusted.
+        """
         if not self.gates_path.exists():
             return {}
-        return yaml.safe_load(self.gates_path.read_text()) or {}
+        try:
+            raw = yaml.safe_load(self.gates_path.read_text())
+        except yaml.YAMLError as exc:
+            raise ValueError(f"{self.gates_path}: cannot read gate state -- {exc}") from exc
+        if not isinstance(raw, dict):
+            raise ValueError(
+                f"{self.gates_path}: expected a mapping of gate state, "
+                f"found {type(raw).__name__}"
+            )
+
+        state: dict[str, Any] = {}
+        access = raw.get("data_access")
+        # Only a well-formed attestation counts. A bare truthy value -- a
+        # string saying access is *promised*, say -- must never read as
+        # evidence that credentials returned rows.
+        if isinstance(access, dict) and str(access.get("note", "")).strip():
+            state["data_access"] = access
+
+        waivers = raw.get("overrides", [])
+        if not isinstance(waivers, list):
+            raise ValueError(
+                f"{self.gates_path}: 'overrides' must be a list of waivers, "
+                f"found {type(waivers).__name__}. A hand-edit that quietly "
+                f"does nothing is worse than one that is refused."
+            )
+        if waivers:
+            state["overrides"] = [
+                w for w in waivers
+                if isinstance(w, dict) and w.get("gate") and str(w.get("reason", "")).strip()
+            ]
+        return state
 
     def _write_gate_state(self, state: dict[str, Any]) -> None:
         self.gates_path.write_text(yaml.safe_dump(state, sort_keys=False))

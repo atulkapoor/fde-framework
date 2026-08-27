@@ -59,6 +59,8 @@ def emit(
     registry: Registry | None = None,
     templates: Path | None = None,
     pairs_path: Path | None = None,
+    waivers: list[dict] | None = None,
+    overrides: list[dict] | None = None,
 ) -> EmitReport:
     out = Path(out)
     _refuse_if_unsound(architecture, out, pairs_path)
@@ -87,7 +89,55 @@ def emit(
     write_ops(architecture, out, registry)
     _write_project_file(out)
     (out / "ARCHITECTURE.md").write_text(render_architecture(architecture))
+    _write_risks(out, waivers or [], overrides or [], architecture)
     return EmitReport(path=out, scaffolded=scaffolded)
+
+
+def _write_risks(out: Path, waivers, overrides, architecture: Architecture) -> None:
+    """What was waved through, and what was chosen against the rules.
+
+    Four separate places promise that waivers and conflicting overrides
+    "land in the risk section". There was no risk section: a client
+    receiving the project could not tell that the baseline gate had been
+    waived, let alone that the baseline file was then deleted.
+    """
+    lines = ["# Risks accepted", ""]
+    if not waivers and not overrides and not architecture.unrealizable:
+        lines += [
+            "No gate was waived, no recommendation overridden, and every "
+            "decided component has an implementation.",
+        ]
+    if waivers:
+        lines += ["## Gates waived", "",
+                  "Each was blocking. Somebody decided to proceed anyway, and "
+                  "this is who said what.", ""]
+        for waiver in waivers:
+            lines.append(
+                f"- **{waiver.get('gate')}** ({waiver.get('at', 'undated')}) -- "
+                f"{waiver.get('reason')}"
+            )
+            if waiver.get("against"):
+                lines.append(f"  - covered: {waiver['against']}")
+        lines.append("")
+    if overrides:
+        lines += ["## Recommendations overridden", ""]
+        for override in overrides:
+            lines.append(
+                f"- **{override.get('component')}**: "
+                f"{override.get('recommended')} -> {override.get('chosen')} "
+                f"-- {override.get('because')}"
+            )
+            for conflict in override.get("conflicts_with") or []:
+                lines.append(f"  - conflicts with `{conflict}`")
+        lines.append("")
+    if architecture.unrealizable:
+        lines += ["## Decided without an implementation", ""]
+        lines += [
+            f"- **{component}** -- {reason}"
+            for component, reason in sorted(architecture.unrealizable.items())
+        ]
+        lines.append("")
+    (out / "RISKS.md").write_text("\n".join(lines) + "\n")
 
 
 # --- refusals ------------------------------------------------------------
@@ -652,6 +702,19 @@ def render_architecture(architecture: Architecture) -> str:
             continue
         lines.append(f"**{component}**")
         lines += [f"- `{r.id}` -- {r.reason}" for r in decision.rejected]
+        lines.append("")
+
+    if architecture.unrealizable:
+        lines += [
+            "", "## Decided, but not implemented", "",
+            "An approach was chosen and no implementation for it exists in "
+            "this topology. These modules raise on use rather than pretending "
+            "-- the decision stands, the code is yours or the registry's.", "",
+        ]
+        lines += [
+            f"- **{component}** -- {reason}"
+            for component, reason in sorted(architecture.unrealizable.items())
+        ]
         lines.append("")
 
     if architecture.decisions.undecided():

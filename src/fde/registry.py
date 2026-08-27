@@ -70,10 +70,12 @@ class Registry(BaseModel):
 
 def load_registry(root: str | Path) -> Registry:
     root = Path(root)
-    if not root.exists():
+    if not root.is_dir():
         # Loudly, not as an empty registry: an empty registry decides nothing,
         # everything downstream "works", and the first sign is a hollow build.
-        # The classic path here is running from the wrong directory.
+        # The classic path here is running from the wrong directory. A file
+        # rather than a directory lands here too, instead of as an OSError
+        # from the first iterdir.
         raise RegistryError(
             f"{root}: no registry here. Pass --registry pointing at a "
             f"registry directory (the framework/ of a source checkout)."
@@ -94,6 +96,17 @@ def load_registry(root: str | Path) -> Registry:
         _load_kind(registry, child, child.name)
 
     return registry
+
+
+def is_empty(registry: Registry) -> bool:
+    """Whether anything was loaded at all.
+
+    The loader stays permissive -- a half-authored registry is a real state,
+    and tests build partial ones deliberately. Commands that decide from a
+    registry use this to refuse the wrong directory, which is not the same
+    thing as an incomplete one.
+    """
+    return not any(getattr(registry, attribute) for _, attribute in KINDS.values())
 
 
 def _load_kind(registry: Registry, directory: Path, kind: str) -> None:

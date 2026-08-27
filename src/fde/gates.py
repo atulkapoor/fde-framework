@@ -107,6 +107,9 @@ class Gate:
 class Overridden:
     gate: str
     reason: str
+    # What the gate said when this was granted. A waiver covers a stated
+    # problem, not a gate name for the life of the engagement.
+    against: str = ""
 
 
 @dataclass
@@ -122,7 +125,14 @@ class Status:
     def gate(self, name: str) -> Gate:
         return next(g for g in self.gates if g.name == name)
 
-    def override(self, name: str, reason: str) -> None:
+    def override(self, name: str, reason: str, against: str | None = None) -> None:
+        """Wave a blocking gate through, with the reason recorded.
+
+        `against` is the gate's reason as it stood when the waiver was
+        granted. Replaying a stored waiver passes what was stored; if the
+        gate is now blocked for a *different* reason, the waiver does not
+        cover it -- somebody agreed to a stated problem, not to the gate.
+        """
         target = self.gate(name)
         if target.hard:
             raise HardGate(
@@ -135,7 +145,19 @@ class Status:
                 f"overriding {name} needs a reason; a gate waved through without "
                 f"one is a gate nobody considered"
             )
-        self.overridden.append(Overridden(gate=name, reason=reason))
+        if target.passed:
+            raise ValueError(
+                f"{name} is not blocking anything, so there is nothing to waive. "
+                f"A waiver banked against a future problem is a waiver nobody "
+                f"granted for the problem that actually arrives."
+            )
+        if against is not None and against.strip() != (target.reason or "").strip():
+            # Not an error: the waiver simply does not apply here, and the
+            # gate stays standing so somebody looks at what changed.
+            return
+        self.overridden.append(
+            Overridden(gate=name, reason=reason, against=target.reason)
+        )
 
     def blocked_by(self) -> list[str]:
         """Gates still standing in the way, after overrides.
