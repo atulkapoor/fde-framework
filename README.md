@@ -3,6 +3,7 @@
 [![CI](https://github.com/atulkapoor/fde-framework/actions/workflows/ci.yml/badge.svg)](https://github.com/atulkapoor/fde-framework/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)
 ![Status](https://img.shields.io/badge/status-alpha-orange)
+[![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
 
 **fde** is an open-source framework for Forward Deployed Engineers: it takes a
 client engagement from a problem statement to a runnable, deployable AI
@@ -21,6 +22,18 @@ fde ask acme --role admin        # role-scoped discovery interview
 fde architect acme               # the design, with cited rationale
 fde build acme --out project     # code + evals + deploy assets + runbook
 ```
+
+## What it does
+
+| | |
+|---|---|
+| **Discovery that compounds** | Prose, PDFs, sample pairs, a role-scoped interview and a hardware scan all feed one profile — provenance decides conflicts, never arrival order, and disagreement between people is surfaced as a finding |
+| **Gates before building** | Six checks with remedies; verified data access cannot be waived, and every waiver ships in the project's `RISKS.md` with its reason |
+| **Decisions with receipts** | Simplest applicable approach per component, cited evidence, named rejected alternatives — and `fde override` records your call and honours it on every later run |
+| **A real project out** | Pipeline in topological order, fail-closed approval gates and critics, an eval harness CI can gate on, deploy assets for the substrate that was actually earned, runbook, SLOs, teardown |
+| **Deterministic by design** | The framework itself never calls an LLM: same profile, byte-identical project — a diff between builds means a decision changed |
+| **Jurisdiction as data** | Locale packs preset answers at the weakest provenance and attach dated compliance obligations to the build; they can never change how decisions are made |
+| **Self-evolution, honestly** | Overrides, trigger calibration and anonymised cases are captured per engagement; the corpus grows only through human-reviewed ingestion |
 
 ---
 
@@ -113,11 +126,36 @@ modules that raise with the reason attached, never as silent gaps.
 
 ## Install
 
+Prerequisites: Python 3.11+ and git. Not yet on PyPI — install from source:
+
 ```bash
 git clone https://github.com/atulkapoor/fde-framework.git
 cd fde-framework
-python3.12 -m venv .venv && .venv/bin/pip install -e ".[dev]"
+python3 -m venv .venv && .venv/bin/pip install -e ".[dev,documents]"
 ```
+
+Or with [uv](https://docs.astral.sh/uv/): `uv venv && uv pip install -e ".[dev,documents]"`
+
+### Optional extras
+
+| Extra | Installs | For |
+|---|---|---|
+| `documents` | pypdf, python-docx | `fde frame --file brief.pdf` — PDF and Word intake |
+| `dev` | pytest, ruff | running the test suite and linter |
+
+The core needs none of them: plain-text intake, the decision engine and the
+build work with zero optional dependencies, which is deliberate — an
+air-gapped install should not drag in what it will not use. A missing reader
+refuses by name and says exactly what to install.
+
+### File types
+
+| Intake | Formats |
+|---|---|
+| Read as text | `.txt` `.md` `.rst` `.csv` `.json` `.yaml` |
+| With `documents` extra | `.pdf` `.docx` |
+| Refused by name | `.doc` `.pptx` `.xlsx` (and anything unrecognised) — reading a container's bytes as text produces facts from noise, which is worse than reading nothing |
+| Sample pairs | `.jsonl` — `{"id", "input", "output", "verified"}` per line |
 
 ## Try it
 
@@ -143,6 +181,24 @@ content and the links do not resolve yet.
 
 A complete worked engagement — real transcript, synthetic client — lives in
 [examples/invoice-extraction](examples/invoice-extraction/).
+
+## What a build emits
+
+```
+project/
+├── app/                  # components, pipeline, controls, boundary check
+│   ├── components/       #   implementations or honest scaffolds — never silent gaps
+│   ├── pipeline.py       #   topological order; approval gates before anything mutative
+│   ├── controls.py       #   fail-closed: an unwired gate refuses, loudly
+│   └── boundary.py       #   imported at startup when data may not leave
+├── evals/                # golden / edge / adversarial sets from the client's own pairs
+│   └── harness.py        #   fails CI until the pipeline is implemented end to end
+├── deploy/               # the substrate that was earned + TEARDOWN.md for all of it
+├── ops/                  # runbook keyed to the failure taxonomy, SLOs, rollback
+├── ARCHITECTURE.md       # every decision, every rejected alternative
+├── RISKS.md              # every waived gate and overridden recommendation
+└── COMPLIANCE.md         # jurisdiction obligations, when a locale pack was applied
+```
 
 ## Common commands
 
@@ -236,6 +292,47 @@ a human-gated path from a retrospective into the shared knowledge base.
 Nothing in `framework/` changes by itself; the corpus grows, and revision
 against it is a deliberate, evidenced act.
 
+## Privacy
+
+Everything runs from plain files on your machine. The framework makes **no
+network calls, has no telemetry, and never transmits engagement content
+anywhere** — it works on a plane and inside an air gap, and a text editor is
+always a legal way into its state. The framework itself never calls an LLM;
+models appear only in the systems it *generates*, where the profile justifies
+one, behind swappable interfaces.
+
+Engagement directories (client facts, baselines, gate state) are excluded
+from version control by construction and enforced in CI — along with
+credential patterns, personal-data patterns, and a check that no unreviewed
+case can ever be committed.
+
+## Team setup
+
+The registry is the shared asset; engagements are private working state.
+
+- **Share `framework/`** — fork or clone it as your team's knowledge base.
+  Every dimension, approach, stack and case is a markdown file; review
+  registry changes like code, because they decide architectures.
+- **Never commit `engagements/`** — client facts stay local. The repository's
+  own `.gitignore` and CI sanitisation gate enforce this shape; keep it in
+  yours.
+- **Grow the corpus deliberately** — `fde retro` captures a case,
+  `fde kb ingest-case` lands it as `sanitization: pending`, a human reviews
+  it for anything identifying, and only `reviewed` cases can be committed.
+  One reviewed case per delivered engagement compounds fast.
+
+## Roadmap
+
+- **Rule revision from outcomes** — capture is wired end to end; revision
+  deliberately waits for a corpus of measured retrospectives rather than
+  pretending a handful is evidence.
+- **PyPI release** — after the first tagged version.
+- **More locale packs and stacks** — both are data; contributions enter
+  against [CONTRIBUTING.md](CONTRIBUTING.md)'s contract.
+- **The honest gaps list lives in the tool**: `fde kb gaps` and
+  `fde kb sweep` report what the corpus is missing and which profile shapes
+  no approach can serve yet.
+
 ## Learn more
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — module map, the data/mechanism boundary, how to extend the registry
@@ -243,6 +340,11 @@ against it is a deliberate, evidenced act.
 - [examples/invoice-extraction](examples/invoice-extraction/) — a full engagement transcript
 - [SECURITY.md](SECURITY.md) — reporting, and what counts as security-grade here
 - [llms.txt](llms.txt) — the project summarised for AI assistants
+
+## License
+
+[Apache 2.0](LICENSE) — chosen for the explicit patent grant, because
+enterprise legal review is a real gate for the audience this is for.
 
 ## Contributing
 

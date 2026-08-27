@@ -55,13 +55,15 @@ def read_document(path: str | Path) -> str:
             # escaping as a pypdf traceback breaks it at the one moment it
             # was needed.
             raise UnreadableDocument(
-                f"{path.name}: the {name} reader could not read it -- {exc}"
+                f"{path.name}: the {name} reader could not read it -- {exc}. "
+                f"If you have the text another way, paste it with --text."
             ) from exc
         if extracted is not None:
             return _require_content(extracted, path)
         raise UnreadableDocument(
             f"{path.name} is a {name} file and no reader for it is installed. "
-            f"Install {package}, or paste the text with --text. "
+            f'Install {package} (pip install "fde-framework[documents]"), or '
+            f"paste the text with --text. "
             f"Reading it as bytes would produce facts from noise, which is worse "
             f"than reading nothing."
         )
