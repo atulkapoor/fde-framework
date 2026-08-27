@@ -1,32 +1,34 @@
-# Worked example: supplier invoice extraction
+# Worked example: invoice extraction
 
 A complete engagement, start to build, using the three files in this
-directory. Everything below is a real transcript — synthetic client, real
-commands, real output.
+directory. Everything below is a real transcript — a synthetic engagement
+whose shape is assembled from publicly documented production deployments
+(high-volume structured document extraction under a data boundary), with
+made-up numbers on made-up invoices.
 
-The shape: 200k scanned documents, structured records out, on-prem with data
-that cannot leave, 8,000 labelled examples, a person waiting on each answer.
+The shape: 500k scanned documents, structured records out, on-prem with data
+that cannot leave, 10,000 labelled examples, a person waiting on each answer.
 
 ```bash
 fde start acme --statement "Extract structured fields from scanned supplier invoices."
 
-fde frame engagements/acme --file examples/supplier-statements/brief.md
+fde frame engagements/acme --file examples/invoice-extraction/brief.md
 # Here is what I took from that:
-#   - How many items in total: 200,000
+#   - How many items in total: 500,000
 #   - What arrives, and in what form: scanned documents
 #   - Where does this run: on prem
 #   - Can client data leave their environment: cannot leave
-#   - How many are verified or labelled: 8,000
+#   - How many are verified or labelled: 10,000
 
-fde samples engagements/acme --file examples/supplier-statements/pairs.jsonl
-# 3 pairs, 1 fields — the pairs settle the output shape and seed the golden set
+fde samples engagements/acme --file examples/invoice-extraction/pairs.jsonl
+# 3 pairs, 2 fields — the pairs settle the output shape and seed the golden set
 
 fde status engagements/acme
 # blocked by 3: [hard] data_access, baseline_capture, client_readiness
 # build refuses until these clear -- the hard one has no waiver
 
-fde baseline engagements/acme --file examples/supplier-statements/baseline.yaml
-fde data-access engagements/acme --note "read replica returned 14 rows from the statements table"
+fde baseline engagements/acme --file examples/invoice-extraction/baseline.yaml
+fde data-access engagements/acme --note "read replica returned 14 rows from the invoices table"
 fde waive engagements/acme client_readiness --reason "eval owner named, starts Monday"
 
 fde architect engagements/acme
@@ -55,6 +57,7 @@ Things worth trying from here:
 
 ```bash
 fde ask engagements/acme --role eval_owner        # what's still worth asking
+fde locale engagements/acme eu-gdpr               # jurisdiction obligations into the build
 fde override engagements/acme --component representation \
     --choose llm-extraction --because "coverage measured at 60%"
 fde retro engagements/acme --outcome "delivered" --days 18

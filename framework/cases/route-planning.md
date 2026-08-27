@@ -19,20 +19,26 @@ decisions:
   deployment: kubernetes-manifests
   provisioning: gitops
 outcome: >-
-  Delivered as decided. Constraint solving produced auditable decisions a
-  generative model could not guarantee; the existing cluster made
-  manifests the cheap rung, and every dispatch action passed a governed
-  tool boundary with an idempotency key.
+  The shape holds in decades of published operations-research practice:
+  constraint solvers producing auditable dispatch decisions at fleet
+  scale (the publicly documented route-optimisation programmes of large
+  logistics operators), with generative models absent from the decision
+  path because a solver's output is provable and a model's is not.
 sanitization: reviewed
 ---
-A re-expressed engagement shape. No client is identifiable from it.
+An engagement shape assembled from publicly documented production
+case studies. No client of ours is identifiable from it, and none
+contributed to it.
 
-Constrained dispatch decisions against live operational systems, on an
-existing cluster. Optimisation makes decisions; machine learning makes
-predictions -- this shape is why the solver rung exists and why mutative
-integrations get gates and keys.
+Constrained dispatch decisions against live operational systems.
+Anchored in the public operations-research record -- large-scale fleet
+route optimisation is among the most documented solver deployments in
+industry -- rather than any private engagement. Optimisation makes
+decisions; machine learning makes predictions; this shape is why the
+solver rung exists and why mutative integrations get gates and keys.
 
 The decisions above are what the engine derives from this profile
-today -- the shape is the evidence, and it is reproducible. Measured
-outcomes (days, deltas against baseline) enter only from real
-retrospectives via `fde retro`; none are invented here.
+today -- reproducible by running it. The published figures cited in
+the outcome belong to the public record and carry their own dates;
+measured outcomes for engagements run through this framework enter
+only via `fde retro`.

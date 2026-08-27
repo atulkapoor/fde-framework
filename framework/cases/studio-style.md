@@ -19,21 +19,28 @@ decisions:
   deployment: compose
   provisioning: terraform-module
 outcome: >-
-  Delivered as decided. Batch generation with nobody waiting made a
-  managed endpoint the honest economics; the judged evaluation was
-  calibrated against human agreement before any score was quoted, and the
-  ephemeral environment tears down cleanly because the provisioner tracks
-  what it created.
+  The shape holds in public production reports: batch generation against
+  managed endpoints where nobody waits on a single answer, with batch
+  processing and prompt engineering cutting cost per unit dramatically
+  (Etsy's buyer-profile generation: 94% cost reduction per million
+  users, publicly reported), and judge-based evaluation calibrated
+  before scores are trusted (DoorDash's guardrail-plus-judge design,
+  publicly reported).
 sanitization: reviewed
 ---
-A re-expressed engagement shape. No client is identifiable from it.
+An engagement shape assembled from publicly documented production
+case studies. No client of ours is identifiable from it, and none
+contributed to it.
 
-Open-ended stylistic generation in batch, where nobody waits on any
-single answer. The shape that exercises the generative path honestly:
-prompted model first, judge-based evaluation with calibration, and
-economics that favour paying per token over holding a fleet.
+Open-ended generation in batch, where nobody waits on any single
+answer. Assembled from publicly documented deployments -- Etsy's batch
+profile generation economics and DoorDash's published judge-based
+evaluation design. The shape that exercises the generative path honestly:
+prompted model first, calibrated judge, per-token economics over a held
+fleet. No private engagement contributed to this record.
 
 The decisions above are what the engine derives from this profile
-today -- the shape is the evidence, and it is reproducible. Measured
-outcomes (days, deltas against baseline) enter only from real
-retrospectives via `fde retro`; none are invented here.
+today -- reproducible by running it. The published figures cited in
+the outcome belong to the public record and carry their own dates;
+measured outcomes for engagements run through this framework enter
+only via `fde retro`.

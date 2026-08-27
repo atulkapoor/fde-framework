@@ -117,6 +117,34 @@ def validate_links(registry: Registry) -> list[LinkError]:
                         )
                     )
 
+    # A locale may pre-set values on dimensions that already exist; it may
+    # never introduce one. Geography changes what you must produce, not how
+    # you decide -- and this is the check that keeps that a rule rather
+    # than a hope.
+    for locale in registry.locales.values():
+        for dimension, value in locale.presets.items():
+            entry = registry.dimensions.get(dimension)
+            if entry is None:
+                errors.append(
+                    LinkError(
+                        source=locale.id,
+                        message=(
+                            f"locale {locale.id!r} presets unknown dimension "
+                            f"{dimension!r} -- a locale may never introduce one"
+                        ),
+                    )
+                )
+            elif entry.values and value not in entry.values:
+                errors.append(
+                    LinkError(
+                        source=locale.id,
+                        message=(
+                            f"locale {locale.id!r} presets {dimension}={value!r}, "
+                            f"not one of: {', '.join(entry.values)}"
+                        ),
+                    )
+                )
+
     return errors
 
 

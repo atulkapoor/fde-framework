@@ -171,14 +171,14 @@ def test_two_sessions_disagreeing_surfaces_as_a_disagreement(tmp_path):
 def test_the_original_statement_is_immutable(tmp_path):
     """The scope-drift gate measures against it, so it can never be edited."""
     e = start_engagement(tmp_path, "acme", statement=STATEMENT)
-    e.revise_statement("Actually invoices, not receipts.", reason="discovery")
+    e.revise_statement("Actually receipts, not invoices.", reason="discovery")
     assert e.original_statement().text.startswith("Extract financial fields")
-    assert e.current_statement().text.startswith("Actually invoices")
+    assert e.current_statement().text.startswith("Actually receipts")
 
 
 def test_statement_revisions_record_why(tmp_path):
     e = start_engagement(tmp_path, "acme", statement=STATEMENT)
-    e.revise_statement("Invoices, not receipts.", reason="discovery week 2")
+    e.revise_statement("Receipts, not invoices.", reason="discovery week 2")
     assert e.statements[-1].reason == "discovery week 2"
 
 

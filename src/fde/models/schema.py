@@ -270,6 +270,34 @@ class Rung(BaseModel):
     needs: list[str] = Field(default_factory=list)
 
 
+class Obligation(BaseModel):
+    """One thing a jurisdiction obliges the engagement to produce or prove.
+
+    An obligation is a deliverable with a verification note, never a rule
+    change: geography changes what you must produce, not how you decide.
+    """
+
+    id: str
+    produce: str
+    verify: str = ""
+
+
+class Locale(BaseModel):
+    """A jurisdiction pack: presets and obligations, never new dimensions.
+
+    Presets land at the weakest provenance, so anything anybody actually
+    says outranks them. Obligations are emitted into the built project as a
+    compliance checklist with the date they were true -- law churns like
+    stacks do, and an undated obligation ages into a liability.
+    """
+
+    id: str
+    name: str
+    presets: dict[str, Any] = Field(default_factory=dict)
+    obligations: list[Obligation] = Field(default_factory=list)
+    as_of: str = ""
+
+
 class Ladder(BaseModel):
     """An ordered set of options you earn your way rightward along."""
 

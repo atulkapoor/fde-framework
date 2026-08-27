@@ -21,17 +21,17 @@ from fde.intake.samples import (
 
 PAIRS = [
     {"id": "a", "input": "Total due: $4,230.00\nVAT: $1,975.25",
-     "output": {"total_due": 4230.0, "vat": 1975.25, "account": "****4471"},
+     "output": {"total_due": 4230.0, "vat": 1975.25, "invoice_no": "INV-4471"},
      "verified": True, "layout": "boxed_form"},
     {"id": "b", "input": "Amount due ....... 1,100.00\nVAT ....... 500.00",
-     "output": {"total_due": 1100.0, "vat": 500.0, "account": "****9931"},
+     "output": {"total_due": 1100.0, "vat": 500.0, "invoice_no": "INV-9931"},
      "verified": True, "layout": "dotted_leader"},
     {"id": "c", "input": "TOTAL 220.00 | VAT 80.00",
-     "output": {"total_due": 220.0, "vat": 80.0, "account": "****2210",
-                "withheld": 0.0},
+     "output": {"total_due": 220.0, "vat": 80.0, "invoice_no": "INV-2210",
+                "discount": 0.0},
      "verified": True, "layout": "pipe_table"},
     {"id": "d", "input": "unreadable scan",
-     "output": {"total_due": 0.0, "vat": 0.0, "account": "****0001"},
+     "output": {"total_due": 0.0, "vat": 0.0, "invoice_no": "INV-0001"},
      "verified": False, "layout": "boxed_form"},
 ]
 
@@ -41,29 +41,29 @@ PAIRS = [
 
 def test_the_fields_come_from_what_was_produced_not_what_was_asked_for(reg=None):
     contract = infer_contract(PAIRS)
-    assert {"total_due", "vat", "account"} <= set(contract.fields)
+    assert {"total_due", "vat", "invoice_no"} <= set(contract.fields)
 
 
 def test_a_field_absent_from_some_pairs_is_optional(reg=None):
     """Optional is decided by absence, not by a null. A field present and null
     is a different statement from a field nobody filled in."""
     contract = infer_contract(PAIRS)
-    assert contract.fields["withheld"].required is False
+    assert contract.fields["discount"].required is False
     assert contract.fields["vat"].required is True
 
 
 def test_types_are_read_from_the_values(reg=None):
     contract = infer_contract(PAIRS)
     assert contract.fields["total_due"].type == "number"
-    assert contract.fields["account"].type == "string"
+    assert contract.fields["invoice_no"].type == "string"
 
 
 def test_an_identifier_is_classified_sensitive(reg=None):
     """This is what pins the field inside a boundary later. Getting it from the
     data rather than from a conversation is the point."""
     contract = infer_contract(PAIRS)
-    assert contract.fields["account"].sensitivity == "identifier"
-    assert contract.sensitive_fields == ["account"]
+    assert contract.fields["invoice_no"].sensitivity == "identifier"
+    assert contract.sensitive_fields == ["invoice_no"]
 
 
 def test_two_pairs_with_the_same_input_and_different_outputs_are_refused(reg=None):

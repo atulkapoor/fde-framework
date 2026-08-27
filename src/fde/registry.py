@@ -24,6 +24,7 @@ from fde.models.schema import (
     Dimension,
     Interface,
     Ladder,
+    Locale,
     Pattern,
     Stack,
 )
@@ -47,6 +48,7 @@ KINDS: dict[str, tuple[type[BaseModel], str]] = {
     "dimensions": (Dimension, "dimensions"),
     "interfaces": (Interface, "interfaces"),
     "ladders": (Ladder, "ladders"),
+    "locales": (Locale, "locales"),
     "patterns": (Pattern, "patterns"),
     "stacks": (Stack, "stacks"),
 }
@@ -58,6 +60,7 @@ class Registry(BaseModel):
     components: dict[str, Component] = Field(default_factory=dict)
     dimensions: dict[str, Dimension] = Field(default_factory=dict)
     interfaces: dict[str, Interface] = Field(default_factory=dict)
+    locales: dict[str, Locale] = Field(default_factory=dict)
     ladders: dict[str, Ladder] = Field(default_factory=dict)
     patterns: dict[str, Pattern] = Field(default_factory=dict)
     stacks: dict[str, Stack] = Field(default_factory=dict)

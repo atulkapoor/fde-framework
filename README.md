@@ -142,7 +142,7 @@ check. `--lenient` exists for the hour when you are mid-way through authoring
 content and the links do not resolve yet.
 
 A complete worked engagement — real transcript, synthetic client — lives in
-[examples/supplier-statements](examples/supplier-statements/).
+[examples/invoice-extraction](examples/invoice-extraction/).
 
 ## Common commands
 
@@ -240,7 +240,7 @@ against it is a deliberate, evidenced act.
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — module map, the data/mechanism boundary, how to extend the registry
 - [CHANGELOG.md](CHANGELOG.md) — what exists and how it was hardened
-- [examples/supplier-statements](examples/supplier-statements/) — a full engagement transcript
+- [examples/invoice-extraction](examples/invoice-extraction/) — a full engagement transcript
 - [SECURITY.md](SECURITY.md) — reporting, and what counts as security-grade here
 - [llms.txt](llms.txt) — the project summarised for AI assistants
 

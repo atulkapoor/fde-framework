@@ -31,7 +31,7 @@ ENOUGH_PAIRS = 40
 
 # Labels that mean the value identifies somebody or something. Matched on the
 # field name, which is where this information actually lives.
-IDENTIFIER_HINTS = ("account", "customer", "ssn", "nino", "pan", "reference",
+IDENTIFIER_HINTS = ("account", "customer", "ssn", "nino", "pan", "reference", "invoice",
                     "member", "policy", "iban", "email", "phone")
 
 

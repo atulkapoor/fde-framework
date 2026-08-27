@@ -19,20 +19,27 @@ decisions:
   deployment: systemd-unit
   provisioning: manual-runbook
 outcome: >-
-  Delivered as decided. Gradient-boosted trees on tabular features met the
-  single-digit-millisecond budget a language model cannot, and every score
-  carries its feature attribution -- which is what the interpretability
-  requirement actually meant.
+  The shape holds in public production reports: gradient-boosted
+  classification beating LLM approaches on cost and accuracy for narrow
+  tabular tasks (Arelion/DeLaval: 97% accuracy, 80% manual-workload
+  reduction, publicly reported; Airtrain: 47% to 94% accuracy with 94%
+  cost reduction after moving to fine-tuned small/classical models,
+  publicly reported).
 sanitization: reviewed
 ---
-A re-expressed engagement shape. No client is identifiable from it.
+An engagement shape assembled from publicly documented production
+case studies. No client of ours is identifiable from it, and none
+contributed to it.
 
-Tabular churn prediction with an interpretability obligation and a
-latency budget measured in single-digit milliseconds. The shape that keeps
-classical machine learning a first-class citizen: no part of it wants a
-language model, and the framework has to be able to say so.
+Tabular classification with an interpretability obligation and a
+millisecond budget. Assembled from publicly documented deployments where
+classical machine learning beat generative approaches in-domain --
+Arelion/DeLaval's XGBoost classification and Airtrain's published
+accuracy/cost results. The shape that keeps classical ML a first-class
+citizen. No private engagement contributed to this record.
 
 The decisions above are what the engine derives from this profile
-today -- the shape is the evidence, and it is reproducible. Measured
-outcomes (days, deltas against baseline) enter only from real
-retrospectives via `fde retro`; none are invented here.
+today -- reproducible by running it. The published figures cited in
+the outcome belong to the public record and carry their own dates;
+measured outcomes for engagements run through this framework enter
+only via `fde retro`.

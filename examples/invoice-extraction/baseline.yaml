@@ -1,9 +1,9 @@
-volume: 200000
-cycle_time_per_unit_seconds: 420
-labour_hours_per_week: 60
-rework_rate: 0.12
-exception_rate: 0.08
-error_rate: 0.05
-business_metric: days to close the quarter
+volume: 500000
+cycle_time_per_unit_seconds: 300
+labour_hours_per_week: 80
+rework_rate: 0.10
+exception_rate: 0.07
+error_rate: 0.04
+business_metric: days from receipt to posting
 sampled: true
 definitions_recorded: true

@@ -555,6 +555,32 @@ def _refuse_if_blocked(engagement, registry=None, *, warn_only: bool = False) ->
     raise typer.Exit(1)
 
 
+def _write_compliance(out: Path, locale) -> None:
+    """The jurisdiction's demands, as a checklist with a date.
+
+    Produce-and-verify items, never rules: the framework decided the
+    architecture the same way it would anywhere, and this page says what
+    this place additionally requires the engagement to produce.
+    """
+    lines = [
+        f"# Compliance obligations -- {locale.name}",
+        "",
+        f"As of {locale.as_of or 'undated'}. Law churns like stacks do: verify "
+        f"each item with counsel before relying on it, and re-date this page "
+        f"when you do.",
+        "",
+    ]
+    for obligation in locale.obligations:
+        lines.append(f"## {obligation.id}")
+        lines.append("")
+        lines.append(obligation.produce)
+        if obligation.verify:
+            lines.append("")
+            lines.append(f"*Verify:* {obligation.verify}")
+        lines.append("")
+    (out / "COMPLIANCE.md").write_text("\n".join(lines) + "\n")
+
+
 @app.command("baseline")
 def baseline_cmd(
     root: Annotated[Path, typer.Argument(help="The engagement directory.")],
@@ -672,6 +698,49 @@ def restate_cmd(
         f"statement v{len(engagement.statements)} recorded -- drift is still "
         f"measured against v1"
     )
+
+
+@app.command("locale")
+def locale_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    locale_id: Annotated[str, typer.Argument(help="A locale pack from the registry.")],
+    registry_root: Annotated[Path, typer.Option("--registry")] = DEFAULT_ROOT,
+) -> None:
+    """Apply a jurisdiction pack: presets at the weakest provenance, and
+    obligations the build will carry into COMPLIANCE.md.
+
+    Presets are INFERRED, so anything anybody actually says outranks them --
+    geography seeds answers, it never overrides people.
+    """
+    registry = _registry(registry_root)
+    locale = registry.locales.get(locale_id)
+    if locale is None:
+        known = ", ".join(sorted(registry.locales)) or "none in this registry"
+        typer.echo(f"{locale_id!r} is not a locale pack. Available: {known}", err=True)
+        raise typer.Exit(1)
+
+    engagement = _engagement(root)
+    facts = [
+        Fact(dimension, value, Provenance.INFERRED, source=f"locale:{locale_id}")
+        for dimension, value in locale.presets.items()
+    ]
+    if facts:
+        engagement.append(
+            Session(
+                session_id=_next_session_id(engagement, f"locale-{locale_id}"),
+                respondent=Respondent(role=Role.SYSTEM),
+                facts=facts,
+            )
+        )
+    (engagement.root / "locale").write_text(locale_id + "\n")
+
+    typer.echo(f"applied {locale.name} ({locale_id}), as of {locale.as_of or 'undated'}")
+    if facts:
+        typer.echo(f"  presets ({len(facts)}, weakest provenance -- any stated "
+                   f"answer outranks them):")
+        for fact in facts:
+            typer.echo(f"    {fact.dimension} = {fact.value}")
+    typer.echo(f"  obligations carried into the build: {len(locale.obligations)}")
 
 
 @app.command("architect")
@@ -1065,6 +1134,12 @@ def build_cmd(
                 handle.write(json.dumps(
                     {"trigger": trigger, "predicted_at": date.today().isoformat()}
                 ) + "\n")
+
+    locale_marker = engagement.root / "locale"
+    if locale_marker.exists():
+        locale = registry.locales.get(locale_marker.read_text().strip())
+        if locale is not None:
+            _write_compliance(Path(out), locale)
 
     typer.echo(f"wrote {out}")
     if architecture.decisions.undecided():
