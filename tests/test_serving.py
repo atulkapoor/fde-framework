@@ -111,7 +111,11 @@ def test_a_dimension_no_decision_depends_on_is_reported_as_a_gap(reg):
 
 
 def _all_dimensions_act(reg) -> bool:
-    referenced = set()
+    # Gate-consumed dimensions act even when no registry predicate names
+    # them -- the gates read them in code, by declared constant.
+    from fde.gates import GATE_DIMENSIONS
+
+    referenced = set(GATE_DIMENSIONS)
     for approach in reg.approaches.values():
         for condition in [*approach.applies_when, *approach.avoid_when]:
             referenced.add(condition.split()[0])

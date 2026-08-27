@@ -497,11 +497,20 @@ def _gate_status(engagement, registry=None):
     the gate stays in blocked_by, visibly, instead of quietly vanishing.
     """
     state = engagement.gate_state()
+    licences = None
+    if registry is not None:
+        # The architecture as it would build now, overrides included --
+        # the licence gate judges the combination, and only a built set of
+        # realizations knows the combination.
+        licences = build_architecture(
+            engagement.profile, registry, overrides=_overrides(engagement)
+        ).licences
     status = input_status(
         engagement.profile,
         baseline=engagement.baseline(),
         data_access=bool(state.get("data_access")),
         registry=registry,
+        licences=licences,
         original_statement=(
             engagement.original_statement().text if engagement.original_statement() else None
         ),

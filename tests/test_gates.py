@@ -309,3 +309,64 @@ def test_without_a_registry_the_gates_still_function(tmp_path):
     registry, never to disagree with it on what it does cover."""
     status = input_status(profile(hosting="air-gapped", output_shape="freeform"))
     assert not status.gate("offline_evaluability").passed
+
+
+# --- licence compatibility (G6) --------------------------------------------
+
+
+def test_permissive_licences_pass_whatever_the_posture(tmp_path):
+    status = input_status(
+        profile(output_shape="structured"),
+        licences={"vllm": "Apache-2.0", "pgvector": "PostgreSQL"},
+    )
+    assert status.gate("licence_compatibility").passed
+
+
+def test_copyleft_into_a_proprietary_product_blocks_and_names_the_stack(tmp_path):
+    """The G6 scenario: an FDE hands a client shipping proprietary software
+    a project that pulls in an AGPL component -- a serious problem created
+    by the framework, on the FDE's name."""
+    status = input_status(
+        profile(licence_posture="proprietary"),
+        licences={"somelib": "AGPL-3.0", "vllm": "Apache-2.0"},
+    )
+    gate = status.gate("licence_compatibility")
+    assert not gate.passed
+    assert "somelib" in gate.reason
+    assert "vllm" not in gate.reason
+    assert "waive" in gate.remedy
+
+
+def test_copyleft_with_no_stated_posture_asks_rather_than_assumes(tmp_path):
+    """Assuming 'internal' hands the client a lawsuit the day the product
+    ships. Unknown posture plus copyleft is a question, loudly."""
+    status = input_status(
+        profile(output_shape="structured"),
+        licences={"somelib": "GPL-3.0"},
+    )
+    gate = status.gate("licence_compatibility")
+    assert not gate.passed
+    assert "sponsor" in gate.remedy
+
+
+def test_agpl_triggers_even_internally_but_gpl_does_not(tmp_path):
+    """Network copyleft fires on serving, not distribution."""
+    gpl = input_status(profile(licence_posture="internal_only"),
+                       licences={"lib": "GPL-3.0"})
+    assert gpl.gate("licence_compatibility").passed
+    agpl = input_status(profile(licence_posture="internal_only"),
+                        licences={"lib": "AGPL-3.0"})
+    assert not agpl.gate("licence_compatibility").passed
+
+
+def test_an_open_posture_accepts_copyleft(tmp_path):
+    status = input_status(profile(licence_posture="open"),
+                          licences={"lib": "AGPL-3.0"})
+    assert status.gate("licence_compatibility").passed
+
+
+def test_no_architecture_means_nothing_to_judge(tmp_path):
+    """status before any decision exists must not block on licences that
+    are not chosen yet."""
+    status = input_status(profile(licence_posture="proprietary"), licences=None)
+    assert status.gate("licence_compatibility").passed

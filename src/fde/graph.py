@@ -176,7 +176,9 @@ def find_gaps(
                 )
             )
 
-    acted_on: set[str] = set()
+    from fde.gates import GATE_DIMENSIONS
+
+    acted_on: set[str] = set(GATE_DIMENSIONS)
     for approach in registry.approaches.values():
         for condition in [*approach.applies_when, *approach.avoid_when]:
             acted_on.update(_dimensions_in(condition))

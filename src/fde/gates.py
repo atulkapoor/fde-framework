@@ -85,6 +85,15 @@ def _boundary(registry) -> dict[str, list[str]]:
     } or FALLBACK_BOUNDARY
 
 
+# Dimensions the gates themselves consume. Named here so the registry's
+# inert-dimension check can count gate usage as usage -- the same seam as
+# graph.TOPOLOGY_DIMENSION: one declared join, not scattered string literals.
+GATE_DIMENSIONS = {"licence_posture", "hosting", "output_shape", "data_residency"}
+
+# The dimension the licence gate reads.
+LICENCE_POSTURE = "licence_posture"
+
+
 class HardGate(Exception):
     """This one cannot be overridden, and saying so is the point."""
 
@@ -225,8 +234,15 @@ def input_status(
     original_statement: str | None = None,
     current_statement: str | None = None,
     registry=None,
+    licences: dict[str, str] | None = None,
 ) -> Status:
-    """Known, assumed, missing -- and whether this is worth starting."""
+    """Known, assumed, missing -- and whether this is worth starting.
+
+    `licences` is stack -> licence for the architecture as it would build
+    now. Passed in rather than computed here, because only the caller knows
+    whether an architecture exists yet; None means the licence gate has
+    nothing to judge and stands open.
+    """
     known = sorted(profile.values())
     contested = [d.dimension for d in profile.disagreements()]
     weights = _weights(registry)
@@ -238,6 +254,7 @@ def input_status(
             _client_readiness(profile),
             _scope_drift(original_statement, current_statement),
             _offline_evaluability(profile, registry),
+            _licence_compatibility(profile, licences),
         ],
         known=known,
         missing=sorted(d for d in weights if not profile.resolved(d)),
@@ -351,6 +368,66 @@ def _offline_evaluability(profile: Profile, registry=None) -> Gate:
         reason="Freeform output needs a judge, and nothing may leave here.",
         remedy="Plan a judge that runs inside the boundary, and calibrate it "
                "against human agreement before quoting a number from it.",
+    )
+
+
+def _licence_compatibility(
+    profile: Profile, licences: dict[str, str] | None
+) -> Gate:
+    """Whether the licence *combination* survives what the client intends.
+
+    Each realization declares its licence; nothing used to check the
+    aggregate. An FDE could hand a client shipping proprietary software a
+    project pulling in an AGPL component -- a serious problem created by the
+    framework, on the FDE's name. Judged at build time, against the stated
+    posture, waivable only with a reason (which is what legal clearance is).
+    """
+    from fde.realization import copyleft
+
+    tainted = {
+        stack: licence
+        for stack, licence in (licences or {}).items()
+        if copyleft(licence)
+    }
+    if not tainted:
+        return Gate("licence_compatibility", True)
+
+    posture = profile.get(LICENCE_POSTURE)
+    named = ", ".join(f"{stack} ({licence})" for stack, licence in sorted(tainted.items()))
+
+    if posture == "open":
+        return Gate("licence_compatibility", True)
+    if posture == "internal_only":
+        network = {s: l for s, l in tainted.items() if "AGPL" in l.upper()}
+        if not network:
+            return Gate("licence_compatibility", True)
+        return Gate(
+            "licence_compatibility",
+            False,
+            reason=f"Network copyleft in an internally served system: "
+                   f"{', '.join(sorted(network))}. The AGPL triggers on serving, "
+                   f"not distribution -- internal does not exempt it.",
+            remedy="Swap the stack for a permissive alternative, or waive with "
+                   "the legal clearance as the reason.",
+        )
+    if posture == "proprietary":
+        return Gate(
+            "licence_compatibility",
+            False,
+            reason=f"Copyleft components in a system the client ships as "
+                   f"proprietary: {named}. Distribution obliges publishing "
+                   f"changes, which is the one thing they cannot do.",
+            remedy="Swap the stack for a permissive alternative, or waive with "
+                   "the legal clearance as the reason.",
+        )
+    return Gate(
+        "licence_compatibility",
+        False,
+        reason=f"Copyleft components are in this design ({named}) and nobody "
+               f"has said what the client intends to do with the system.",
+        remedy="Ask the sponsor: proprietary product, internal tool, or open "
+               "source? The answer decides whether these licences are a "
+               "problem at all.",
     )
 
 
