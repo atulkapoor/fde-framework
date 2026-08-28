@@ -1,6 +1,7 @@
 ---
 id: external_systems
 type: count
+scope: functional
 kind: requirement
 weight: 0.5
 asks: "How many systems does this have to touch?"

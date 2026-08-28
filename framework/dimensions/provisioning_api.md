@@ -1,6 +1,7 @@
 ---
 id: provisioning_api
 type: boolean
+scope: environment
 kind: environment
 weight: 0.5
 asks: "Is there an API that creates and destroys the infrastructure?"

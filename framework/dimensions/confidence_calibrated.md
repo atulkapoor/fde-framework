@@ -1,6 +1,7 @@
 ---
 id: confidence_calibrated
 type: boolean
+scope: non_functional
 kind: requirement
 weight: 1.0
 asks: "Has the cheap path's confidence been measured against known answers?"

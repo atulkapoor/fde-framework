@@ -1,6 +1,7 @@
 ---
 id: output_shape
 type: enum
+scope: functional
 kind: requirement
 weight: 3.0
 needs_judge: [freeform]

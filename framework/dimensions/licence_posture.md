@@ -1,6 +1,7 @@
 ---
 id: licence_posture
 type: enum
+scope: commercial
 kind: requirement
 weight: 1.5
 asks: "Will the delivered system be shipped as proprietary software, used internally, or open-sourced?"

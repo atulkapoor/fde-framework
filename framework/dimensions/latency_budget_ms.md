@@ -1,6 +1,7 @@
 ---
 id: latency_budget_ms
 type: duration_ms
+scope: non_functional
 kind: requirement
 weight: 1.5
 asks: "What is the latency budget, at p95, under expected peak load?"

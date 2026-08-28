@@ -1,6 +1,7 @@
 ---
 id: input_format
 type: enum
+scope: functional
 kind: requirement
 weight: 2.0
 asks: "What arrives, and in what form?"

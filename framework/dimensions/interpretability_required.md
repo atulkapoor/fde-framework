@@ -1,6 +1,7 @@
 ---
 id: interpretability_required
 type: boolean
+scope: non_functional
 kind: requirement
 weight: 1.5
 asks: "Must a decision be explainable to someone outside the team?"

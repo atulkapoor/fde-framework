@@ -1,6 +1,7 @@
 ---
 id: accelerator
 type: enum
+scope: environment
 kind: environment
 weight: 1.0
 asks: "What accelerator does the machine this runs on have?"

@@ -1,6 +1,7 @@
 ---
 id: existing_iac_tool
 type: enum
+scope: environment
 kind: environment
 weight: 0.5
 asks: "What does the team already use to manage infrastructure?"

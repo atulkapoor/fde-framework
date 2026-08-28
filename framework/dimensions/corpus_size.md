@@ -1,6 +1,7 @@
 ---
 id: corpus_size
 type: count
+scope: data
 kind: requirement
 weight: 1.5
 asks: "How many items in total?"

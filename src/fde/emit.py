@@ -88,7 +88,7 @@ def emit(
     write_deploy(architecture, out)
     write_ops(architecture, out, registry)
     _write_project_file(out)
-    (out / "ARCHITECTURE.md").write_text(render_architecture(architecture))
+    (out / "ARCHITECTURE.md").write_text(render_architecture(architecture, registry))
     _write_risks(out, waivers or [], overrides or [], architecture)
     return EmitReport(path=out, scaffolded=scaffolded)
 
@@ -709,13 +709,145 @@ def _write_project_file(out: Path) -> None:
 # --- documents -----------------------------------------------------------
 
 
-def render_architecture(architecture: Architecture) -> str:
+SCOPE_LABELS = {
+    "functional": "Functional scope",
+    "non_functional": "Non-functional scope",
+    "data": "Data scope",
+    "environment": "Environment",
+    "operational": "Operations",
+    "commercial": "Commercial",
+}
+
+
+def _scope_sections(architecture: Architecture, registry: Registry | None) -> list[str]:
+    """The engagement's scope, stated systematically.
+
+    A solution document that never separates functional from non-functional
+    scope reads as a list of trivia; grouped, the same facts read as the
+    scoping exercise they were -- and an empty group is a visible hole
+    rather than an absence nobody counts.
+    """
+    if registry is None or not architecture.values:
+        return []
+    grouped: dict[str, list[tuple[str, object]]] = {}
+    for dimension, value in sorted(architecture.values.items()):
+        entry = registry.dimensions.get(dimension)
+        if entry is None:
+            continue
+        grouped.setdefault(str(entry.scope), []).append((dimension, value))
+
+    lines = ["## Scope", ""]
+    for scope, label in SCOPE_LABELS.items():
+        items = grouped.get(scope)
+        if not items:
+            lines.append(f"**{label}**: not established -- nothing here was "
+                         f"stated, measured, or asked to a conclusion.")
+            lines.append("")
+            continue
+        lines.append(f"**{label}**")
+        lines.extend(f"- `{d}` = {v}" for d, v in items)
+        lines.append("")
+    return lines
+
+
+def _tools_section(architecture: Architecture, registry: Registry | None) -> list[str]:
+    """Tools and libraries: what was chosen, and what else could serve.
+
+    The corpus holds real stacks; a document that says "plain-python" seven
+    times while never mentioning them buries half of what the client is
+    paying to know. Alternatives are the ones that actually run in this
+    topology -- adopting one is `fde reuse <stack>` and a rebuild, not a
+    redesign.
+    """
+    if registry is None or not architecture.realizations:
+        return []
+    lines = [
+        "## Tools and libraries", "",
+        "| Component | Chosen | Licence | Alternatives in this topology |",
+        "|---|---|---|---|",
+    ]
+    from fde.realization import pattern_for
+
+    for component, realization in sorted(architecture.realizations.items()):
+        decision = architecture.decisions.get(component)
+        try:
+            pattern = pattern_for(decision.approach, component, registry)
+        except Exception:  # noqa: BLE001 - a missing pattern is not this table's problem
+            pattern = None
+        alternatives = []
+        if pattern is not None:
+            alternatives = sorted({
+                r.stack for r in pattern.realizations
+                if r.stack != realization.stack
+                and r.stack in registry.stacks
+                and architecture.topology in registry.stacks[r.stack].topologies
+            })
+        licence = registry.stacks.get(realization.stack)
+        lines.append(
+            f"| {component} | {realization.stack} | "
+            f"{licence.licence if licence else '--'} | "
+            f"{', '.join(alternatives) if alternatives else '--'} |"
+        )
+    lines += [
+        "",
+        "Adopting an alternative the client already operates: "
+        "`fde reuse <engagement> <stack>` and rebuild -- the architecture "
+        "does not change, only the emitted code does.",
+        "",
+    ]
+    return lines
+
+
+def _posture_section(architecture: Architecture) -> list[str]:
+    """Agent and tool posture, assembled from what is actually in the graph.
+
+    If the system acts on the world, this says exactly what stands in the
+    way of a wrong action -- and if nothing does, that absence is stated
+    rather than assumed away.
+    """
+    graph = architecture.graph
+    mutative = [n.id for n in graph.mutative_nodes()]
+    if not mutative and not graph.has_type("ApprovalGate"):
+        return []
+    lines = ["## Agent and tool posture", ""]
+    for node_id in sorted(mutative):
+        node = graph.nodes[node_id]
+        gates = [p.id for p in graph.predecessors(node_id)
+                 if p.type in ("ApprovalGate", "Critic")]
+        # Walk one hop further: the gate may precede the critic.
+        for g in list(gates):
+            gates.extend(p.id for p in graph.predecessors(g)
+                         if p.type in ("ApprovalGate", "Critic"))
+        lines.append(
+            f"- `{node_id}` acts on the world. In front of it: "
+            f"{', '.join(sorted(set(gates))) or 'nothing -- review this'}; "
+            f"idempotency key `{node.idempotency_key or 'unset'}` so re-running "
+            f"cannot act twice."
+        )
+    integration = architecture.realizations.get("integration")
+    if integration is not None:
+        lines.append(
+            f"- Tool boundary realized via `{integration.stack}`"
+            + (" -- the Model Context Protocol, with annotations described "
+               "by tools and enforced by the server." if integration.stack == "mcp" else ".")
+        )
+    if "reasoning" in architecture.realizations:
+        lines.append(
+            "- The reasoning loop is bounded: a step cap and a budget cap, "
+            "and every run records which check ended it."
+        )
+    lines.append("")
+    return lines
+
+
+def render_architecture(architecture: Architecture, registry: Registry | None = None) -> str:
     lines = [
         "# Architecture",
         "",
         f"Topology: **{architecture.topology}**  ",
         f"Fingerprint: `{architecture.fingerprint()}`",
         "",
+        *_scope_sections(architecture, registry),
         "## Decisions",
         "",
         "| Component | Approach | Implemented with | Why |",
@@ -728,6 +860,8 @@ def render_architecture(architecture: Architecture) -> str:
             f"{realization.stack if realization else '--'} | {decision.rationale} |"
         )
 
+    lines += ["", *_tools_section(architecture, registry)]
+    lines += _posture_section(architecture)
     lines += ["", "## Rejected alternatives", "",
               "What this design is not, and why. Usually the more useful half.", ""]
     for component, decision in sorted(architecture.decisions.decided().items()):

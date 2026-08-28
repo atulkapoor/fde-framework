@@ -1,6 +1,7 @@
 ---
 id: operates_after_handover
 type: enum
+scope: operational
 kind: requirement
 weight: 1.0
 asks: "Who operates this after we leave?"

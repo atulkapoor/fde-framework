@@ -1,6 +1,7 @@
 ---
 id: recall_span
 type: enum
+scope: functional
 kind: requirement
 weight: 0.5
 asks: "How far back does the system need to remember?"

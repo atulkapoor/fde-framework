@@ -148,9 +148,41 @@ def status(
     resolved = profile.values()
     if resolved:
         typer.echo(f"known ({len(resolved)})")
+        # Grouped by scope, so discovery reads as the systematic exercise it
+        # is -- and the empty group is as loud as the full one: a design with
+        # its functional scope settled and its non-functional scope blank is
+        # a specific, familiar kind of trouble.
+        by_scope: dict[str, list[str]] = {}
         for dimension in sorted(resolved):
-            fact = profile.fact(dimension)
-            typer.echo(f"  {dimension} = {fact.value}   [{_who(fact)}]")
+            entry = registry.dimensions.get(dimension) if registry else None
+            scope = str(entry.scope) if entry else "other"
+            by_scope.setdefault(scope, []).append(dimension)
+        order = ("functional", "non_functional", "data", "environment",
+                 "operational", "commercial", "other")
+        labels = {"functional": "functional scope",
+                  "non_functional": "non-functional scope",
+                  "data": "data scope", "environment": "environment",
+                  "operational": "operations", "commercial": "commercial",
+                  "other": "other"}
+        for scope in order:
+            dims = by_scope.get(scope)
+            if not dims:
+                continue
+            typer.echo(f"  {labels[scope]}:")
+            for dimension in dims:
+                fact = profile.fact(dimension)
+                typer.echo(f"    {dimension} = {fact.value}   [{_who(fact)}]")
+        if registry:
+            unsettled = {}
+            for entry in registry.dimensions.values():
+                if entry.weight > 0 and not profile.resolved(entry.id):
+                    unsettled.setdefault(str(entry.scope), []).append(entry.id)
+            gaps_line = " · ".join(
+                f"{labels.get(s, s)}: {', '.join(sorted(d))}"
+                for s, d in sorted(unsettled.items()) if d
+            )
+            if gaps_line:
+                typer.echo(f"  still open -- {gaps_line}")
 
     status = _gate_status(engagement, registry)
     typer.echo(f"\n{status.completeness:.0%} of what gets decided is settled")

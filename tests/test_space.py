@@ -34,7 +34,7 @@ def space(reg):
 
 def test_the_space_starts_as_everything_the_registry_allows(space):
     assert space.surviving("hosting") == {
-        "public-saas", "managed-api", "customer-vpc", "on-prem", "air-gapped",
+        "public-saas", "managed-api", "customer-vpc", "hybrid", "on-prem", "air-gapped",
     }
 
 
@@ -53,7 +53,7 @@ def test_nothing_is_resolved_before_anything_is_known(space):
 
 def test_an_answer_removes_what_it_rules_out(space):
     after = space.answer("data_residency", "cannot_leave")
-    assert after.surviving("hosting") == {"customer-vpc", "on-prem", "air-gapped"}
+    assert after.surviving("hosting") == {"customer-vpc", "hybrid", "on-prem", "air-gapped"}
 
 
 def test_answering_leaves_the_original_untouched(space):
@@ -128,7 +128,7 @@ def test_an_unknown_dimension_is_rejected(space):
 def test_a_profile_seeds_the_space(space):
     p = Profile()
     p.ingest([Fact("data_residency", "cannot_leave", Provenance.ARTIFACT)])
-    assert space.apply(p).surviving("hosting") == {"customer-vpc", "on-prem", "air-gapped"}
+    assert space.apply(p).surviving("hosting") == {"customer-vpc", "hybrid", "on-prem", "air-gapped"}
 
 
 def test_a_contested_dimension_does_not_prune(space):

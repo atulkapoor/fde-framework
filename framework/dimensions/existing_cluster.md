@@ -1,6 +1,7 @@
 ---
 id: existing_cluster
 type: boolean
+scope: environment
 kind: environment
 weight: 1.0
 asks: "Is there already a cluster this could run on?"

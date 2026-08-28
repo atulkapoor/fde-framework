@@ -1,6 +1,7 @@
 ---
 id: cheap_path_coverage
 type: ratio
+scope: non_functional
 kind: requirement
 weight: 1.0
 asks: "What share of records can the exact, rule-based path settle on its own?"

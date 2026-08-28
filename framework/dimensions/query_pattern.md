@@ -1,6 +1,7 @@
 ---
 id: query_pattern
 type: enum
+scope: functional
 kind: requirement
 weight: 2.0
 asks: "What shape are the questions people ask?"

@@ -1,6 +1,7 @@
 ---
 id: data_residency
 type: enum
+scope: data
 kind: requirement
 weight: 3.0
 asks: "Can client data leave their environment?"

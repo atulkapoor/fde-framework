@@ -7,6 +7,7 @@ applies_when:
   - data_residency == cannot_leave
   - hosting == air-gapped
   - hosting == on-prem
+  - hosting == hybrid
   - latency_budget_ms < 100
 avoid_when:
   - operates_after_handover == nobody_yet

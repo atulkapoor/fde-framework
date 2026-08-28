@@ -2,7 +2,7 @@
 id: vllm
 name: vLLM
 licence: Apache-2.0
-topologies: [customer-vpc, on-prem, air-gapped]
+topologies: [customer-vpc, on-prem, air-gapped, hybrid]
 last_verified: 2026-08-21
 reversibility: moderate
 ---

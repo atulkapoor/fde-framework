@@ -105,12 +105,29 @@ class Maturity(StrEnum):
     NONE = "none"
 
 
+class Scope(StrEnum):
+    """Which part of an engagement's scope a dimension describes.
+
+    The systematic axes a solution architect actually scopes by. Status and
+    the emitted architecture group by these, so discovery reads as a
+    structured exercise rather than a flat list of questions.
+    """
+
+    FUNCTIONAL = "functional"          # what the system does
+    NON_FUNCTIONAL = "non_functional"  # how well it must do it
+    DATA = "data"                      # what it does it to, and the rules on that
+    ENVIRONMENT = "environment"        # where it runs and what exists there
+    OPERATIONAL = "operational"        # who runs it afterwards
+    COMMERCIAL = "commercial"          # licensing and shipping posture
+
+
 class Dimension(BaseModel):
     """One axis of the problem space."""
 
     id: str
     type: ValueType
     kind: DimensionKind = DimensionKind.REQUIREMENT
+    scope: Scope = Scope.FUNCTIONAL
     asks: str | None = None
     values: list[str] = Field(default_factory=list)
 

@@ -1,6 +1,7 @@
 ---
 id: container_competence
 type: boolean
+scope: environment
 kind: environment
 weight: 1.0
 asks: "Does the team that will operate this already run containers?"

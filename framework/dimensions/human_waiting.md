@@ -1,6 +1,7 @@
 ---
 id: human_waiting
 type: enum
+scope: non_functional
 kind: requirement
 weight: 1.0
 asks: "Is a person waiting for the result?"

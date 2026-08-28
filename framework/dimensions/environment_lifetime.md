@@ -1,6 +1,7 @@
 ---
 id: environment_lifetime
 type: enum
+scope: environment
 kind: requirement
 weight: 0.5
 asks: "Does this environment need to be destroyed cleanly, or does it live?"

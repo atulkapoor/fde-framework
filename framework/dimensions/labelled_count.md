@@ -1,6 +1,7 @@
 ---
 id: labelled_count
 type: count
+scope: data
 kind: requirement
 weight: 2.0
 asks: "How many are verified or labelled?"
