@@ -9,12 +9,17 @@ recognises:
   "no":
     - nobody is waiting
     - no one is waiting
+    - nobody waits
+    - no one waits
     - runs overnight
     - runs in batch
     - batch job
     - offline process
   "yes":
     - user is waiting
+    - person waits
+    - somebody is waiting
+    - waits on each answer
     - interactive
     - real time
     - real-time

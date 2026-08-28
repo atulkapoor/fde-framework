@@ -21,8 +21,18 @@ from fde.models.schema import Dimension, ValueType
 from fde.registry import Registry
 
 # "200,000", "2 million", "1.5k"
+# Word numbers two..twelve are read; "one" is deliberately not. It appears
+# in prose that is not counting anything ("one operation", "one place"), and
+# a brief that means the number one writes 1. Beyond twelve, people write
+# digits.
+WORD_NUMBERS = {
+    "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7,
+    "eight": 8, "nine": 9, "ten": 10, "eleven": 11, "twelve": 12,
+}
 NUMBER = re.compile(
-    r"(?P<num>\d[\d,]*(?:\.\d+)?)\s*(?P<scale>k|m|bn|thousand|million|billion)?\b",
+    r"(?P<num>\d[\d,]*(?:\.\d+)?|"
+    + "|".join(WORD_NUMBERS)
+    + r")\s*(?P<scale>k|m|bn|thousand|million|billion)?\b",
     re.I,
 )
 SCALES = {
@@ -156,8 +166,15 @@ def _nearest_word_distance(lowered: str, match: re.Match, words: list[str]) -> i
     return best
 
 
+def _numeric(raw: str) -> float:
+    lowered = raw.lower()
+    if lowered in WORD_NUMBERS:
+        return float(WORD_NUMBERS[lowered])
+    return float(raw.replace(",", ""))
+
+
 def _scaled(match: re.Match) -> int:
-    value = float(match.group("num").replace(",", ""))
+    value = _numeric(match.group("num"))
     if scale := match.group("scale"):
         value *= SCALES[scale.lower()]
     return int(value)

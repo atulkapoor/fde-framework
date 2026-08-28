@@ -235,3 +235,26 @@ def test_two_values_neither_refining_the_other_are_still_refused(reg):
     """The refinement rule must not become a way of picking arbitrarily."""
     text = "Data cannot leave for EU clients, though data may leave for US ones."
     assert "data_residency" not in dims(parse_prose(text, reg))
+
+
+# --- numbers people write as words -----------------------------------------
+
+
+def test_word_numbers_count(reg):
+    """'Two million records' is how a sponsor actually writes it. A scanner
+    that only reads digits misses the corpus size in half of real briefs."""
+    facts = dims(parse_prose("We hold two million records in total.", reg))
+    assert facts.get("corpus_size") == 2_000_000
+
+
+def test_small_word_counts_attach_to_their_noun(reg):
+    facts = dims(parse_prose("Four external systems are involved.", reg))
+    assert facts.get("external_systems") == 4
+
+
+def test_one_is_deliberately_not_a_quantity(reg):
+    """'one operation', 'one place', 'one answer' -- the word is everywhere
+    in prose that is not counting anything. Excluded on purpose; a brief
+    that means the number one writes 1."""
+    facts = dims(parse_prose("Everything lands in one system of record.", reg))
+    assert "external_systems" not in facts

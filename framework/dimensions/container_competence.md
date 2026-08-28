@@ -6,7 +6,8 @@ weight: 1.0
 asks: "Does the team that will operate this already run containers?"
 ask_role: [admin, skeptic]
 recognises:
-  "true": [we run kubernetes, we use docker, containerised already, our containers]
+  "true": [we run kubernetes, we use docker, containerised already, our containers,
+           team knows containers, knows docker, comfortable with containers]
 ---
 Whether containers are something this team already does.
 

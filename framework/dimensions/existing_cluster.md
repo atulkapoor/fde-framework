@@ -6,7 +6,8 @@ weight: 1.0
 asks: "Is there already a cluster this could run on?"
 ask_role: [admin]
 recognises:
-  "true": [we have a cluster, our kubernetes, existing k8s, our openshift, we run rke2]
+  "true": [we have a cluster, an existing cluster, existing cluster, our kubernetes,
+           existing k8s, our openshift, we run rke2]
 ---
 Whether a platform already exists to deploy onto.
 

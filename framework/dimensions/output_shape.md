@@ -9,12 +9,15 @@ ask_role: [eval_owner, sponsor, user]
 values: [structured, freeform, classification, ranking, decision]
 recognises:
   structured: [unified json, structured output, into a schema, extract fields, extract financial,
-               populate fields, into json]
+               populate fields, into json, structured records, structured data out]
   freeform: [draft a, write a summary, generate copy, answer questions, generate promotional,
-             generate imagery, generate images, in our house style]
-  classification: [predict which, classify, score each, will churn, risk score]
+             generate imagery, generate images, in our house style, freeform, free-form,
+             prose output, open-ended answers, generate descriptions]
+  classification: [predict which, classify, score each, will churn, risk score,
+                   classification output, classification model]
   ranking: [rank, prioritise, order by relevance, shortlist]
-  decision: [decide whether, choose an action, schedule, allocate, route to]
+  decision: [decide whether, choose an action, schedule, allocate, route to,
+             output is a decision, decision output, assignments]
 ---
 What comes out decides more than what goes in.
 
