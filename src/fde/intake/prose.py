@@ -42,7 +42,8 @@ SCALES = {
 }
 
 DURATION = re.compile(
-    r"(?P<num>\d+(?:\.\d+)?)\s*(?P<unit>ms|milliseconds?|s|secs?|seconds?|min|minutes?)\b",
+    r"(?P<num>\d+(?:\.\d+)?|" + "|".join(WORD_NUMBERS)
+    + r")\s*(?P<unit>ms|milliseconds?|s|secs?|seconds?|min|minutes?)\b",
     re.I,
 )
 TO_MS = {
@@ -61,13 +62,23 @@ SENTENCE = re.compile(r"(?<=[.!?])\s+")
 # Cues that invert or qualify a matched phrase. A matcher cannot work out which
 # value a negation selects, so on seeing one it declines rather than guesses.
 NEGATIONS = re.compile(
-    r"\b(not|never|no longer|untrue|false|isn't|is not|wasn't|doesn't|don't)\b", re.I
+    r"\b(not|never|no longer|untrue|false|isn't|is not|wasn't|doesn't|don't"
+    r"|nobody|no one|no-one)\b",
+    re.I,
 )
 LOOKBACK = 60
 
 # "between 8,000 and 12,000" is one quantity written two ways, not two
-# measurements. Which end is meant is a question for a person.
-RANGE = re.compile(r"\b(between|from)\b|\b\d[\d,]*\s*(?:-|--|to)\s*\d", re.I)
+# measurements. Which end is meant is a question for a person. Only a *numeric*
+# range counts: "labelled from last year" and "between the two systems" are
+# ordinary sentences, and a guard that swallowed them threw away every number
+# they held.
+RANGE = re.compile(
+    r"\bbetween\s+\d[\d,]*\s*(?:k|m|bn|thousand|million|billion)?\s+and\b"
+    r"|\bfrom\s+\d[\d,]*\s*(?:k|m|bn|thousand|million|billion)?\s+(?:to|up to)\b"
+    r"|\b\d[\d,]*\s*(?:-|--|to)\s*\d",
+    re.I,
+)
 
 
 def parse_prose(
@@ -223,7 +234,7 @@ def _read_duration(dimension: Dimension, text: str, source: str | None) -> list[
         if words and not any(re.search(rf"\b{re.escape(w)}\b", window) for w in words):
             continue
         unit = match.group("unit").lower().rstrip(".")
-        millis = float(match.group("num")) * TO_MS.get(unit, TO_MS.get(unit.rstrip("s"), 1))
+        millis = _numeric(match.group("num")) * TO_MS.get(unit, TO_MS.get(unit.rstrip("s"), 1))
         return [_fact(dimension, int(millis), match.span(), source)]
     return []
 

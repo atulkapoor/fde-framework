@@ -14,7 +14,7 @@ boundary_when: [air-gapped, on-prem, hybrid]
 recognises:
   air-gapped: [air-gapped, air gapped, airgapped, no network egress]
   on-prem: [on-premise, on premises, on-prem, in our datacenter, in our data centre]
-  customer-vpc: [in our vpc, our own vpc, inside our cloud account]
+  customer-vpc: [in our vpc, our own vpc, inside our cloud account, customer vpc, client vpc, their vpc, customer's cloud account, their cloud account]
   managed-api: [hosted api, managed api, vendor api]
   hybrid: [hybrid, split between on-prem and cloud, burst to cloud, sensitive stays on-prem, on-prem with cloud burst]
   public-saas: [public saas, off the shelf saas]

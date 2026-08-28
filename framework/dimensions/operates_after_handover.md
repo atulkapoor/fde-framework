@@ -8,7 +8,7 @@ asks: "Who operates this after we leave?"
 ask_role: [admin, sponsor, skeptic]
 values: [platform_team, app_team, vendor, nobody_yet]
 recognises:
-  platform_team: [our platform team, our infrastructure team, our sre team]
+  platform_team: [our platform team, our infrastructure team, our sre team, platform team operates, platform team runs, platform team will run, run by the platform team]
   app_team: [the application team, the product team will run it]
   vendor: [managed for us, a vendor will run it]
   nobody_yet: [we have not decided who, no one owns it yet, tbd who runs it]

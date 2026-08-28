@@ -5,7 +5,7 @@ scope: non_functional
 kind: requirement
 weight: 1.5
 asks: "What is the latency budget, at p95, under expected peak load?"
-recognises_near: [respond, response, latency, return, answer, complete, within, under]
+recognises_near: [respond, response, latency, return, answer, complete, within, under, budget, turnaround]
 ask_role: ['user', 'sponsor']
 ---
 Normalised to milliseconds however it was written. A budget is stated, never

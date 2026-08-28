@@ -258,3 +258,51 @@ def test_one_is_deliberately_not_a_quantity(reg):
     that means the number one writes 1."""
     facts = dims(parse_prose("Everything lands in one system of record.", reg))
     assert "external_systems" not in facts
+
+
+# --- what the aegis battery caught: prose the framework read as silence -----
+
+
+def test_from_last_year_is_not_a_range(reg):
+    """'five thousand labelled from last year' held two quantities; the old
+    range guard saw the word 'from' and threw the whole sentence away."""
+    facts = parse_prose("Corpus is about 48000 reports, five thousand labelled from last year.", reg)
+    values = {f.dimension: f.value for f in facts}
+    assert values.get("corpus_size") == 48000
+    assert values.get("labelled_count") == 5000
+
+
+def test_a_numeric_range_is_still_declined(reg):
+    facts = parse_prose("Volume is between 8,000 and 12,000 documents.", reg)
+    assert not any(f.dimension == "corpus_size" for f in facts)
+
+
+def test_a_duration_spoken_in_words(reg):
+    facts = parse_prose("The budget is about two seconds per decision.", reg)
+    assert any(f.dimension == "latency_budget_ms" and f.value == 2000 for f in facts)
+
+
+def test_the_waiting_person_need_not_be_called_a_user(reg):
+    facts = parse_prose("A safety officer is waiting on each triage decision.", reg)
+    assert any(f.dimension == "human_waiting" and f.value == "yes" for f in facts)
+
+
+def test_nobody_waiting_still_reads_as_no(reg):
+    """The generic 'is waiting on' must not turn 'nobody is waiting on it'
+    into an ambiguity refusal -- nobody is a negation, and the negation
+    guard suppresses the yes-hit it sits in front of."""
+    facts = parse_prose("Nobody is waiting on it, the job runs overnight.", reg)
+    assert any(f.dimension == "human_waiting" and f.value == "no" for f in facts)
+
+
+def test_the_customer_vpc_is_recognised_in_the_third_person(reg):
+    """The value is named customer-vpc and 'runs in the customer VPC' read as
+    nothing: every recogniser was first-person. An FDE's notes are written
+    in the third."""
+    facts = parse_prose("It runs in the customer VPC.", reg)
+    assert any(f.dimension == "hosting" and f.value == "customer-vpc" for f in facts)
+
+
+def test_the_operating_team_stated_in_the_third_person(reg):
+    facts = parse_prose("The platform team operates it after handover.", reg)
+    assert any(f.dimension == "operates_after_handover" and f.value == "platform_team" for f in facts)
