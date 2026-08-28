@@ -6,7 +6,7 @@ components: [representation]
 applies_when:
   - output_shape == structured and cheap_path_coverage < 0.95
   - output_shape == decision and cheap_path_coverage < 0.95
-avoid_when: [confidence_calibrated == true]
+avoid_when: [confidence_calibrated == true and interpretability_required != true]
 evidence: {case_ids: [structured-extraction], confidence: medium, last_verified: 2026-08-28}
 ---
 The deterministic path for what it covers, a human queue for the rest --
@@ -26,7 +26,9 @@ the interpretability requirement -- this is what that requirement selects.
 Graduate to a model tier when the queue's cost is measured and hurts, not
 before: the queue's own throughput is the number that justifies the model.
 
-Avoided once confidence is calibrated: at that point the cascade is
-the better shape -- the same cheap path, with a measured model tier
-where this puts people, and people reserved for what the model cannot
-settle either.
+Avoided once confidence is calibrated -- unless interpretability is
+required. Calibration makes the cascade available; it does not make its
+model tier explainable, and an interpretable shop keeps people in the
+expensive tier however well the model's confidence is measured. The
+yield to the cascade is conditional on the cascade actually being
+allowed to exist.
