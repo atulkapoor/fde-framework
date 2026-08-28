@@ -197,3 +197,12 @@ def test_a_contest_becomes_a_disagreement_and_undecides_what_leaned_on_it(tmp_pa
 
     architect = runner.invoke(app, ["architect", str(root)])
     assert "data_residency" in architect.output.split("unresolved:")[-1]
+
+
+def test_nobody_is_offered_their_own_in_session_answer(tmp_path):
+    """Live-profile facts once carried no speaker, so the contest logic
+    offered a respondent's fresh answer back to them as 'system said X'."""
+    root = engagement(tmp_path)
+    result = runner.invoke(app, ["ask", str(root), "--role", "admin"],
+                           input="cannot_leave\n\n" * 40)
+    assert "said cannot_leave" not in result.output

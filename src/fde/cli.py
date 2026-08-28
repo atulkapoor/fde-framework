@@ -350,6 +350,10 @@ def ask(
             answer.value,
             Provenance.INTERVIEW,
             kind=registry.dimensions[question.resolves].kind,
+            # Stamped now, not only when the session is written: the live
+            # profile drives the contest offers, and a fact with no speaker
+            # was offered back to its own speaker as "system said X".
+            respondent=respondent,
         )
         try:
             # A contested dimension stays out of the space: the space would

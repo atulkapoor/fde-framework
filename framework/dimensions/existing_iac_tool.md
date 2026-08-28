@@ -11,7 +11,7 @@ recognises:
   terraform: [we use terraform, terraform modules, our tf]
   pulumi: [we use pulumi]
   cloudformation: [cloudformation, cdk, sam templates]
-  none: [nothing yet, click ops, we do it by hand]
+  none: [nothing yet, click ops, we do it by hand, by hand, manually, no tooling]
 ---
 What the team already operates, which outranks what anybody would prefer.
 
