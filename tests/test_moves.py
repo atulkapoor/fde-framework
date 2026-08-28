@@ -201,3 +201,18 @@ def test_unfilled_components_are_listed_so_they_can_be_answered_for(reg):
 
     decisions = decide(dict(output_shape="decision", latency_budget_ms=200), reg)
     assert "integration" in decisions.undecided()
+
+
+def test_the_chain_follows_the_caps_relation_not_a_count(reg):
+    """retrieval caps reasoning; both declare one cap. The count-as-depth
+    proxy let the alphabet order them, and the emitted agent reasoned
+    before it retrieved."""
+    graph = graph_for(reg, dict(
+        output_shape="freeform", corpus_size=60_000, query_pattern="multi_hop",
+        recall_span="across_sessions", human_waiting="yes",
+        data_residency="may_leave", external_systems=5,
+    ))
+    order = [n.id for n in graph.ordered()]
+    assert order.index("retrieval") < order.index("reasoning")
+    assert order.index("embedding") < order.index("retrieval")
+    assert order.index("memory") < order.index("reasoning")

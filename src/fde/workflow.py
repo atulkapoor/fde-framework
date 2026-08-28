@@ -188,10 +188,34 @@ def _is_sensitive(values: dict, registry: Registry) -> bool:
 
 
 def _by_caps(components: list[str], registry: Registry) -> list[str]:
-    """Order by the quality-ceiling relation already declared on components."""
-    def depth(component: str) -> int:
-        entry = registry.components.get(component)
-        return -len(entry.caps) if entry else 0
+    """Order by the quality-ceiling relation already declared on components.
+
+    True topological depth over the caps relation, not a count of caps: the
+    count was a proxy that broke on ties -- retrieval caps reasoning, both
+    declared one cap, and the alphabet put reasoning first, so the emitted
+    agent reasoned before it retrieved.
+    """
+    present = set(components)
+
+    def parents(component: str) -> list[str]:
+        return [
+            c.id for c in registry.components.values()
+            if component in c.caps and c.id in present
+        ]
+
+    depths: dict[str, int] = {}
+
+    def depth(component: str, trail: frozenset = frozenset()) -> int:
+        if component in depths:
+            return depths[component]
+        if component in trail:
+            return 0  # a caps cycle is a registry bug validation reports
+        above = parents(component)
+        value = 1 + max(
+            (depth(p, trail | {component}) for p in above), default=-1
+        )
+        depths[component] = value
+        return value
 
     return sorted(components, key=lambda c: (depth(c), c))
 
