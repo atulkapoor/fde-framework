@@ -476,6 +476,20 @@ def _engagement(root: Path):
         raise typer.Exit(1) from exc
 
 
+def _reuse(engagement) -> set[str]:
+    """Stacks the client already operates, recorded by `fde reuse`.
+
+    Reuse beats adoption: a tool somebody already patches and pages for is
+    cheaper than the same capability standing beside it. This is the file
+    that finally feeds that rule -- the mechanism existed from the start
+    and nothing on the user's side could reach it.
+    """
+    marker = engagement.root / "reuse"
+    if not marker.exists():
+        return set()
+    return {line.strip() for line in marker.read_text().splitlines() if line.strip()}
+
+
 def _overrides(engagement) -> dict[str, dict]:
     """Recorded overrides, last one per component winning.
 
@@ -512,7 +526,8 @@ def _gate_status(engagement, registry=None):
         # the licence gate judges the combination, and only a built set of
         # realizations knows the combination.
         licences = build_architecture(
-            engagement.profile, registry, overrides=_overrides(engagement)
+            engagement.profile, registry, overrides=_overrides(engagement),
+            already_running=_reuse(engagement),
         ).licences
     status = input_status(
         engagement.profile,
@@ -709,6 +724,34 @@ def restate_cmd(
     )
 
 
+@app.command("reuse")
+def reuse_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    stacks: Annotated[list[str], typer.Argument(help="Stack ids the client already runs.")],
+    registry_root: Annotated[Path, typer.Option("--registry")] = DEFAULT_ROOT,
+) -> None:
+    """Record what the client already operates, so reuse can beat adoption.
+
+    A stack somebody already patches, backs up and pages for is cheaper than
+    the same capability standing beside it -- the tenth workload on it costs
+    almost nothing. Realization prefers these over anything newly adopted.
+    """
+    registry = _registry(registry_root)
+    unknown = [s for s in stacks if s not in registry.stacks]
+    if unknown:
+        typer.echo(
+            f"not stacks in this registry: {', '.join(unknown)}. Known: "
+            f"{', '.join(sorted(registry.stacks))}", err=True,
+        )
+        raise typer.Exit(1)
+
+    engagement = _engagement(root)
+    running = sorted(_reuse(engagement) | set(stacks))
+    (engagement.root / "reuse").write_text("\n".join(running) + "\n")
+    typer.echo(f"recorded as already running: {', '.join(running)}")
+    typer.echo("  realization will prefer these wherever a pattern offers them")
+
+
 @app.command("locale")
 def locale_cmd(
     root: Annotated[Path, typer.Argument(help="The engagement directory.")],
@@ -762,7 +805,10 @@ def architect_cmd(
     engagement = _engagement(root)
     _refuse_if_blocked(engagement, registry, warn_only=True)
     overrides = _overrides(engagement)
-    architecture = build_architecture(engagement.profile, registry, overrides=overrides)
+    architecture = build_architecture(
+        engagement.profile, registry, overrides=overrides,
+        already_running=_reuse(engagement),
+    )
 
     typer.echo(f"topology {architecture.topology}   [{architecture.fingerprint()}]\n")
     for component, decision in sorted(architecture.decisions.decided().items()):
@@ -833,7 +879,8 @@ def override_cmd(
     # recommended" from a world where earlier overrides do not exist files a
     # revert as an override of the rule it agrees with.
     existing = _overrides(engagement)
-    architecture = build_architecture(engagement.profile, registry, overrides=existing)
+    architecture = build_architecture(engagement.profile, registry, overrides=existing,
+                                      already_running=_reuse(engagement))
 
     decision = architecture.decisions.get(component)
     recommended = decision.approach if decision else None
@@ -970,7 +1017,10 @@ def retro_cmd(
     registry = _registry(registry_root)
     engagement = _engagement(root)
     overrides = _overrides(engagement)
-    architecture = build_architecture(engagement.profile, registry, overrides=overrides)
+    architecture = build_architecture(
+        engagement.profile, registry, overrides=overrides,
+        already_running=_reuse(engagement),
+    )
 
     stamp = today or date.today().isoformat()
     try:
@@ -1111,7 +1161,8 @@ def build_cmd(
     engagement = _engagement(root)
     _refuse_if_blocked(engagement, registry)
     architecture = build_architecture(
-        engagement.profile, registry, overrides=_overrides(engagement)
+        engagement.profile, registry, overrides=_overrides(engagement),
+        already_running=_reuse(engagement),
     )
     try:
         # Only waivers that actually applied at build time. Shipping every

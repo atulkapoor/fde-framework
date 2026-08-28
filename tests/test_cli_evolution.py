@@ -401,3 +401,37 @@ def test_a_case_from_a_blocked_engagement_says_so(tmp_path):
     runner.invoke(app, ["retro", str(root), "--today", "2026-08-25"])
     case = json.loads((root / "case.json").read_text())
     assert "data_access" in case["blocked_gates"]
+
+
+# --- reuse beats adoption, reachably ----------------------------------------
+
+
+def test_recorded_reuse_changes_the_realization(tmp_path):
+    """The reuse-first rule existed from the start and nothing on the user's
+    side could reach it -- already_running was threaded through the library
+    and never fed. An MCP gateway the client already operates must win the
+    integration slot over plain-python."""
+    root = engagement(tmp_path)
+    before = runner.invoke(app, ["architect", str(root)])
+    assert "governed-tools via plain-python" in before.output
+
+    result = runner.invoke(app, ["reuse", str(root), "mcp"])
+    assert result.exit_code == 0
+    after = runner.invoke(app, ["architect", str(root)])
+    assert "governed-tools via mcp" in after.output
+
+
+def test_an_unknown_stack_is_refused_with_the_known_list(tmp_path):
+    root = engagement(tmp_path)
+    result = runner.invoke(app, ["reuse", str(root), "kubernetes"])
+    assert result.exit_code == 1
+    assert "mcp" in result.output
+    assert not (root / "reuse").exists()
+
+
+def test_reuse_accumulates_rather_than_replaces(tmp_path):
+    root = engagement(tmp_path)
+    runner.invoke(app, ["reuse", str(root), "mcp"])
+    runner.invoke(app, ["reuse", str(root), "pgvector"])
+    recorded = (root / "reuse").read_text().split()
+    assert recorded == ["mcp", "pgvector"]
