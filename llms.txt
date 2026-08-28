@@ -18,13 +18,16 @@ Key facts:
   statements about the environment; stated requirements outrank
   measurements. Two respondents disagreeing is reported as a finding, not
   silently resolved.
-- Five gates precede building: verified data access (hard — cannot be
+- Six gates precede building: verified data access (hard — cannot be
   waived), a re-measurable baseline, a named evaluation owner, scope drift
-  measured against the original statement, and offline evaluability for
-  air-gapped systems. Waivers are recorded with reasons and shipped in the
+  measured against the original statement, offline evaluability for
+  air-gapped systems, and licence compatibility against what the client
+  intends to ship. Waivers are recorded with reasons and shipped in the
   generated RISKS.md.
 - The knowledge registry (framework/) is data, not code: dimensions,
-  approaches, patterns, stacks, interfaces, templates, cases. Patterns are
+  approaches, patterns, stacks, interfaces, templates, cases, and locale
+  packs (jurisdiction presets and dated obligations that can never change
+  how decisions are made). Patterns are
   stable; stacks churn; swapping a stack changes emitted code, not the
   architecture.
 - Decisions are simplest-first with cited evidence; undecidable components

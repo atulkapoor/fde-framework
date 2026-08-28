@@ -69,7 +69,8 @@ prose rationale (the person's half — *why* the rule says what it says).
 | `stacks/` | One tool: licence, topologies it runs in, verification date |
 | `interfaces/` | The typed slots realizations claim to satisfy |
 | `templates/` | Jinja2 reference implementations, one per realization |
-| `cases/` | Anonymised engagements — the evidence approaches cite |
+| `cases/` | Engagement shapes anchored in the public record — the evidence approaches cite |
+| `locales/` | Jurisdiction packs: presets on existing dimensions at weakest provenance, dated obligations emitted as `COMPLIANCE.md` |
 
 ### Extending it
 
@@ -102,6 +103,7 @@ else that looks like registry knowledge in `src/` is a bug — report it.
 | `ops/` | Runbook keyed to the failure taxonomy, SLOs from stated budgets, rollback |
 | `ARCHITECTURE.md` | Decisions, rejected alternatives, undecided and unrealizable components |
 | `RISKS.md` | Every waived gate with its reason, every overridden recommendation |
+| `COMPLIANCE.md` | The applied locale's obligations, dated, with verification notes |
 
 ## Invariants the tests defend
 
