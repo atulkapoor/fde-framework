@@ -144,8 +144,32 @@ def validate_links(registry: Registry) -> list[LinkError]:
                         ),
                     )
                 )
+            elif not entry.values and not _preset_fits(entry, value):
+                # A count preset of "banana" would enter the profile as a
+                # fact and crash the first numeric predicate that reads it.
+                errors.append(
+                    LinkError(
+                        source=locale.id,
+                        message=(
+                            f"locale {locale.id!r} presets {dimension}={value!r}, "
+                            f"which is not a {entry.type} value"
+                        ),
+                    )
+                )
 
     return errors
+
+
+def _preset_fits(dimension, value) -> bool:
+    """Whether a preset value is the shape its dimension declares."""
+    from fde.models.schema import ValueType
+
+    numeric = (ValueType.COUNT, ValueType.DURATION_MS, ValueType.MONEY, ValueType.RATIO)
+    if dimension.type in numeric:
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if dimension.type is ValueType.BOOLEAN:
+        return isinstance(value, bool)
+    return isinstance(value, str)
 
 
 def find_gaps(

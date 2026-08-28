@@ -135,3 +135,38 @@ def test_the_erasure_obligation_names_the_retention_tension(tmp_path):
                        if o.id == "erasure-path")
         assert "audit" in erasure.produce.lower()
         assert "skeleton" in erasure.produce.lower()
+
+
+def test_a_forgotten_pack_refuses_the_build_rather_than_shipping_silence(tmp_path):
+    """An engagement that believes it applied a jurisdiction must not ship
+    without the obligations page and no complaint."""
+    import yaml
+
+    root = engagement(tmp_path)
+    (root / "locale").write_text("atlantis\n")
+    (tmp_path / "b.yaml").write_text(yaml.safe_dump({
+        "volume": 1, "cycle_time_per_unit_seconds": 1, "labour_hours_per_week": 1,
+        "rework_rate": 0, "exception_rate": 0, "error_rate": 0,
+        "business_metric": "m", "sampled": True, "definitions_recorded": True,
+    }))
+    runner.invoke(app, ["baseline", str(root), "--file", str(tmp_path / "b.yaml")])
+    runner.invoke(app, ["data-access", str(root), "--note", "rows returned"])
+    runner.invoke(app, ["waive", str(root), "client_readiness", "--reason", "soon"])
+    result = runner.invoke(app, ["build", str(root), "--out", str(tmp_path / "out")])
+    assert result.exit_code == 1
+    assert "atlantis" in result.output
+
+
+def test_a_preset_must_fit_its_dimension_type(tmp_path):
+    """corpus_size: banana would crash the first numeric predicate that
+    reads it -- refused at validation, where content errors belong."""
+    (tmp_path / "locales").mkdir(parents=True)
+    (tmp_path / "dimensions").mkdir()
+    (tmp_path / "dimensions" / "corpus_size.md").write_text(
+        "---\nid: corpus_size\ntype: count\nweight: 1.0\n---\nbody\n"
+    )
+    (tmp_path / "locales" / "weird.md").write_text(
+        "---\nid: weird\nname: Weird\npresets:\n  corpus_size: banana\n---\nbody\n"
+    )
+    errors = validate_links(load_registry(tmp_path))
+    assert any("banana" in e.message and "count" in e.message for e in errors)

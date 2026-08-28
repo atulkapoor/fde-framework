@@ -1137,9 +1137,20 @@ def build_cmd(
 
     locale_marker = engagement.root / "locale"
     if locale_marker.exists():
-        locale = registry.locales.get(locale_marker.read_text().strip())
-        if locale is not None:
-            _write_compliance(Path(out), locale)
+        locale_id = locale_marker.read_text().strip()
+        locale = registry.locales.get(locale_id)
+        if locale is None:
+            # Silence here ships a project without the obligations page an
+            # engagement believes it has -- compliance-grade silence. The
+            # marker names a pack; the registry must know it or say so.
+            typer.echo(
+                f"refused after writing code: this engagement applied locale "
+                f"{locale_id!r} and this registry does not know it. Re-run "
+                f"`fde locale` with a known pack, or delete the engagement's "
+                f"`locale` file if no jurisdiction applies.", err=True,
+            )
+            raise typer.Exit(1)
+        _write_compliance(Path(out), locale)
 
     typer.echo(f"wrote {out}")
     if architecture.decisions.undecided():
