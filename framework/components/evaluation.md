@@ -2,6 +2,7 @@
 id: evaluation
 name: Evaluation
 caps: []
+pipeline: false
 required_when:
   - always
 ---

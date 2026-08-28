@@ -2,6 +2,7 @@
 id: accountability
 name: Accountability
 caps: []
+pipeline: false
 required_when:
   - interpretability_required == true
 ---

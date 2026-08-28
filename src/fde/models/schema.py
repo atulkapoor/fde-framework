@@ -338,6 +338,13 @@ class Component(BaseModel):
     # downstream of it; nothing downstream recovers what it lost.
     caps: list[str] = Field(default_factory=list)
 
+    # Whether this component transforms payloads at runtime. The emitted
+    # pipeline chains only these. Deployment and provisioning are decided,
+    # emitted and documented -- but a service unit is not a step a payload
+    # passes through, and chaining one once crashed every generated
+    # pipeline at the third step.
+    pipeline: bool = True
+
     @model_validator(mode="after")
     def _check_caps(self) -> Component:
         if self.id in self.caps:

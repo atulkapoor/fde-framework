@@ -522,3 +522,74 @@ def test_the_teardown_covers_substrate_and_provisioner_both(reg, tmp_path):
     teardown = (tmp_path / "deploy" / "TEARDOWN.md").read_text()
     assert "terraform destroy" in teardown
     assert "systemctl disable" in teardown
+
+
+# --- the depth test's findings ---------------------------------------------
+
+
+def test_platform_components_are_not_payload_steps(reg, tmp_path):
+    """Implementing an emitted project to green found the pipeline chaining
+    deployment as a runtime step -- a component with no run() at all, so
+    every generated pipeline crashed at step three for any input. The data
+    path is registry-declared now."""
+    emit(architect(profile(**COMPLETE), reg), tmp_path, registry=reg)
+    pipeline = (tmp_path / "app" / "pipeline.py").read_text()
+    for platform in ("deployment", "provisioning", "evaluation",
+                     "observability", "governance"):
+        assert f"('{platform}'," not in pipeline, platform
+    assert "('perception'," in pipeline
+    assert "('representation'," in pipeline
+    # Still emitted as modules -- decided is decided.
+    assert (tmp_path / "app" / "components" / "deployment.py").exists()
+
+
+def test_the_emitted_pipeline_can_reach_green(reg, tmp_path):
+    """The whole depth test, pinned: an FDE implements the generated project
+    against its own golden set and the harness passes. The glue below is
+    the same ~30 lines a receiving engineer writes."""
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text(
+        '{"id": "a", "input": "Total due: $4,230.00\\nVAT: $846.00", '
+        '"output": {"total_due": 4230.0, "vat": 846.0}, "verified": true}\n'
+        '{"id": "b", "input": "AMOUNT PAYABLE 220.00 | VAT 44.00", '
+        '"output": {"total_due": 220.0, "vat": 44.0}, "verified": true}\n'
+        '{"id": "c", "input": "Amount due ....... 1,100.00\\nVAT ....... 220.00", '
+        '"output": {"total_due": 1100.0, "vat": 220.0}, "verified": true}\n'
+    )
+    out = tmp_path / "out"
+    emit(architect(profile(**COMPLETE), reg), out, registry=reg, pairs_path=pairs)
+
+    (out / "app" / "pipeline.py").write_text('''
+import re
+from app import boundary  # noqa: F401
+from app.components import representation
+
+CONTRACT = ["total_due", "vat"]
+SYNONYMS = {"total_due": ["amount payable", "amount due", "total"]}
+MONEY = re.compile(r"[-+]?\\d[\\d,]*(?:\\.\\d+)?")
+
+def _raw(text):
+    out = {}
+    for segment in re.split(r"[\\n|]", text):
+        match = MONEY.search(segment)
+        if match:
+            label = segment[: match.start()].strip(" .:\\t$")
+            if label:
+                out[label] = float(match.group().replace(",", ""))
+    return out
+
+STEP = representation.Representation(synonyms=SYNONYMS)
+
+def run(payload):
+    if isinstance(payload, str):
+        payload = {"contract": CONTRACT, "records": [{"id": "case", "raw": _raw(payload)}]}
+    record = STEP.run(payload)["records"][0]
+    if record["unmapped"] or record["rejected"]:
+        raise ValueError(str(record))
+    return record["mapped"]
+''')
+    result = subprocess.run(
+        [sys.executable, "evals/harness.py"], cwd=out, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "100.0%" in result.stdout

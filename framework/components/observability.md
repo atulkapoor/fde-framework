@@ -2,6 +2,7 @@
 id: observability
 name: Observability
 caps: []
+pipeline: false
 required_when:
   - always
 ---

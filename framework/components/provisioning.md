@@ -2,6 +2,7 @@
 id: provisioning
 name: Provisioning
 caps: []
+pipeline: false
 required_when:
   - always
 ---

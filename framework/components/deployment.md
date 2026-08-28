@@ -2,6 +2,7 @@
 id: deployment
 name: Deployment
 caps: []
+pipeline: false
 required_when:
   - always
 ---

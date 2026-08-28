@@ -81,7 +81,7 @@ def emit(
     (out / "app" / "components").mkdir(parents=True, exist_ok=True)
     _write_package(architecture, out)
     scaffolded = _write_components(architecture, out, env)
-    _write_pipeline(architecture, out)
+    _write_pipeline(architecture, out, registry)
     if architecture.graph.sensitive_nodes():
         _write_boundary(architecture, out)
     _write_evals(architecture, out, pairs_path)
@@ -326,7 +326,7 @@ def _guarded(architecture: Architecture, node_id: str) -> str:
     return current
 
 
-def _write_pipeline(architecture: Architecture, out: Path) -> None:
+def _write_pipeline(architecture: Architecture, out: Path, registry=None) -> None:
     """Every node the moves produced, not only the components.
 
     An earlier version kept component nodes alone, which silently dropped the
@@ -338,9 +338,16 @@ def _write_pipeline(architecture: Architecture, out: Path) -> None:
         node_entry = architecture.graph.nodes.get(node)
         return node_entry is not None and node_entry.component and not node_entry.unfilled
 
+    def _chains(component: str) -> bool:
+        if registry is None:
+            return True
+        entry = registry.components.get(component)
+        return entry.pipeline if entry is not None else True
+
     ordered = [
         n for n in architecture.graph.ordered()
-        if n.component or n.type in ("ApprovalGate", "Critic")
+        if (n.component and _chains(n.component))
+        or n.type in ("ApprovalGate", "Critic")
     ]
     # A control guarding a step that is not in the pipeline is worse than
     # absent: a reader sees a governed integration that does not exist.
@@ -395,7 +402,13 @@ def _write_pipeline(architecture: Architecture, out: Path) -> None:
         f"Ordered by what caps what: a step whose quality bounds another comes\n"
         f"first, so when an answer is wrong there is somewhere to look.\n"
         f"Approval gates and critics are steps like any other -- removing one\n"
-        f"is a visible diff, not an oversight.\n"
+        f"is a visible diff, not an oversight.\n\n"
+        f"Only payload-transforming components are chained here. Deployment,\n"
+        f"provisioning, evaluation and their kin are decided and emitted, but a\n"
+        f"service unit is not a step a payload passes through.\n\n"
+        f"The evaluation harness calls run() with each golden case's raw input.\n"
+        f"Adapting that input to the first step's payload shape is yours: do it\n"
+        f"at the top of run(), where the seam is visible.\n"
         f'"""\n\n'
         f"{imports}\n\n"
         f"STEPS = [\n{steps}\n]\n\n\n"

@@ -2,6 +2,7 @@
 id: governance
 name: Governance
 caps: []
+pipeline: false
 required_when:
   - data_residency == cannot_leave
   - data_residency == may_leave
