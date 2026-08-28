@@ -266,7 +266,8 @@ def test_one_is_deliberately_not_a_quantity(reg):
 def test_from_last_year_is_not_a_range(reg):
     """'five thousand labelled from last year' held two quantities; the old
     range guard saw the word 'from' and threw the whole sentence away."""
-    facts = parse_prose("Corpus is about 48000 reports, five thousand labelled from last year.", reg)
+    text = "Corpus is about 48000 reports, five thousand labelled from last year."
+    facts = parse_prose(text, reg)
     values = {f.dimension: f.value for f in facts}
     assert values.get("corpus_size") == 48000
     assert values.get("labelled_count") == 5000
@@ -305,4 +306,5 @@ def test_the_customer_vpc_is_recognised_in_the_third_person(reg):
 
 def test_the_operating_team_stated_in_the_third_person(reg):
     facts = parse_prose("The platform team operates it after handover.", reg)
-    assert any(f.dimension == "operates_after_handover" and f.value == "platform_team" for f in facts)
+    assert any(f.dimension == "operates_after_handover" and f.value == "platform_team"
+               for f in facts)
