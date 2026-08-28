@@ -47,6 +47,12 @@ class Question:
     divergence: float | None
     skippable: bool = True  # "I don't know" never stalls an intake
 
+    # Set when another role already answered this: "V. Rao (sponsor) said
+    # may_leave". The question is then an invitation to confirm or contest --
+    # which is how a disagreement, the most valuable thing discovery
+    # produces, can actually happen through the interview.
+    contest_of: str | None = None
+
 
 @dataclass(frozen=True)
 class Divergence:
@@ -129,11 +135,53 @@ def remaining_questions(
     #
     # The explicit None check matters -- `q.divergence or UNKNOWN` would treat a
     # measured 0.0 as unknown, which is the opposite of what it means.
-    return sorted(
+    ordered = sorted(
         questions,
         key=lambda q: (-(UNKNOWN_DIVERGENCE if q.divergence is None else q.divergence),
                        q.resolves),
     )
+
+    # After the open questions: what another role already settled, offered to
+    # this one to confirm or contest. Without this, the first answer retired
+    # the question for everyone -- and a second respondent could never
+    # disagree through the interview, making the disagreement machinery
+    # unreachable by the tool built to feed it. Only claims a differing
+    # answer could actually register against are offered: contesting a
+    # measurement or a document is futile, and futile questions waste the
+    # one meeting you get.
+    if role:
+        ordered.extend(_contestable(profile, registry, role))
+    return ordered
+
+
+def _contestable(profile: Profile, registry: Registry, role: str) -> list[Question]:
+    from fde.models.base import Provenance
+
+    questions = []
+    for dimension, entry in registry.dimensions.items():
+        if role not in entry.ask_role:
+            continue
+        if not profile.resolved(dimension):
+            continue
+        fact = profile.fact(dimension)
+        if fact is None or fact.provenance not in (
+            Provenance.INTERVIEW, Provenance.INFERRED,
+        ):
+            continue
+        holder = str(fact.respondent.role)
+        if holder == role:
+            continue
+        who = fact.respondent.name or holder
+        questions.append(
+            Question(
+                resolves=dimension,
+                asks=entry.asks or f"What is {dimension}?",
+                roles=tuple(entry.ask_role),
+                divergence=None,
+                contest_of=f"{who} ({holder}) said {fact.value}",
+            )
+        )
+    return sorted(questions, key=lambda q: q.resolves)
 
 
 def next_question(

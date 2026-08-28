@@ -230,3 +230,60 @@ def test_unknown_divergence_outranks_measured_irrelevance(space, reg):
     """A question we cannot score yet beats one we scored and found pointless."""
     ordered = remaining_questions(space, Profile(), reg, outcome=lambda s: "identical")
     assert ordered[0].divergence is None
+
+
+# --- disagreement is reachable through the interview ------------------------
+
+
+def _resolved_by(reg, role="sponsor", provenance=None):
+    from fde.models.base import Provenance
+    from fde.models.fact import Fact
+    from fde.models.profile import Profile
+    from fde.models.respondent import Respondent
+
+    p = Profile()
+    p.ingest([Fact("data_residency", "may_leave",
+                   provenance or Provenance.INTERVIEW,
+                   respondent=Respondent(role=role, name="V. Rao"))])
+    return p
+
+
+def test_a_second_role_is_offered_what_the_first_settled(reg):
+    """The first answer used to retire the question for everyone, so a
+    second respondent could never disagree through the interview -- the
+    machinery for the most valuable finding was unreachable by the tool
+    built to feed it."""
+    from fde.intake.interview import remaining_questions
+    from fde.space import Space
+
+    profile = _resolved_by(reg, role="sponsor")
+    space = Space.from_registry(reg).apply(profile)
+    questions = remaining_questions(space, profile, reg, role="admin")
+    contest = [q for q in questions if q.resolves == "data_residency"]
+    assert contest, "admin never offered the contested dimension"
+    assert "V. Rao (sponsor) said may_leave" in contest[0].contest_of
+
+
+def test_nobody_is_asked_to_contest_their_own_answer(reg):
+    from fde.intake.interview import remaining_questions
+    from fde.space import Space
+
+    profile = _resolved_by(reg, role="admin")
+    space = Space.from_registry(reg).apply(profile)
+    questions = remaining_questions(space, profile, reg, role="admin")
+    assert not any(q.resolves == "data_residency" for q in questions)
+
+
+def test_measurements_and_documents_are_not_contestable(reg):
+    """A differing interview answer cannot outrank an artifact, so offering
+    the question is futile -- and futile questions waste the one meeting."""
+    from fde.intake.interview import remaining_questions
+    from fde.models.base import Provenance
+    from fde.space import Space
+
+    profile = _resolved_by(reg, provenance=Provenance.ARTIFACT)
+    space = Space.from_registry(reg).apply(profile)
+    questions = remaining_questions(space, profile, reg, role="admin")
+    assert not any(
+        q.resolves == "data_residency" and q.contest_of for q in questions
+    )

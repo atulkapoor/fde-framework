@@ -177,3 +177,23 @@ def test_ask_reports_when_the_role_has_nothing_left(tmp_path):
     runner.invoke(app, ["frame", str(root), "--text", BRIEF])
     result = runner.invoke(app, ["ask", str(root), "--role", "skeptic"], input="\n")
     assert "nothing" in result.output.lower()
+
+
+def test_a_contest_becomes_a_disagreement_and_undecides_what_leaned_on_it(tmp_path):
+    """The campaign's scenario, end to end: sponsor says may_leave, admin
+    contests with cannot_leave, and serving -- which had quietly sided with
+    the sponsor -- goes honestly undecided while status names both voices."""
+    root = engagement(tmp_path)
+    runner.invoke(app, ["ask", str(root), "--role", "sponsor", "--name", "V. Rao"],
+                  input="may_leave\n\n" * 25)
+    result = runner.invoke(app, ["ask", str(root), "--role", "admin",
+                                 "--name", "P. Iyer"],
+                           input="cannot_leave\n\n" * 40)
+    assert "said may_leave" in result.output
+
+    status = runner.invoke(app, ["status", str(root)])
+    assert "respondents disagree" in status.output
+    assert "V. Rao" in status.output and "P. Iyer" in status.output
+
+    architect = runner.invoke(app, ["architect", str(root)])
+    assert "data_residency" in architect.output.split("unresolved:")[-1]

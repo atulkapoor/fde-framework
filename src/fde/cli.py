@@ -336,6 +336,8 @@ def ask(
     passed_on: set[str] = set()
 
     while question := _next(space, profile, registry, role, passed_on):
+        if question.contest_of:
+            typer.echo(f"\n  {question.contest_of} -- confirm, correct, or skip.")
         answer = _put(registry.dimensions[question.resolves], question)
         if answer is None:
             break  # end of input: keep what we have
@@ -350,7 +352,10 @@ def ask(
             kind=registry.dimensions[question.resolves].kind,
         )
         try:
-            if question.resolves in space.dimensions():
+            # A contested dimension stays out of the space: the space would
+            # call the second answer a contradiction, but two people
+            # differing is a finding, and the profile records it as one.
+            if question.resolves in space.dimensions() and not question.contest_of:
                 space = space.answer(question.resolves, answer.value)
         except Contradiction as exc:
             typer.echo(f"  that conflicts: {exc}")
