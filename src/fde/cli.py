@@ -340,6 +340,10 @@ def ask(
     root: Annotated[Path, typer.Argument(help="The engagement directory.")],
     role: Annotated[str, typer.Option(help="Who you are talking to.")],
     name: Annotated[str | None, typer.Option(help="Their name, for the record.")] = None,
+    scope: Annotated[str | None, typer.Option(
+        help="Limit to one scope axis: functional, non_functional, data, "
+             "environment, operational, commercial."
+    )] = None,
     registry_root: Annotated[Path, typer.Option("--registry")] = DEFAULT_ROOT,
 ) -> None:
     """Interview one person.
@@ -358,6 +362,15 @@ def ask(
         raise typer.Exit(1) from exc
     respondent = Respondent(role=parsed_role, name=name)
 
+    if scope:
+        from fde.models.schema import Scope
+
+        legal = [s.value for s in Scope]
+        if scope not in legal:
+            typer.echo(f"{scope!r} is not a scope axis. One of: {', '.join(legal)}",
+                       err=True)
+            raise typer.Exit(1)
+
     space = Space.from_registry(registry).apply(engagement.profile)
     profile = engagement.profile
     gathered: list[Fact] = []
@@ -367,7 +380,7 @@ def ask(
     # answer can still settle it by cascade.
     passed_on: set[str] = set()
 
-    while question := _next(space, profile, registry, role, passed_on):
+    while question := _next(space, profile, registry, role, passed_on, scope):
         if question.contest_of:
             typer.echo(f"\n  {question.contest_of} -- confirm, correct, or skip.")
         answer = _put(registry.dimensions[question.resolves], question)
@@ -431,9 +444,9 @@ def _put(dimension, question):
         typer.echo(f"  {answer.probe}")
 
 
-def _next(space, profile, registry, role, passed_on):
+def _next(space, profile, registry, role, passed_on, scope=None):
     """The next question this person has not already declined."""
-    for question in remaining_questions(space, profile, registry, role=role):
+    for question in remaining_questions(space, profile, registry, role=role, scope=scope):
         if question.resolves not in passed_on:
             return question
     return None

@@ -94,6 +94,7 @@ def remaining_questions(
     registry: Registry,
     role: str | None = None,
     outcome: Outcome = default_outcome,
+    scope: str | None = None,
 ) -> list[Question]:
     """Everything still worth asking, most decisive first.
 
@@ -103,6 +104,8 @@ def remaining_questions(
     """
     questions = []
     for dimension, entry in registry.dimensions.items():
+        if scope and str(entry.scope) != scope:
+            continue
         # Enumerable dimensions live in the space and may already be settled,
         # including by a cascade nobody stated. Everything else -- counts,
         # durations, booleans -- has no candidate set to prune but still has to
@@ -150,7 +153,10 @@ def remaining_questions(
     # measurement or a document is futile, and futile questions waste the
     # one meeting you get.
     if role:
-        ordered.extend(_contestable(profile, registry, role))
+        ordered.extend(
+            q for q in _contestable(profile, registry, role)
+            if not scope or str(registry.dimensions[q.resolves].scope) == scope
+        )
     return ordered
 
 

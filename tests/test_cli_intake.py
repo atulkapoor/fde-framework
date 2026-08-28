@@ -206,3 +206,22 @@ def test_nobody_is_offered_their_own_in_session_answer(tmp_path):
     result = runner.invoke(app, ["ask", str(root), "--role", "admin"],
                            input="cannot_leave\n\n" * 40)
     assert "said cannot_leave" not in result.output
+
+
+def test_ask_can_run_a_dedicated_scope_pass(tmp_path):
+    """An FDE running an NFR review wants only that axis on the table --
+    a --scope pass asks nothing outside it."""
+    root = engagement(tmp_path)
+    result = runner.invoke(app, ["ask", str(root), "--role", "sponsor",
+                                 "--scope", "non_functional"],
+                           input="\n" * 12)
+    assert "person waiting" in result.output.lower() or "explainable" in result.output.lower()
+    assert "How many items in total?" not in result.output
+
+
+def test_an_unknown_scope_axis_lists_the_real_ones(tmp_path):
+    root = engagement(tmp_path)
+    result = runner.invoke(app, ["ask", str(root), "--role", "admin",
+                                 "--scope", "vibes"], input="\n")
+    assert result.exit_code == 1
+    assert "non_functional" in result.output
