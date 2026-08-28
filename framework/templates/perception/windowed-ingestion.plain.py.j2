@@ -1,0 +1,63 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+A stream into bounded batches. The window is the unit of everything
+downstream -- retry, idempotency, evaluation -- so its identity is stable
+and its boundaries are recorded. Late data lands in a correction window;
+reprocessing a closed one is how the same event gets acted on twice.
+"""
+
+from __future__ import annotations
+
+import hashlib
+from typing import Any
+
+# Whichever closes first wins. Both bounds exist because a quiet stream
+# must still flush, and a loud one must still fit in memory.
+MAX_EVENTS = 500
+MAX_SPAN = 60.0  # seconds of event time
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(self, max_events: int = MAX_EVENTS, max_span: float = MAX_SPAN) -> None:
+        self.max_events = max_events
+        self.max_span = max_span
+
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Events (each with an `at` timestamp) into closed windows."""
+        events = sorted(payload.get("events", []), key=lambda e: e.get("at", 0))
+        windows: list[dict[str, Any]] = []
+        current: list[dict[str, Any]] = []
+
+        for event in events:
+            if current and (
+                len(current) >= self.max_events
+                or event.get("at", 0) - current[0].get("at", 0) >= self.max_span
+            ):
+                windows.append(self._close(current))
+                current = []
+            current.append(event)
+        if current:
+            windows.append(self._close(current))
+
+        return {"windows": windows, "window_count": len(windows)}
+
+    def _close(self, events: list[dict[str, Any]]) -> dict[str, Any]:
+        first, last = events[0].get("at", 0), events[-1].get("at", 0)
+        return {
+            # Identity from content and span: replaying the same stream
+            # yields the same window ids, which is what makes retry safe.
+            "id": hashlib.sha256(
+                f"{first}:{last}:{len(events)}".encode()
+            ).hexdigest()[:16],
+            "from": first,
+            "to": last,
+            "events": events,
+        }

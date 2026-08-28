@@ -106,19 +106,33 @@ def test_a_tight_latency_budget_selects_your_own_hardware(reg):
 
 def test_a_true_conflict_is_named_not_blamed_on_ignorance(reg):
     """Everything known, every approach ruled out: saying 'not enough is
-    known' sends somebody to ask questions that cannot help. The profile
-    uses a declared query_pattern value -- an earlier version used a value
-    the dimension does not have, so 'fully specified' was itself a lie."""
-    assert "comparative" in reg.dimensions["query_pattern"].values
+    known' sends somebody to ask questions that cannot help. Serving with
+    data that cannot leave and nobody named to run a model remains the
+    honest conflict -- a fleet needs an operator in a way an in-process
+    library does not, which is why the embedding version of this zone was
+    fixed as content and this one deliberately was not."""
+    decision = decide_component("serving", {
+        "output_shape": "freeform", "data_residency": "cannot_leave",
+        "operates_after_handover": "nobody_yet", "hosting": "on-prem",
+        "human_waiting": "yes", "accelerator": "multi", "corpus_size": 10_000,
+        "latency_budget_ms": 800,
+    }, reg)
+    assert decision.approach is None
+    assert "conflict" in decision.rationale
+    assert "not enough" not in decision.rationale
+    assert "nobody_yet" in decision.rationale
+
+
+def test_the_embedding_version_of_that_zone_is_now_alive(reg):
+    """An in-process embedding library's operational burden is the
+    application's own; blocking it on handover treated a library import
+    like a GPU fleet and stranded every boundary engagement."""
     decision = decide_component("embedding", {
         "data_residency": "cannot_leave", "operates_after_handover": "nobody_yet",
         "corpus_size": 100_000, "query_pattern": "comparative",
         "output_shape": "structured", "hosting": "on-prem",
     }, reg)
-    assert decision.approach is None
-    assert "conflict" in decision.rationale
-    assert "not enough" not in decision.rationale
-    assert "cannot_leave" in decision.rationale
+    assert decision.approach == "local-embedding"
 
 
 def test_missing_answers_are_reported_as_missing(reg):
@@ -156,3 +170,42 @@ def test_the_common_deployment_paths_are_alive(reg):
         {"container_competence": False, "existing_cluster": True, "external_systems": 5},
     ):
         assert decide_component("deployment", profile, reg).approach is not None
+
+
+# --- the sweep's remaining zones, closed or claimed ------------------------
+
+
+def test_freeform_representation_is_segmentation(reg):
+    """The RAG copilot's chunking slot -- the gap the hybrid walkthrough
+    hit live."""
+    decision = decide_component("representation", {
+        "output_shape": "freeform", "corpus_size": 60_000,
+    }, reg)
+    assert decision.approach == "segmentation"
+
+
+def test_measured_poor_coverage_with_interpretability_gets_rules_plus_humans(reg):
+    """The zone deferred twice: interpretable structured extraction whose
+    cheap path measures short. Rules for what they cover, people for the
+    rest, and the queue is the product."""
+    decision = decide_component("representation", {
+        "output_shape": "structured", "cheap_path_coverage": 0.6,
+        "confidence_calibrated": False, "interpretability_required": True,
+    }, reg)
+    assert decision.approach == "assisted-deterministic"
+
+
+def test_streams_have_a_perception_approach(reg):
+    decision = decide_component("perception", {"input_format": "streams"}, reg)
+    assert decision.approach == "windowed-ingestion"
+
+
+def test_an_ansible_shop_with_an_ephemeral_environment_keeps_the_floor(reg):
+    """The preferred tool is blocked by the lifetime; the runbook must
+    stand rather than the whole component going dark."""
+    decision = decide_component("provisioning", {
+        "existing_iac_tool": "ansible", "environment_lifetime": "ephemeral",
+        "provisioning_api": False, "existing_cluster": False,
+        "hosting": "customer-vpc",
+    }, reg)
+    assert decision.approach == "manual-runbook"

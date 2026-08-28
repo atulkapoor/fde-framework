@@ -1,0 +1,86 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+The deterministic path for what it covers, a human queue for the rest.
+The queue is a product, not an apology: it is at once the escalation
+path, the verification sample, and the golden-set additions for whatever
+graduates next -- one mechanism, three jobs.
+
+Same Mapper contract as the pure deterministic path, so measuring one
+against the other is a swap. Fully interpretable by construction: every
+settled field has a rule that says why, and every unsettled one has a
+person.
+"""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Callable
+from typing import Any
+
+
+def normalise(label: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", label.lower()).strip()
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(
+        self,
+        synonyms: dict[str, list[str]] | None = None,
+        validators: dict[str, Callable[[str], bool]] | None = None,
+    ) -> None:
+        self.synonyms = {k: [normalise(s) for s in v] for k, v in (synonyms or {}).items()}
+        self.validators = validators or {}
+
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        contract = payload.get("contract", [])
+        records = [self._map(r, contract) for r in payload.get("records", [])]
+        settled = [r for r in records if not r["unmapped"] and not r["rejected"]]
+        queue = [r for r in records if r["unmapped"] or r["rejected"]]
+        return {
+            "records": records,
+            # Coverage is measured on every batch, because the measured
+            # number is what eventually justifies a model tier -- or keeps
+            # not justifying one, which is just as much a finding.
+            "measured_coverage": len(settled) / (len(records) or 1),
+            # The queue, with reasons attached: a person should open it and
+            # know why each record is here without re-deriving anything.
+            "queue": [
+                {"id": r["id"], "unmapped": r["unmapped"], "rejected": r["rejected"]}
+                for r in queue
+            ],
+        }
+
+    def _map(self, record: dict[str, Any], contract: list[str]) -> dict[str, Any]:
+        source = {normalise(k): v for k, v in record.get("raw", {}).items()}
+        mapped: dict[str, Any] = {}
+        rejected: dict[str, str] = {}
+        unmapped: list[str] = []
+        for field in contract:
+            value = self._find(field, source)
+            if value is None:
+                unmapped.append(field)
+                continue
+            validator = self.validators.get(field)
+            if validator and not validator(str(value)):
+                rejected[field] = f"{value!r} failed the rule for {field}; not coerced"
+                continue
+            mapped[field] = value
+        return {"id": record.get("id"), "mapped": mapped,
+                "unmapped": unmapped, "rejected": rejected}
+
+    def _find(self, field: str, source: dict[str, Any]) -> Any:
+        wanted = normalise(field)
+        if wanted in source:
+            return source[wanted]
+        for alias in self.synonyms.get(field, []):
+            if alias in source:
+                return source[alias]
+        return None

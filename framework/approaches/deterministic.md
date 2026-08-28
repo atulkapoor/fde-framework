@@ -3,7 +3,7 @@ id: deterministic
 name: Deterministic
 complexity: 0
 components: [representation]
-applies_when: [output_shape == structured]
+applies_when: [output_shape == structured, output_shape == decision]
 avoid_when:
   - output_shape == freeform
   - output_shape == ranking
