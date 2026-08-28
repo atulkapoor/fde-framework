@@ -128,7 +128,9 @@ def test_an_unknown_dimension_is_rejected(space):
 def test_a_profile_seeds_the_space(space):
     p = Profile()
     p.ingest([Fact("data_residency", "cannot_leave", Provenance.ARTIFACT)])
-    assert space.apply(p).surviving("hosting") == {"customer-vpc", "hybrid", "on-prem", "air-gapped"}
+    assert space.apply(p).surviving("hosting") == {
+        "customer-vpc", "hybrid", "on-prem", "air-gapped",
+    }
 
 
 def test_a_contested_dimension_does_not_prune(space):
