@@ -616,3 +616,14 @@ def test_no_latency_budget_means_no_load_test(tmp_path, reg):
     values = {k: v for k, v in COMPLETE.items() if k != "latency_budget_ms"}
     emit(architect(profile(**values), reg), tmp_path / "p")
     assert not (tmp_path / "p" / "evals" / "load.py").exists()
+
+
+def test_a_false_answer_is_not_rendered_as_silence(built):
+    """confidence_calibrated = False once rendered as an empty value in the
+    Scope section -- `or ''` swallows every falsy answer, and False is an
+    answer somebody gave."""
+    from fde.emit import _flat
+
+    assert _flat(False) == "False"
+    assert _flat(0) == "0"
+    assert _flat(None) == ""

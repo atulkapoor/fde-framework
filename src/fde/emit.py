@@ -97,7 +97,7 @@ def _flat(text) -> str:
     """One line, always, and no HTML. Free text renders as text, never as
     structure -- a value carrying its own newlines once forged a `## Gates`
     heading inside the Scope section of a client document."""
-    return " ".join(str(text or "").split()).replace("<", "&lt;")
+    return " ".join(str("" if text is None else text).split()).replace("<", "&lt;")
 
 
 def _cell(text) -> str:

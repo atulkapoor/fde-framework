@@ -348,6 +348,15 @@ The registry is the shared asset; engagements are private working state.
 - **PyPI release** — after the first tagged version.
 - **More locale packs and stacks** — both are data; contributions enter
   against [CONTRIBUTING.md](CONTRIBUTING.md)'s contract.
+- **Access-control scoping** — who may use the system, under what roles;
+  today the posture section covers what acts on the world, not who acts on
+  it. Needs a dimension a decision genuinely depends on, not a checkbox.
+- **Field-level data sensitivity** — data_residency asks whether data can
+  leave, not which fields are PII; redaction/masking components would hang
+  off the answer.
+- **Multi-opportunity triage** — choosing *which* problem to build sits
+  upstream of `fde start` and stays out of scope on purpose; the framework
+  begins where a problem has been chosen.
 - **The honest gaps list lives in the tool**: `fde kb gaps` and
   `fde kb sweep` report what the corpus is missing and which profile shapes
   no approach can serve yet.
