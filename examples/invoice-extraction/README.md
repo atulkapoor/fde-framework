@@ -16,9 +16,12 @@ fde frame engagements/acme --file examples/invoice-extraction/brief.md
 # Here is what I took from that:
 #   - How many items in total: 500,000
 #   - What arrives, and in what form: scanned documents
+#   - What does the system produce: structured
 #   - Where does this run: on prem
 #   - Can client data leave their environment: cannot leave
 #   - How many are verified or labelled: 10,000
+#   - How many systems does this have to touch: 3
+#   - Is a person waiting for the result: yes
 
 fde samples engagements/acme --file examples/invoice-extraction/pairs.jsonl
 # 3 pairs, 2 fields — the pairs settle the output shape and seed the golden set
@@ -32,11 +35,12 @@ fde data-access engagements/acme --note "read replica returned 14 rows from the 
 fde waive engagements/acme client_readiness --reason "eval owner named, starts Monday"
 
 fde architect engagements/acme
-# topology on-prem   [7945b0e92edcc26d]
+# topology on-prem   [82d56c303de52199]
 #   deployment       systemd-unit via plain-python
 #   evaluation       field-match via plain-python
 #   governance       boundary-and-audit via plain-python
-#   observability    structured-logs via plain-python
+#   integration      governed-tools via plain-python
+#   observability    traced via plain-python
 #   perception       ocr-pipeline via plain-python
 #   provisioning     manual-runbook via plain-python
 #   representation   deterministic via plain-python
@@ -50,8 +54,9 @@ check imported at startup because data cannot leave), `evals/` (golden set
 from the three pairs, a harness that fails CI until the pipeline is
 implemented), `deploy/` (a systemd unit — rung zero, because nothing in the
 profile earned a container), `ops/` (runbook, SLOs, rollback),
-`ARCHITECTURE.md` with every rejected alternative, and `RISKS.md` recording
-the one waived gate and its reason.
+`ARCHITECTURE.md` with the scope read-out, the tools table with
+in-topology alternatives, the agent posture, and every rejected
+alternative, and `RISKS.md` recording the one waived gate and its reason.
 
 Things worth trying from here:
 
@@ -66,5 +71,7 @@ fde retro engagements/acme --outcome "delivered" --days 18
 Notice what the decisions did *not* do: no vector database for a lookup
 workload, no Kubernetes for a single service, no LLM in the extraction path
 while the deterministic mapper's coverage is unmeasured. The fingerprint
-`7945b0e92edcc26d` is stable — rebuild from the same facts and the diff is
-empty.
+`82d56c303de52199` is stable — rebuild from the same facts and the diff is
+empty. (The corpus evolves, and a corpus change that moves a decision moves
+this fingerprint with it; the transcript above is re-run against the corpus
+it ships with.)

@@ -146,6 +146,7 @@ Prerequisites: Python 3.11+ and git. Not yet on PyPI — install from source:
 ```bash
 git clone https://github.com/atulkapoor/fde-framework.git
 cd fde-framework
+python3 --version   # must say 3.11+; an older python3 makes pip backtrack for ages instead of failing fast
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev,documents]"
 ```
 
@@ -210,7 +211,7 @@ project/
 │   └── harness.py        #   fails CI until the pipeline is implemented end to end
 ├── deploy/               # the substrate that was earned + TEARDOWN.md for all of it
 ├── ops/                  # runbook keyed to the failure taxonomy, SLOs, rollback
-├── ARCHITECTURE.md       # every decision, every rejected alternative
+├── ARCHITECTURE.md       # scope read-out, decisions, tools & alternatives, agent posture
 ├── RISKS.md              # every waived gate and overridden recommendation
 └── COMPLIANCE.md         # jurisdiction obligations, when a locale pack was applied
 ```
@@ -223,9 +224,12 @@ project/
 | `fde frame <eng> --file brief.pdf` | prose or documents → facts, played back for correction |
 | `fde samples <eng> --file pairs.jsonl` | input/output pairs → contract, metrics, golden set |
 | `fde ask <eng> --role admin` | role-scoped interview, ordered by what changes the design |
+| `fde ask <eng> --role admin --scope non_functional` | one scope axis at a time — the dedicated NFR pass |
 | `fde scan <eng>` | measure the hardware; only measurements earn DETECTED |
 | `fde status <eng>` | gates, gaps, waivers, disagreements |
 | `fde baseline / data-access / waive / restate` | satisfy or knowingly wave a gate |
+| `fde reuse <eng> <stack>` | record what the client already operates, so reuse can beat adoption |
+| `fde locale <eng> eu-gdpr` | jurisdiction pack: presets plus obligations emitted as COMPLIANCE.md |
 | `fde architect <eng>` | the design, rationale and rejections |
 | `fde build <eng> --out project` | emit; refuses while gates block |
 | `fde override --component X --choose Y --because "..."` | your call, recorded and honoured |

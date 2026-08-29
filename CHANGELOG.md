@@ -24,8 +24,17 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
   `fde kb gaps` (work items: evidence stubs, unweighted dimensions, stale
   stacks), `fde kb sweep` (profile shapes no approach can serve, each with
   a reproducing example).
-- Knowledge registry: 22 dimensions, 40 approaches, 45 patterns, 12 stacks,
-  58+ templates — all data, no code.
+- Knowledge registry: 22 dimensions, 43 approaches, 48 patterns, 12 stacks,
+  60+ templates — all data, no code.
+- Scope axes on every dimension (functional, non-functional, data,
+  environment, operational, commercial): `fde status` and the emitted
+  architecture document group by them, and `fde ask --scope` runs one axis
+  at a time.
+- Hybrid as a first-class hosting topology, with the boundary between the
+  two halves enforced in emitted code.
+- Locale packs (`fde locale`): jurisdiction presets at weakest provenance
+  plus dated obligations emitted as COMPLIANCE.md.
+- `fde reuse`: the client's existing stack outranks adoption when it serves.
 - Sanitisation gate in CI: allowed paths only, history scan, credential and
   PII patterns, denylist, no AI attribution, no pending cases.
 

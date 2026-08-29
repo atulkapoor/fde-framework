@@ -63,7 +63,8 @@ prose rationale (the person's half — *why* the rule says what it says).
 
 | Kind | What one entry declares |
 |---|---|
-| `dimensions/` | One axis of the problem: type, values, prunes, weight, recognised phrasings, who to ask |
+| `dimensions/` | One axis of the problem: type, values, prunes, weight, scope axis, recognised phrasings, who to ask |
+| `components/` | The slots a system decomposes into, and what caps what |
 | `approaches/` | One way to serve components: `applies_when` / `avoid_when` predicates, complexity, evidence |
 | `patterns/` | Approach × component → realizations per stack |
 | `stacks/` | One tool: licence, topologies it runs in, verification date |
@@ -101,7 +102,7 @@ else that looks like registry knowledge in `src/` is a bug — report it.
 | `evals/` | Golden/edge/adversarial sets from the client's own pairs, a harness CI can gate on |
 | `deploy/` | Assets for the chosen substrate and provisioner, TEARDOWN.md covering both |
 | `ops/` | Runbook keyed to the failure taxonomy, SLOs from stated budgets, rollback |
-| `ARCHITECTURE.md` | Decisions, rejected alternatives, undecided and unrealizable components |
+| `ARCHITECTURE.md` | Scope read-out by axis, decisions, tools and in-topology alternatives, agent posture, rejected alternatives, undecided and unrealizable components |
 | `RISKS.md` | Every waived gate with its reason, every overridden recommendation |
 | `COMPLIANCE.md` | The applied locale's obligations, dated, with verification notes |
 

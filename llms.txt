@@ -13,7 +13,9 @@ Key facts:
 
 - Intake surfaces: free-flow prose, documents (PDF/docx), sample
   input/output pairs, a role-scoped interview (sponsor, eval owner, user,
-  admin, skeptic), and a hardware scan. All emit Facts into one Profile.
+  admin, skeptic — optionally one scope axis at a time via --scope:
+  functional, non-functional, data, environment, operational, commercial),
+  and a hardware scan. All emit Facts into one Profile.
 - Provenance ordering is dimension-dependent: measurements outrank
   statements about the environment; stated requirements outrank
   measurements. Two respondents disagreeing is reported as a finding, not
@@ -24,6 +26,12 @@ Key facts:
   air-gapped systems, and licence compatibility against what the client
   intends to ship. Waivers are recorded with reasons and shipped in the
   generated RISKS.md.
+- Hosting topologies: public-saas, managed-api, customer-vpc, hybrid,
+  on-prem, air-gapped. Hybrid is first-class: sensitive work pinned
+  inside, burst outside, the boundary between them enforced in the
+  emitted code. The generated ARCHITECTURE.md carries a scope read-out
+  by axis, a tools-and-libraries table with in-topology alternatives,
+  and an agent-and-tool posture section.
 - The knowledge registry (framework/) is data, not code: dimensions,
   approaches, patterns, stacks, interfaces, templates, cases, and locale
   packs (jurisdiction presets and dated obligations that can never change
