@@ -16,6 +16,7 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from fde.intake.prose import NEGATIONS, _most_specific
 from fde.models.schema import Dimension, ValueType
 
 SKIP = {"", "?", "idk", "unknown", "dont know", "don't know", "no idea", "skip", "pass"}
@@ -68,11 +69,26 @@ def _enum(dimension: Dimension, text: str) -> Answer:
     for value in dimension.values:
         if lowered == value.lower():
             return Answer(value=value)
-    # Accept the way people actually talk, using the same vocabulary the prose
-    # parser uses. Two ways of recognising the same thing would drift apart.
+    # Accept the way people actually talk, resolved the same way the prose
+    # parser resolves it -- negation guard, most-specific value wins. A
+    # first-match-wins loop here once recorded "on-prem with cloud burst" as
+    # on-prem while fde frame read the identical words as hybrid: two intake
+    # paths disagreeing on the registry's own vocabulary.
+    hits: dict[str, tuple[int, int]] = {}
     for value, phrases in (dimension.recognises or {}).items():
-        if any(phrase.lower() in lowered for phrase in phrases):
-            return Answer(value=value)
+        for phrase in phrases:
+            at = lowered.find(phrase.lower())
+            if at < 0:
+                continue
+            if NEGATIONS.search(lowered[:at]):
+                continue
+            hits.setdefault(value, (at, at + len(phrase)))
+            break
+    hits = _most_specific(dimension, hits)
+    if len(hits) == 1:
+        return Answer(value=next(iter(hits)))
+    if len(hits) > 1:
+        return Answer(probe=f"That could mean {' or '.join(sorted(hits))} -- which one?")
     return Answer(probe=f"I need one of: {', '.join(dimension.values)}.")
 
 

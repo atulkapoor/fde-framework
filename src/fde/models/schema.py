@@ -191,6 +191,36 @@ class Dimension(BaseModel):
         for value in self.prunes:
             if value not in self.values:
                 raise ValueError(f"{self.id}: prunes references undeclared value {value!r}")
+        # Every field that names a value must name a declared one. A one-char
+        # typo in boundary_when once deleted the entire boundary for the
+        # topology it was written for, and validation said nothing.
+        if self.values:
+            declared = set(self.values)
+            named = [
+                ("boundary_when", self.boundary_when),
+                ("needs_judge", self.needs_judge),
+                ("recognises", list((self.recognises or {}).keys())),
+            ]
+            for field_name, referenced in named:
+                for value in referenced:
+                    if value not in declared:
+                        raise ValueError(
+                            f"{self.id}: {field_name} references undeclared "
+                            f"value {value!r}"
+                        )
+            for narrow, broad in (self.refines or {}).items():
+                if narrow not in declared or broad not in declared:
+                    raise ValueError(
+                        f"{self.id}: refines {narrow!r} -> {broad!r} references "
+                        f"an undeclared value"
+                    )
+        elif self.type is ValueType.BOOLEAN:
+            for key in self.recognises or {}:
+                if key not in ("true", "false"):
+                    raise ValueError(
+                        f"{self.id}: recognises key {key!r} on a boolean "
+                        f'dimension -- use "true" or "false"'
+                    )
         return self
 
 

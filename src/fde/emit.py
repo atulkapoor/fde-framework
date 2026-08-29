@@ -93,6 +93,19 @@ def emit(
     return EmitReport(path=out, scaffolded=scaffolded)
 
 
+def _flat(text) -> str:
+    """One line, always, and no HTML. Free text renders as text, never as
+    structure -- a value carrying its own newlines once forged a `## Gates`
+    heading inside the Scope section of a client document."""
+    return " ".join(str(text or "").split()).replace("<", "&lt;")
+
+
+def _cell(text) -> str:
+    """A markdown table cell: flattened, and pipes escaped so a licence
+    string cannot shift its row's columns or break out of the table."""
+    return _flat(text).replace("|", "\\|")
+
+
 def _write_risks(out: Path, waivers, overrides, architecture: Architecture) -> None:
     """What was waved through, and what was chosen against the rules.
 
@@ -101,13 +114,7 @@ def _write_risks(out: Path, waivers, overrides, architecture: Architecture) -> N
     receiving the project could not tell that the baseline gate had been
     waived, let alone that the baseline file was then deleted.
     """
-    def flat(text) -> str:
-        # One line, always, and no HTML. A reason carrying its own newlines
-        # once forged a second "Gates waived" section attesting a waiver of
-        # the gate that cannot be waived; an inline `<!--` would comment out
-        # every real entry after it even on one line. Free text renders as
-        # text, never as structure.
-        return " ".join(str(text or "").split()).replace("<", "&lt;")
+    flat = _flat
 
     undecided = architecture.decisions.undecided()
     lines = ["# Risks accepted", ""]
@@ -745,7 +752,7 @@ def _scope_sections(architecture: Architecture, registry: Registry | None) -> li
             lines.append("")
             continue
         lines.append(f"**{label}**")
-        lines.extend(f"- `{d}` = {v}" for d, v in items)
+        lines.extend(f"- `{_flat(d)}` = {_flat(v)}" for d, v in items)
         lines.append("")
     return lines
 
@@ -784,9 +791,9 @@ def _tools_section(architecture: Architecture, registry: Registry | None) -> lis
             })
         licence = registry.stacks.get(realization.stack)
         lines.append(
-            f"| {component} | {realization.stack} | "
-            f"{licence.licence if licence else '--'} | "
-            f"{', '.join(alternatives) if alternatives else '--'} |"
+            f"| {_cell(component)} | {_cell(realization.stack)} | "
+            f"{_cell(licence.licence) if licence else '--'} | "
+            f"{_cell(', '.join(alternatives)) if alternatives else '--'} |"
         )
     lines += [
         "",
@@ -812,6 +819,13 @@ def _posture_section(architecture: Architecture) -> list[str]:
     lines = ["## Agent and tool posture", ""]
     for node_id in sorted(mutative):
         node = graph.nodes[node_id]
+        if node.unfilled:
+            lines.append(
+                f"- `{node_id}` would act on the world but is undecided -- "
+                f"no step, gate, or key was emitted. Decide it and rebuild "
+                f"before anything here can act."
+            )
+            continue
         gates = [p.id for p in graph.predecessors(node_id)
                  if p.type in ("ApprovalGate", "Critic")]
         # Walk one hop further: the gate may precede the critic.
@@ -831,7 +845,11 @@ def _posture_section(architecture: Architecture) -> list[str]:
             + (" -- the Model Context Protocol, with annotations described "
                "by tools and enforced by the server." if integration.stack == "mcp" else ".")
         )
-    if "reasoning" in architecture.realizations:
+    reasoning = architecture.decisions.get("reasoning")
+    if reasoning is not None and reasoning.approach == "llm":
+        # Only the llm template carries max_steps/max_cost. Saying this of an
+        # optimiser or a classifier would promise a protection the emitted
+        # code does not have.
         lines.append(
             "- The reasoning loop is bounded: a step cap and a budget cap, "
             "and every run records which check ended it."

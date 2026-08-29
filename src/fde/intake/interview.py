@@ -177,6 +177,14 @@ def _contestable(profile: Profile, registry: Registry, role: str) -> list[Questi
         holder = str(fact.respondent.role)
         if holder == role:
             continue
+        # Someone in this role already confirmed, corrected, or contested it:
+        # their answer is on the record, and re-offering the same prompt every
+        # session records the same fact again each time somebody hits enter.
+        if any(
+            f.respondent is not None and str(f.respondent.role) == role
+            for f in profile.history(dimension)
+        ):
+            continue
         who = fact.respondent.name or holder
         questions.append(
             Question(

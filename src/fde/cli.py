@@ -171,12 +171,28 @@ def status(
             typer.echo(f"  {labels[scope]}:")
             for dimension in dims:
                 fact = profile.fact(dimension)
-                typer.echo(f"    {dimension} = {fact.value}   [{_who(fact)}]")
+                shown = " ".join(str(fact.value).split())
+                typer.echo(f"    {dimension} = {shown}   [{_who(fact)}]")
         if registry:
-            unsettled = {}
+            space = Space.from_registry(registry).apply(profile)
+            unsettled, implied = {}, []
             for entry in registry.dimensions.values():
-                if entry.weight > 0 and not profile.resolved(entry.id):
-                    unsettled.setdefault(str(entry.scope), []).append(entry.id)
+                if entry.weight <= 0 or profile.resolved(entry.id):
+                    continue
+                in_space = entry.values and entry.id in space.dimensions()
+                surviving = space.surviving(entry.id) if in_space else set()
+                if in_space and len(surviving) == 1:
+                    # Settled by implication: an earlier answer pruned every
+                    # other value. The interview will never offer it again,
+                    # so listing it as open sends somebody to schedule a
+                    # conversation the framework would refuse to have.
+                    implied.append(f"{entry.id} = {next(iter(surviving))}")
+                    continue
+                unsettled.setdefault(str(entry.scope), []).append(entry.id)
+            if implied:
+                typer.echo(
+                    f"  settled by implication -- {', '.join(sorted(implied))}"
+                )
             gaps_line = " · ".join(
                 f"{labels.get(s, s)}: {', '.join(sorted(d))}"
                 for s, d in sorted(unsettled.items()) if d
@@ -386,6 +402,11 @@ def ask(
         answer = _put(registry.dimensions[question.resolves], question)
         if answer is None:
             break  # end of input: keep what we have
+        if question.contest_of:
+            # Asked and answered, either way: a confirmation must retire the
+            # question, or the same prompt is re-offered the moment the loop
+            # comes round -- the holder has not changed.
+            passed_on.add(question.resolves)
         if answer.skipped:
             passed_on.add(question.resolves)
             continue
@@ -410,6 +431,9 @@ def ask(
             typer.echo(f"  that conflicts: {exc}")
             continue
 
+        if question.contest_of:
+            _warn_if_impossible(question.resolves, answer.value, profile, registry)
+
         gathered.append(fact)
         profile = _with(profile, fact)
 
@@ -425,6 +449,28 @@ def ask(
         )
     )
     typer.echo(f"\nRecorded {len(gathered)} answer(s) from {respondent}.")
+
+
+def _warn_if_impossible(dimension, value, profile, registry):
+    """A contested answer bypasses the space on purpose -- two people
+    differing is a finding. But a contesting value the rest of this
+    engagement's own answers rule out is not a difference of view, it is a
+    contradiction wearing one, and recording it silently lets a physically
+    impossible option stand as an open question."""
+    probe_profile = Profile()
+    probe_profile.ingest([
+        f
+        for d in profile.dimensions()
+        for f in profile.history(d)
+        if d != dimension
+    ])
+    probe = Space.from_registry(registry).apply(probe_profile)
+    if dimension in probe.dimensions() and value not in probe.surviving(dimension):
+        typer.echo(
+            f"  recorded as disagreement -- but note: {value!r} is ruled out "
+            f"by other answers in this engagement, so one side of this "
+            f"disagreement is a contradiction, not a viewpoint."
+        )
 
 
 def _put(dimension, question):

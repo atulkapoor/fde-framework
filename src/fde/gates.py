@@ -190,7 +190,10 @@ def validate_baseline(baseline: dict[str, Any] | None) -> Result:
     from a representative sample rather than the best case -- the gap between
     what is possible and what happens is usually the whole project. And the
     definitions have to be recorded, because the test of a baseline is whether
-    the same fields can be measured again in sixty days and compared.
+    the same fields can be measured again in sixty days and compared. A
+    definition written next to each field IS the definitions being recorded --
+    demanding a separate attestation flag on top of the evidence would be the
+    inverse of how this framework treats provenance everywhere else.
     """
     if not baseline:
         return Result(False, "no baseline was captured")
@@ -205,7 +208,11 @@ def validate_baseline(baseline: dict[str, Any] | None) -> Result:
             "cycle time must come from a representative sample, not the best case; "
             "the difference between what is possible and what happens is the project",
         )
-    if not baseline.get("definitions_recorded"):
+    definitions_inline = all(
+        isinstance(baseline.get(f), dict) and baseline[f].get("definition")
+        for f in BASELINE_FIELDS
+    )
+    if not (baseline.get("definitions_recorded") or definitions_inline):
         return Result(
             False,
             "the definitions are not recorded, so this is not re-measurable in "

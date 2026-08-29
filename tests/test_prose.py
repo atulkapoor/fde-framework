@@ -308,3 +308,17 @@ def test_the_operating_team_stated_in_the_third_person(reg):
     facts = parse_prose("The platform team operates it after handover.", reg)
     assert any(f.dimension == "operates_after_handover" and f.value == "platform_team"
                for f in facts)
+
+
+def test_tooling_stated_in_the_passive_voice(reg):
+    """"terraform is already in use" is how a client describes their own
+    shop; every recogniser expected "we use terraform"."""
+    facts = parse_prose("Terraform is already in use and the environment is permanent.", reg)
+    values = {f.dimension: f.value for f in facts}
+    assert values.get("existing_iac_tool") == "terraform"
+    assert values.get("environment_lifetime") == "permanent"
+
+
+def test_the_provisioning_api_answers_to_its_own_name(reg):
+    facts = parse_prose("There is a provisioning api for the estate.", reg)
+    assert any(f.dimension == "provisioning_api" and f.value is True for f in facts)

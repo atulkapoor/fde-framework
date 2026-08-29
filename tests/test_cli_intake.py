@@ -225,3 +225,47 @@ def test_an_unknown_scope_axis_lists_the_real_ones(tmp_path):
                                  "--scope", "vibes"], input="\n")
     assert result.exit_code == 1
     assert "non_functional" in result.output
+
+
+# --- the contest loop terminates and tells the truth ------------------------
+
+
+def _contest_setup(tmp_path):
+    root = engagement(tmp_path)
+    runner.invoke(app, ["ask", str(root), "--role", "sponsor", "--name", "Sam"],
+                  input="cannot_leave\n\n" * 25)
+    return root
+
+
+def test_confirming_a_contested_answer_retires_the_question(tmp_path):
+    """Five confirmations of one value once recorded five duplicate facts,
+    with the same prompt re-offered each time -- the holder never changed,
+    so nothing ever retired it."""
+    root = _contest_setup(tmp_path)
+    result = runner.invoke(app, ["ask", str(root), "--role", "admin",
+                                 "--name", "Ada", "--scope", "data"],
+                          input="cannot_leave\n\n" * 10)
+    assert result.output.count("confirm, correct, or skip") == 1
+    assert "Recorded 1 answer(s)" in result.output
+
+
+def test_a_settled_contest_is_not_reoffered_next_session(tmp_path):
+    root = _contest_setup(tmp_path)
+    runner.invoke(app, ["ask", str(root), "--role", "admin", "--name", "Ada",
+                        "--scope", "data"], input="cannot_leave\n\n" * 10)
+    again = runner.invoke(app, ["ask", str(root), "--role", "admin",
+                                "--name", "Ada", "--scope", "data"],
+                          input="\n" * 10)
+    assert "confirm, correct, or skip" not in again.output
+
+
+def test_an_impossible_contest_value_is_named_a_contradiction(tmp_path):
+    """Disagreement stays a finding, but a contesting value the contester's
+    own other answers rule out is a contradiction wearing one."""
+    root = _contest_setup(tmp_path)
+    runner.invoke(app, ["ask", str(root), "--role", "admin", "--name", "Ada",
+                        "--scope", "environment"], input="air-gapped\n\n" * 10)
+    result = runner.invoke(app, ["ask", str(root), "--role", "admin",
+                                 "--name", "Ada", "--scope", "data"],
+                          input="may_leave\n\n" * 10)
+    assert "one side of this disagreement is a contradiction" in result.output

@@ -9,6 +9,7 @@ have. Waiting is the only move there, and pretending otherwise wastes weeks.
 import pytest
 
 from fde.gates import (
+    BASELINE_FIELDS,
     HardGate,
     completeness,
     input_status,
@@ -283,8 +284,7 @@ def test_the_boundary_gate_reads_the_registry(tmp_path):
     code change: boundary_when and needs_judge are content."""
     registry = registry_with_dimension(tmp_path, (
         "---\nid: custom\ntype: enum\nweight: 1.0\n"
-        "values: [sovereign, open]\nboundary_when: [sovereign]\n"
-        "needs_judge: [never]\n---\nbody\n"
+        "values: [sovereign, open]\nboundary_when: [sovereign]\n---\nbody\n"
     ))
     # add an output dimension declaring judged values
     (tmp_path / "dimensions" / "shape.md").write_text(
@@ -370,3 +370,21 @@ def test_no_architecture_means_nothing_to_judge(tmp_path):
     are not chosen yet."""
     status = input_status(profile(licence_posture="proprietary"), licences=None)
     assert status.gate("licence_compatibility").passed
+
+
+def test_inline_definitions_are_definitions_recorded():
+    """A baseline whose every field carries its own definition has recorded
+    its definitions; the gate must read that evidence rather than demand a
+    separate attestation flag on top of it."""
+    baseline = {f: {"value": 1, "unit": "u", "definition": f"how {f} is measured"}
+                for f in BASELINE_FIELDS}
+    baseline["sampled"] = {"n": 40, "method": "random"}
+    assert validate_baseline(baseline).ok
+
+
+def test_a_field_missing_its_definition_still_blocks():
+    baseline = {f: {"value": 1, "unit": "u", "definition": f"how {f} is measured"}
+                for f in BASELINE_FIELDS}
+    baseline["error_rate"] = {"value": 0.1, "unit": "ratio"}
+    baseline["sampled"] = True
+    assert not validate_baseline(baseline).ok

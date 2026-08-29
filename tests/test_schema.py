@@ -242,3 +242,32 @@ def test_a_ladder_starts_at_the_cheapest_rung():
         ],
     )
     assert ladder.rungs[0].id == "systemd"
+
+
+# --- fields that name values must name declared ones ------------------------
+
+
+def test_a_typo_in_boundary_when_is_refused():
+    """One character wrong here once silently deleted the entire boundary
+    for the topology it was written for."""
+    with pytest.raises(ValidationError, match="boundary_when"):
+        Dimension(id="hosting", type="enum", asks="?", values=["on-prem", "hybrid"],
+                  boundary_when=["hybird"])
+
+
+def test_a_typo_in_refines_is_refused():
+    with pytest.raises(ValidationError, match="refines"):
+        Dimension(id="hosting", type="enum", asks="?", values=["on-prem", "hybrid"],
+                  refines={"hybrdi": "on-prem"})
+
+
+def test_a_recognises_key_must_be_a_declared_value():
+    with pytest.raises(ValidationError, match="recognises"):
+        Dimension(id="hosting", type="enum", asks="?", values=["on-prem"],
+                  recognises={"onprem": ["on premises"]})
+
+
+def test_a_boolean_recognises_key_must_be_true_or_false():
+    with pytest.raises(ValidationError, match="boolean"):
+        Dimension(id="provisioning_api", type="boolean", asks="?",
+                  recognises={"yes": ["cloud account"]})

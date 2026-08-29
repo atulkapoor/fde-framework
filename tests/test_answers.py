@@ -6,8 +6,13 @@ the sharpening probe -- matters more than acceptance, and every refusal
 path deserves the same coverage as the happy one.
 """
 
+from pathlib import Path
+
 from fde.intake.answers import parse_answer
 from fde.models.schema import Dimension, ValueType
+from fde.registry import load_registry
+
+REGISTRY = load_registry(Path(__file__).resolve().parents[1] / "framework")
 
 
 def dim(kind, **extra):
@@ -114,3 +119,30 @@ def test_most_of_them_is_not_a_ratio():
 def test_text_dimensions_take_the_reply_as_given():
     assert parse_answer(dim(ValueType.TEXT), "days to close the quarter").value == \
         "days to close the quarter"
+
+
+# --- the interview and the prose parser must read the same words alike ------
+
+
+def test_hybrid_phrases_do_not_record_as_on_prem():
+    """"on-prem with cloud burst" typed at the interview prompt once recorded
+    on-prem -- the substring won by declaration order -- while fde frame read
+    the identical words as hybrid. One vocabulary, one resolution."""
+    hosting = REGISTRY.dimensions["hosting"]
+    for phrase in ("sensitive stays on-prem", "on-prem with cloud burst",
+                   "split between on-prem and cloud"):
+        answer = parse_answer(hosting, phrase)
+        assert answer.value == "hybrid", phrase
+
+
+def test_a_negated_phrase_is_not_an_answer():
+    hosting = REGISTRY.dimensions["hosting"]
+    answer = parse_answer(hosting, "definitely not on-prem")
+    assert answer.value is None
+
+
+def test_two_values_that_do_not_refine_each_other_get_a_probe():
+    hosting = REGISTRY.dimensions["hosting"]
+    answer = parse_answer(hosting, "managed api for some, air-gapped for the rest")
+    assert answer.value is None
+    assert answer.probe and "which one" in answer.probe
