@@ -8,8 +8,8 @@ asks: "What does the team already use to manage infrastructure?"
 ask_role: [admin]
 values: [terraform, ansible, pulumi, cloudformation, none]
 recognises:
-  ansible: [we use ansible, ansible playbooks, our playbooks]
-  terraform: [we use terraform, terraform modules, our tf]
+  ansible: [we use ansible, ansible playbooks, our playbooks, using ansible]
+  terraform: [we use terraform, terraform modules, our tf, using terraform, terraform is in use, terraform is already in use, already on terraform]
   pulumi: [we use pulumi]
   cloudformation: [cloudformation, cdk, sam templates]
   none: [nothing yet, click ops, we do it by hand, by hand, manually, no tooling]

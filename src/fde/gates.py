@@ -242,6 +242,7 @@ def input_status(
     current_statement: str | None = None,
     registry=None,
     licences: dict[str, str] | None = None,
+    security_review: bool | None = None,
 ) -> Status:
     """Known, assumed, missing -- and whether this is worth starting.
 
@@ -262,6 +263,7 @@ def input_status(
             _scope_drift(original_statement, current_statement),
             _offline_evaluability(profile, registry),
             _licence_compatibility(profile, licences),
+            _security_review(profile, security_review),
         ],
         known=known,
         missing=sorted(d for d in weights if not profile.resolved(d)),
@@ -308,6 +310,37 @@ def _baseline(baseline: dict[str, Any] | None) -> Gate:
             "days, recording the definitions. Where history is unreliable, "
             "measure forward rather than accept an estimate."
         ),
+    )
+
+
+CLIENT_SIDE_HOSTING = {"customer-vpc", "hybrid", "on-prem", "air-gapped"}
+
+
+def _security_review(profile: Profile, attested: bool | None) -> Gate:
+    """Whether the client's security people have seen this before it lands.
+
+    Every public engagement playbook names the same killer: a system built,
+    working, and then stopped at the door by an InfoSec review nobody
+    scheduled. The gate fires when the system will live inside the client's
+    environment or touch their systems -- which is when their security
+    function has jurisdiction -- and stands open otherwise, because a gate
+    with nothing to judge is ceremony.
+    """
+    values = profile.values()
+    hosting = values.get("hosting")
+    touches = values.get("external_systems")
+    applies = (hosting in CLIENT_SIDE_HOSTING) or bool(touches)
+    if not applies or attested:
+        return Gate("security_review", True)
+    return Gate(
+        "security_review",
+        False,
+        reason="This runs inside the client's environment or touches their "
+               "systems, and no client security review is on record.",
+        remedy="Get the client's security function to look at the design -- "
+               "access model, data paths, egress -- and record it with "
+               "`fde security-review <eng> --note`. Waivable, but the waiver "
+               "lands in RISKS.md with your name on the reason.",
     )
 
 

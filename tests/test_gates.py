@@ -1,6 +1,6 @@
 """What has to be true before building is worth starting.
 
-Five gates. Four block and accept an override with a recorded reason, because
+Seven gates. Six block and accept an override with a recorded reason, because
 an FDE on site can see things a checklist cannot. One does not: you can design
 around a missing baseline, and you cannot design around credentials you do not
 have. Waiting is the only move there, and pretending otherwise wastes weeks.
@@ -109,7 +109,8 @@ def test_everything_satisfied_means_proceed(reg=None):
                    respondent=Respondent(role="eval_owner", name="A")),
               Fact("hosting", "on-prem", Provenance.DETECTED,
                    respondent=Respondent(role="admin", name="B"))])
-    status = input_status(p, baseline=GOOD_BASELINE, data_access=True)
+    status = input_status(p, baseline=GOOD_BASELINE, data_access=True,
+                          security_review=True)
     assert status.can_proceed
     assert status.blocked_by() == []
 
@@ -388,3 +389,42 @@ def test_a_field_missing_its_definition_still_blocks():
     baseline["error_rate"] = {"value": 0.1, "unit": "ratio"}
     baseline["sampled"] = True
     assert not validate_baseline(baseline).ok
+
+
+# --- the seventh gate: security review --------------------------------------
+
+
+def test_security_review_fires_inside_the_clients_environment():
+    p = Profile()
+    p.ingest([Fact("hosting", "on-prem", Provenance.DETECTED)])
+    status = input_status(p, baseline=GOOD_BASELINE, data_access=True)
+    gate = next(g for g in status.gates if g.name == "security_review")
+    assert not gate.passed
+    assert "security review" in gate.reason
+
+
+def test_security_review_fires_when_client_systems_are_touched():
+    p = Profile()
+    p.ingest([Fact("external_systems", 3, Provenance.INTERVIEW)])
+    status = input_status(p, data_access=True)
+    gate = next(g for g in status.gates if g.name == "security_review")
+    assert not gate.passed
+
+
+def test_security_review_stands_open_when_it_has_no_jurisdiction():
+    """A managed-api system touching nothing of the client's is not theirs
+    to review -- a gate with nothing to judge is ceremony."""
+    p = Profile()
+    p.ingest([Fact("hosting", "managed-api", Provenance.INTERVIEW),
+              Fact("external_systems", 0, Provenance.INTERVIEW)])
+    status = input_status(p, data_access=True)
+    gate = next(g for g in status.gates if g.name == "security_review")
+    assert gate.passed
+
+
+def test_an_attested_review_clears_the_gate():
+    p = Profile()
+    p.ingest([Fact("hosting", "on-prem", Provenance.DETECTED)])
+    status = input_status(p, data_access=True, security_review=True)
+    gate = next(g for g in status.gates if g.name == "security_review")
+    assert gate.passed

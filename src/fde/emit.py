@@ -552,6 +552,102 @@ def _write_evals(architecture: Architecture, out: Path, pairs_path: Path | None)
     (evals / "taxonomy.py").write_text(_TAXONOMY)
     (evals / "harness.py").write_text(_HARNESS.format(metrics=json.dumps(metrics)))
 
+    golden_count = len(suite.golden) if suite else 0
+    (evals / "acceptance.md").write_text(_acceptance(architecture, golden_count))
+
+    latency = (architecture.values or {}).get("latency_budget_ms")
+    if latency:
+        (evals / "load.py").write_text(
+            _LOAD.format(
+                latency_ms=int(latency),
+                arrival=int((architecture.values or {}).get("arrival_rate") or 0),
+            )
+        )
+
+
+def _acceptance(architecture: Architecture, golden_count: int) -> str:
+    """The user-acceptance protocol, written down before anyone is asked to
+    accept anything.
+
+    The offline harness proves the system agrees with its own golden set.
+    Acceptance is a different question -- whether the people who live with the
+    output will take it -- and an engagement that never schedules it discovers
+    the answer in production.
+    """
+    judge_note = (
+        "the named evaluation owner (the client_readiness gate holds their "
+        "name)"
+    )
+    return "\n".join([
+        "# Acceptance",
+        "",
+        "Offline evaluation says the system matches its examples. This "
+        "protocol says whether the people who live with the output accept "
+        "it. Run it before production traffic, with the client in the room.",
+        "",
+        "## Protocol",
+        "",
+        f"1. **Who judges**: {judge_note}, plus at least one person who does "
+        "the work today. Not the builder.",
+        f"2. **Sample**: fresh items from live data -- never the golden set "
+        f"(the system has seen those {golden_count} in CI). Size to match "
+        "the golden set or 30, whichever is larger.",
+        "3. **Blind pass**: the judges label the sample before seeing the "
+        "system's output; disagreement between judges is recorded, not "
+        "resolved by the loudest voice.",
+        "4. **Compare**: system output against the blind labels, scored by "
+        "the same metrics the harness runs. The baseline's error rate is "
+        "the number to beat -- beating zero was never the bar.",
+        "5. **Sign-off**: recorded with names and the score. A meeting that "
+        "went well is not a sign-off.",
+        "",
+        "## Refusals worth respecting",
+        "",
+        "If nobody can be found to judge, that is the client_readiness gate "
+        "failing late -- stop and escalate rather than accepting on their "
+        "behalf.",
+    ]) + "\n"
+
+
+_LOAD = '''"""Does the built system hold its latency budget under its real arrival rate?
+
+The architecture document quotes p95 under {latency_ms}ms. The offline harness
+never verifies that -- it measures correctness one case at a time. This does:
+it replays the golden inputs at the engagement\'s stated rate and fails if the
+p95 breaches the budget. Like the harness, it fails until the pipeline is
+implemented -- a load test that passes against a stub measures the stub.
+"""
+
+import json
+import statistics
+import time
+from pathlib import Path
+
+from app.pipeline import run  # noqa: F401 -- raises until implemented, by design
+
+BUDGET_MS = {latency_ms}
+ARRIVAL_PER_DAY = {arrival} or 86_400  # unstated -> one per second
+
+
+def test_p95_under_budget():
+    cases = [
+        json.loads(line)
+        for line in (Path(__file__).parent / "golden.jsonl").read_text().splitlines()
+        if line.strip()
+    ]
+    assert cases, "no golden cases -- seed pairs before load-testing"
+    laps = []
+    for case in cases:
+        started = time.perf_counter()
+        run(case["input"])
+        laps.append((time.perf_counter() - started) * 1000)
+    p95 = statistics.quantiles(laps, n=20)[18] if len(laps) >= 20 else max(laps)
+    assert p95 <= BUDGET_MS, (
+        f"p95 {{p95:.0f}}ms breaches the {{BUDGET_MS}}ms budget the "
+        f"architecture quotes"
+    )
+'''
+
 
 _TAXONOMY = '''"""Why a case failed, by source rather than by symptom.
 

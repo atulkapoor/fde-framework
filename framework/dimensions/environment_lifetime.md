@@ -9,7 +9,7 @@ ask_role: [admin, sponsor]
 values: [ephemeral, permanent]
 recognises:
   ephemeral: [per pull request, spin up and tear down, temporary environment, for the pilot]
-  permanent: [production, it stays, it lives, long lived, permanent environment]
+  permanent: [production, it stays, it lives, long lived, permanent environment, environment is permanent, stays up]
 ---
 Whether teardown is a requirement or dead weight.
 

@@ -624,6 +624,7 @@ def _gate_status(engagement, registry=None):
         engagement.profile,
         baseline=engagement.baseline(),
         data_access=bool(state.get("data_access")),
+        security_review=bool(state.get("security_review")),
         registry=registry,
         licences=licences,
         original_statement=(
@@ -747,6 +748,31 @@ def data_access_cmd(
     engagement = _engagement(root)
     engagement.record_data_access(note=note, at=date.today().isoformat())
     typer.echo("data access recorded")
+
+
+@app.command("security-review")
+def security_review_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    note: Annotated[str, typer.Option(
+        help="Who reviewed it and what they looked at. A meeting that is "
+             "scheduled is not a review that happened."
+    )],
+) -> None:
+    """Record that the client's security function reviewed the design.
+
+    Fires only for systems living inside the client's environment or touching
+    their systems -- exactly the ones their InfoSec has jurisdiction over, and
+    exactly the ones stopped at the door when nobody scheduled the review.
+    """
+    if not _says_something(note):
+        typer.echo(
+            "the note is the evidence -- name who reviewed it and what they "
+            "looked at.", err=True,
+        )
+        raise typer.Exit(1)
+    engagement = _engagement(root)
+    engagement.record_security_review(note=note, at=date.today().isoformat())
+    typer.echo("security review recorded")
 
 
 @app.command("waive")
@@ -1406,11 +1432,18 @@ def scan_cmd(
 
 @app.command("cost")
 def cost_cmd(
-    requests_per_day: Annotated[int, typer.Option(help="Expected daily volume.")],
+    requests_per_day: Annotated[int | None, typer.Option(
+        help="Expected daily volume. Read from the engagement's arrival_rate "
+             "when --root is given and the interview settled it."
+    )] = None,
+    root: Annotated[Path | None, typer.Option(
+        "--root", help="An engagement directory to read arrival_rate and "
+        "human_waiting from, so discovery is not re-typed at the prompt."
+    )] = None,
     params_b: Annotated[float, typer.Option("--model-b", help="Model size in billions.")] = 8.0,
     human_waiting: Annotated[
-        bool, typer.Option(help="Is somebody waiting on each request?")
-    ] = True,
+        bool | None, typer.Option(help="Is somebody waiting on each request?")
+    ] = None,
     today: Annotated[str, typer.Option(help="For staleness checks; defaults to today.")] = "",
 ) -> None:
     """Size the fleet and compare hosting, with every figure dated.
@@ -1422,6 +1455,22 @@ def cost_cmd(
     from fde.costing import compare_hosting, size_for
 
     stamp = today or date.today().isoformat()
+    if root is not None:
+        values = _engagement(root).profile.values()
+        if requests_per_day is None and values.get("arrival_rate") is not None:
+            requests_per_day = int(values["arrival_rate"])
+            typer.echo(f"arrival_rate from the engagement: {requests_per_day:,}/day")
+        if human_waiting is None and values.get("human_waiting") is not None:
+            human_waiting = values["human_waiting"] != "no"
+    if requests_per_day is None:
+        typer.echo(
+            "no volume to size for -- pass --requests-per-day, or --root an "
+            "engagement whose interview settled arrival_rate.", err=True,
+        )
+        raise typer.Exit(1)
+    if human_waiting is None:
+        human_waiting = True
+
     plan = size_for(requests_per_day, params_b, today=stamp)
     comparison = compare_hosting(
         requests_per_day, params_b, human_waiting=human_waiting, today=stamp

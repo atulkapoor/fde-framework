@@ -593,3 +593,26 @@ def run(payload):
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "100.0%" in result.stdout
+
+
+# --- acceptance and load: the tests the guides say clients actually run -----
+
+
+def test_an_acceptance_protocol_ships_with_the_evals(built):
+    acceptance = (built / "evals" / "acceptance.md").read_text()
+    assert "blind" in acceptance.lower()
+    assert "Not the builder" in acceptance
+
+
+def test_a_stated_latency_budget_earns_a_load_test(built):
+    load = (built / "evals" / "load.py").read_text()
+    assert "BUDGET_MS = 800" in load
+    assert "from app.pipeline import run" in load
+
+
+def test_no_latency_budget_means_no_load_test(tmp_path, reg):
+    """A load test against an unstated budget would invent the number it
+    checks."""
+    values = {k: v for k, v in COMPLETE.items() if k != "latency_budget_ms"}
+    emit(architect(profile(**values), reg), tmp_path / "p")
+    assert not (tmp_path / "p" / "evals" / "load.py").exists()

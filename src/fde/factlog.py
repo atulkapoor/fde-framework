@@ -171,6 +171,11 @@ class Engagement:
         state["data_access"] = {"note": note, "at": at}
         self._write_gate_state(state)
 
+    def record_security_review(self, note: str, at: str) -> None:
+        state = self._raw_gate_state()
+        state["security_review"] = {"note": note, "at": at}
+        self._write_gate_state(state)
+
     def record_waiver(self, gate: str, reason: str, at: str, against: str = "") -> None:
         """One waiver per gate, bound to the state it was granted against.
 
@@ -232,6 +237,10 @@ class Engagement:
         # returned rows -- that is the exact bypass this reader closes.
         if isinstance(access, dict) and says_something(access.get("note")):
             state["data_access"] = access
+
+        review = raw.get("security_review")
+        if isinstance(review, dict) and says_something(review.get("note")):
+            state["security_review"] = review
 
         waivers = raw.get("overrides", [])
         if not isinstance(waivers, list):

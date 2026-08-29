@@ -152,8 +152,21 @@ def _first_place_to_look(architecture, registry) -> str:
 # --- objectives ----------------------------------------------------------
 
 
+UNSTATED_AVAILABILITY = (
+    "<not stated> -- ask the sponsor; the spare count and the deploy story "
+    "both hang on it"
+)
+
+AVAILABILITY_MEANS = {
+    "always_on": "always on: a spare replica, and a deploy is not an outage",
+    "business_hours": "business hours: planned windows outside them are free",
+    "best_effort": "best effort: no spare, and that is a costed decision, not neglect",
+}
+
+
 def _slo(architecture) -> str:
     latency = _value(architecture, "latency_budget_ms")
+    availability = _value(architecture, "availability_target")
 
     return "\n".join([
         "# Service objectives",
@@ -168,6 +181,8 @@ def _slo(architecture) -> str:
         f"- **Latency** — p95 under {latency or '<not stated>'}ms at expected peak. "
         f"Measured at the edge, not inside a component, because that is where "
         f"somebody experiences it.",
+        f"- **Availability** — "
+        f"{AVAILABILITY_MEANS.get(availability, UNSTATED_AVAILABILITY)}.",
         "- **Evaluation score** — the golden layer at or above the threshold CI "
         "gates on. A drop here is a regression whether or not anything is down.",
         "- **Adversarial score** — tracked separately and never averaged in. "

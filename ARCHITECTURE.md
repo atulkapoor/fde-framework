@@ -39,7 +39,7 @@ intake ──> fact log ──> permutation space ──> gates ──> decide �
 | `factlog.py` | Append-only engagement store; sessions, statements, gate state |
 | `space.py` | The permutation space; facts prune candidates to a fixed point |
 | `predicate.py` | The tiny predicate grammar (`always`, `==`, `and`, comparisons) |
-| `gates.py` | Six gates before building; one hard, five waivable with reasons |
+| `gates.py` | Seven gates before building; one hard, six waivable with reasons |
 | `decide.py` | Simplest applicable approach per component, evidence cited, rejections named |
 | `decompose.py` | Which components a profile puts in scope |
 | `architect.py` | The join: decisions + graph + topology + realizations + licences |

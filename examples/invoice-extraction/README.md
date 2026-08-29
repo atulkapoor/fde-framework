@@ -27,11 +27,12 @@ fde samples engagements/acme --file examples/invoice-extraction/pairs.jsonl
 # 3 pairs, 2 fields — the pairs settle the output shape and seed the golden set
 
 fde status engagements/acme
-# blocked by 3: [hard] data_access, baseline_capture, client_readiness
+# blocked by 4: [hard] data_access, baseline_capture, client_readiness, security_review
 # build refuses until these clear -- the hard one has no waiver
 
 fde baseline engagements/acme --file examples/invoice-extraction/baseline.yaml
 fde data-access engagements/acme --note "read replica returned 14 rows from the invoices table"
+fde security-review engagements/acme --note "client infosec reviewed data paths and egress"
 fde waive engagements/acme client_readiness --reason "eval owner named, starts Monday"
 
 fde architect engagements/acme
@@ -52,7 +53,8 @@ fde build engagements/acme --out project
 The emitted `project/` holds `app/` (pipeline in topological order, boundary
 check imported at startup because data cannot leave), `evals/` (golden set
 from the three pairs, a harness that fails CI until the pipeline is
-implemented), `deploy/` (a systemd unit — rung zero, because nothing in the
+implemented, and `acceptance.md` — a blind-judging protocol for the client's
+own people), `deploy/` (a systemd unit — rung zero, because nothing in the
 profile earned a container), `ops/` (runbook, SLOs, rollback),
 `ARCHITECTURE.md` with the scope read-out, the tools table with
 in-topology alternatives, the agent posture, and every rejected

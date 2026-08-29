@@ -60,7 +60,7 @@ Those are different claims, and the difference is the point.
 
 **Built**: the pipeline exists end to end — intake (prose, documents, sample
 pairs, role-scoped interview, hardware scan) → fact log with provenance →
-permutation space → six gates → decide → architect → build (code, evals,
+permutation space → seven gates → decide → architect → build (code, evals,
 deploy and ops assets, `RISKS.md`, `COMPLIANCE.md`) → retro and case
 capture. Overrides are honoured on the next run, trigger observations feed
 calibration, and a reviewed case can enter the corpus. ~700 tests; three
@@ -106,7 +106,7 @@ the most valuable thing discovery produces.
 **Processing** prunes a space of possibilities as facts arrive, decomposes the
 problem into components, and decides an approach, pattern and stack for each —
 with cited evidence, ranked rejected alternatives, and a measurable trigger for
-when to graduate to something more sophisticated. Six gates stand before
+when to graduate to something more sophisticated. Seven gates stand before
 building: verified data access (the one that cannot be waived), a re-measurable
 baseline, a named evaluation owner, scope drift against the original statement,
 offline evaluability for air-gapped deployments, and licence compatibility
@@ -227,7 +227,7 @@ project/
 | `fde ask <eng> --role admin --scope non_functional` | one scope axis at a time — the dedicated NFR pass |
 | `fde scan <eng>` | measure the hardware; only measurements earn DETECTED |
 | `fde status <eng>` | gates, gaps, waivers, disagreements |
-| `fde baseline / data-access / waive / restate` | satisfy or knowingly wave a gate |
+| `fde baseline / data-access / security-review / waive / restate` | satisfy or knowingly waive a gate |
 | `fde reuse <eng> <stack>` | record what the client already operates, so reuse can beat adoption |
 | `fde locale <eng> eu-gdpr` | jurisdiction pack: presets plus obligations emitted as COMPLIANCE.md |
 | `fde architect <eng>` | the design, rationale and rejections |

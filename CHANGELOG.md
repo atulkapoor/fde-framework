@@ -8,7 +8,7 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 ### Added
 - End-to-end pipeline: prose/document/sample/interview/hardware-scan intake →
   append-only fact log with dimension-dependent provenance → permutation
-  space → six gates (data access hard; baseline, readiness, scope drift,
+  space → seven gates (data access hard; baseline, readiness, scope drift,
   offline evaluability, licence compatibility waivable with recorded
   reasons) → evidence-citing decision engine → architect → `fde build`
   emitting code, evals, deploy assets, ops runbook, `ARCHITECTURE.md` and
@@ -35,6 +35,15 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 - Locale packs (`fde locale`): jurisdiction presets at weakest provenance
   plus dated obligations emitted as COMPLIANCE.md.
 - `fde reuse`: the client's existing stack outranks adoption when it serves.
+- A security-review gate: a system living in the client's environment or
+  touching their systems blocks until their security function has seen it
+  (`fde security-review`), because the review nobody scheduled is the
+  engagement-killer every public playbook names.
+- `arrival_rate` and `availability_target` dimensions: flow sizing read by
+  `fde cost --root`, and an availability target the emitted slo.md carries.
+- Emitted `evals/acceptance.md` (blind user-acceptance protocol) and
+  `evals/load.py` (p95 against the stated budget; fails until the pipeline
+  is implemented, like the harness).
 - Sanitisation gate in CI: allowed paths only, history scan, credential and
   PII patterns, denylist, no AI attribution, no pending cases.
 

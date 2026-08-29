@@ -118,8 +118,10 @@ def _all_dimensions_act(reg) -> bool:
     referenced = set(GATE_DIMENSIONS)
     for approach in reg.approaches.values():
         for condition in [*approach.applies_when, *approach.avoid_when]:
-            referenced.add(condition.split()[0])
+            # every dimension the condition names, not only the first token:
+            # 'a == x and b > 5' acts on b as surely as on a
+            referenced.update(t for t in condition.split() if t in reg.dimensions)
     for component in reg.components.values():
         for condition in component.required_when:
-            referenced.add(condition.split()[0])
+            referenced.update(t for t in condition.split() if t in reg.dimensions)
     return set(reg.dimensions) <= referenced

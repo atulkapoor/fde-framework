@@ -20,11 +20,12 @@ Key facts:
   statements about the environment; stated requirements outrank
   measurements. Two respondents disagreeing is reported as a finding, not
   silently resolved.
-- Six gates precede building: verified data access (hard — cannot be
+- Seven gates precede building: verified data access (hard — cannot be
   waived), a re-measurable baseline, a named evaluation owner, scope drift
   measured against the original statement, offline evaluability for
-  air-gapped systems, and licence compatibility against what the client
-  intends to ship. Waivers are recorded with reasons and shipped in the
+  air-gapped systems, licence compatibility against what the client
+  intends to ship, and a client security review whenever the system lives
+  in their environment or touches their systems. Waivers are recorded with reasons and shipped in the
   generated RISKS.md.
 - Hosting topologies: public-saas, managed-api, customer-vpc, hybrid,
   on-prem, air-gapped. Hybrid is first-class: sensitive work pinned

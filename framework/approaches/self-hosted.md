@@ -27,3 +27,12 @@ When the hardware will not hold the model, three levers in order:
 quantisation, then parameter-efficient adaptation, then distillation. Each costs
 more effort and more quality risk than the one before, so stop at the first that
 fits.
+
+Serving stacks cache at four layers that share one word and nothing else: the
+KV cache lives for one request, prefix caching keeps those tensors across
+requests on the server, provider prompt caching is the same idea on somebody
+else's hardware, and a semantic cache stores whole responses by similarity.
+The first three hit only on exact token identity, which is why sticky routing
+matters on a self-hosted fleet -- a request that lands on a replica holding
+its prefix skips the prefill that dominates time-to-first-token -- and why a
+model switch is a cache reset: entries are keyed to the model that made them.

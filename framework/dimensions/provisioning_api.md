@@ -7,7 +7,7 @@ weight: 0.5
 asks: "Is there an API that creates and destroys the infrastructure?"
 ask_role: [admin]
 recognises:
-  "true": [cloud account, we use aws, on azure, vsphere api, openstack]
+  "true": [cloud account, we use aws, on azure, vsphere api, openstack, provisioning api, api to provision]
   "false": [bare metal, racked by hand, physical servers, no cloud]
 ---
 Whether infrastructure has a lifecycle something can manage.
