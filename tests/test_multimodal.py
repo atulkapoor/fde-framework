@@ -106,9 +106,9 @@ def test_the_emitted_pipeline_runs_every_modality_before_downstream(reg, tmp_pat
     for modality in ("images", "streams", "documents"):
         assert (tmp_path / "p" / "app" / "components"
                 / f"perception_{modality}.py").exists()
-    order = [l for l in pipeline.splitlines() if "('" in l]
-    perception_rows = [i for i, l in enumerate(order) if "perception" in l]
-    downstream = [i for i, l in enumerate(order) if "reasoning" in l]
+    order = [line for line in pipeline.splitlines() if "('" in line]
+    perception_rows = [i for i, line in enumerate(order) if "perception" in line]
+    downstream = [i for i, line in enumerate(order) if "reasoning" in line]
     assert downstream and max(perception_rows) < min(downstream)
 
 
