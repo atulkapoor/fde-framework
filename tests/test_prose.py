@@ -322,3 +322,15 @@ def test_tooling_stated_in_the_passive_voice(reg):
 def test_the_provisioning_api_answers_to_its_own_name(reg):
     facts = parse_prose("There is a provisioning api for the estate.", reg)
     assert any(f.dimension == "provisioning_api" and f.value is True for f in facts)
+
+
+def test_multi_hop_spoken_as_connecting_evidence(reg):
+    """The MedRAG comparison: 'connecting evidence across two or three
+    guidelines' is a multi-hop workload stated plainly, and it read as
+    nothing."""
+    facts = parse_prose(
+        "Questions sometimes need connecting evidence across two or three guidelines.",
+        reg,
+    )
+    assert any(f.dimension == "query_pattern" and f.value == "multi_hop"
+               for f in facts)

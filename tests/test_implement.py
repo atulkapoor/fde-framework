@@ -114,3 +114,25 @@ def test_a_directory_that_is_not_a_project_is_refused(tmp_path):
     result = runner.invoke(app, ["implement", str(tmp_path)])
     assert result.exit_code == 1
     assert "not an emitted project" in result.output
+
+
+def test_an_agent_that_takes_a_brief_file_gets_one(tmp_path):
+    """aider-shaped agents read --message-file, not stdin; {prompt_file}
+    substitutes the written brief's path."""
+    import sys as _sys
+
+    project = toy_project(tmp_path)
+    fake_agent = tmp_path / "agent.py"
+    fake_agent.write_text(
+        "import pathlib, sys\n"
+        "brief = pathlib.Path(sys.argv[1]).read_text()\n"
+        "assert 'ARCHITECTURE.md' in brief\n"
+        "pathlib.Path('app/impl.py').write_text('DONE = True\\n')\n"
+    )
+    result = runner.invoke(app, [
+        "implement", str(project),
+        "--agent-cmd", f"{_sys.executable} {fake_agent} {{prompt_file}}",
+        "--max-rounds", "3",
+    ])
+    assert result.exit_code == 0, result.output
+    assert "harness green" in result.output

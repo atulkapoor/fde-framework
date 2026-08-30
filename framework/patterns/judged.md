@@ -5,6 +5,7 @@ approach: judged
 realizations:
   - {stack: plain-python, template: evaluation/judged.plain.py.j2, provides: Scorer}
   - {stack: local-judge, template: evaluation/judged.local-judge.py.j2, provides: Scorer}
+  - {stack: openai-judge, template: evaluation/judged.openai-judge.py.j2, provides: Scorer}
 evidence: {case_ids: [structured-extraction], confidence: medium, last_verified: 2026-08-21}
 ---
 Implements judged for evaluation, satisfying Scorer.

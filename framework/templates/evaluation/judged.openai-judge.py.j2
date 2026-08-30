@@ -1,0 +1,70 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+A hosted grading model, for engagements where data may leave.
+
+**This exists because of where it is allowed to run.** The offline
+evaluability gate already refused this realization anywhere the boundary
+forbids egress -- reaching this file means the profile said data may leave,
+and the graded outputs will cross the wire to somebody else's model. If that
+sentence reads wrong for this engagement, the residency answer is wrong, not
+this module.
+
+The rules do not relax because the judge is rented. It never grades its own
+system's output without a rubric, and it is calibrated against human
+agreement before anyone quotes a number from it -- a hosted judge nobody
+checked is a random number generator with a monthly bill.
+
+Scores are returned per item with the rubric criterion that produced them,
+because a single number tells you the output was mediocre and not which part.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any
+
+interface = "{{ interface }}"
+approach = "{{ approach }}"
+stack = "{{ stack }}"
+
+RUBRIC: dict[str, str] = {
+    # criterion -> what the judge is asked, verbatim. Filled from the
+    # engagement's own samples; an empty rubric refuses below.
+}
+
+
+class JudgeUnwired(RuntimeError):
+    """No judge callable is wired; scoring refuses rather than inventing."""
+
+
+# Injected at wiring time: a callable(prompt) -> str backed by the hosted
+# judge model. Kept injectable so tests run without a key and the calibration
+# harness can substitute recorded replies.
+complete: Callable[[str], str] | None = None
+
+
+def run(item: dict[str, Any]) -> dict[str, float]:
+    """Per-criterion scores for one output, each traceable to its question."""
+    if complete is None:
+        raise JudgeUnwired(
+            "wire a complete(prompt) callable backed by the judge model -- "
+            "a silent zero from an unwired judge would read as a real score"
+        )
+    if not RUBRIC:
+        raise JudgeUnwired(
+            "the rubric is empty -- fill it from the engagement's samples "
+            "before any number from this judge is quoted"
+        )
+    scores: dict[str, float] = {}
+    for criterion, question in RUBRIC.items():
+        reply = complete(
+            f"{question}\n\nOutput to grade:\n{item['output']}\n\n"
+            f"Answer with a number from 0 to 1 and nothing else."
+        )
+        try:
+            scores[criterion] = max(0.0, min(1.0, float(reply.strip())))
+        except ValueError:
+            scores[criterion] = 0.0  # an ungradeable reply is a failing grade, visibly
+    return scores

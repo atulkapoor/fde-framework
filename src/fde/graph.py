@@ -264,6 +264,25 @@ def find_gaps(
                 )
             )
 
+    # A stack no pattern realizes is declared and unreachable: `fde reuse`
+    # promises to prefer what the client already runs, and for an orphan
+    # stack that promise can never fire -- silently.
+    realized_stacks = {
+        r.stack for pattern in registry.patterns.values() for r in pattern.realizations
+    }
+    for stack in registry.stacks.values():
+        if stack.id not in realized_stacks:
+            gaps.append(
+                Gap(
+                    kind="orphan_stack",
+                    detail=(
+                        f"{stack.id}: declared but no pattern realizes it, so "
+                        f"reuse can never prefer it and the tools table can "
+                        f"never offer it"
+                    ),
+                )
+            )
+
     # Evidence has to point at something. A case with no profile, no decisions
     # and no outcome supports no claim, and a confidence rating that traces to
     # one is decoration -- reported per case, with how much leans on it.

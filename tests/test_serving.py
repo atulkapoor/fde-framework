@@ -125,3 +125,13 @@ def _all_dimensions_act(reg) -> bool:
         for condition in component.required_when:
             referenced.update(t for t in condition.split() if t in reg.dimensions)
     return set(reg.dimensions) <= referenced
+
+
+def test_no_stack_is_an_orphan(reg):
+    """A stack no pattern realizes is declared and unreachable: reuse
+    promises to prefer what the client runs, and for an orphan that promise
+    can never fire. qdrant shipped as one for a week."""
+    from fde.graph import find_gaps
+
+    orphans = [g.detail for g in find_gaps(reg) if g.kind == "orphan_stack"]
+    assert not orphans, f"declared but unreachable: {orphans}"

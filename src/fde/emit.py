@@ -923,6 +923,17 @@ def _tools_section(architecture: Architecture, registry: Registry | None) -> lis
             f"{_cell(licence.licence) if licence else '--'} | "
             f"{_cell(', '.join(alternatives)) if alternatives else '--'} |"
         )
+    chosen = {r.stack for r in architecture.realizations.values()}
+    idle = sorted(architecture.already_running - chosen)
+    if idle:
+        lines += [
+            "",
+            f"Recorded as already running but serving nothing here: "
+            f"{', '.join(f'`{_flat(s)}`' for s in idle)} -- no pattern for the "
+            f"chosen approaches offers "
+            f"{'it' if len(idle) == 1 else 'them'}, so reuse could not take "
+            f"effect. That is a corpus statement, not a client one.",
+        ]
     lines += [
         "",
         "Adopting an alternative the client already operates: "

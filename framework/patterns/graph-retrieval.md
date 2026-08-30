@@ -5,6 +5,7 @@ approach: graph-retrieval
 realizations:
   - {stack: plain-python, template: retrieval/graph-retrieval.plain.py.j2, provides: Retriever}
   - {stack: pgvector, template: retrieval/graph-retrieval.pgvector.py.j2, provides: Retriever}
+  - {stack: qdrant, template: retrieval/graph-retrieval.qdrant.py.j2, provides: Retriever}
 evidence: {case_ids: [structured-extraction], confidence: medium, last_verified: 2026-08-21}
 ---
 Implements graph-retrieval for retrieval, satisfying Retriever.

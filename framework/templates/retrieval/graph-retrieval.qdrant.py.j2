@@ -1,0 +1,71 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+The hybrid the multi-hop share pays for: vectors live in the store the client
+already operates, and the entity graph lives beside the application, in
+memory, where walking it costs microseconds. Qdrant does not walk graphs and
+is not asked to -- it answers "what resembles this text", the adjacency map
+answers "what connects to what", and the hop happens between the two.
+
+**The same contract as the in-process implementation.** Swapping between them
+changes this file and nothing about the architecture.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any
+
+interface = "{{ interface }}"
+approach = "{{ approach }}"
+stack = "{{ stack }}"
+
+COLLECTION = "{{ component }}_chunks"
+TOP_K = 8
+MAX_HOPS = 2  # bounded: each hop multiplies latency, and two answers most questions
+
+
+class QdrantUnwired(RuntimeError):
+    """No client is wired; retrieval refuses rather than returning nothing."""
+
+
+client: Any = None
+embed: Callable[[str], list[float]] | None = None
+
+# entity -> connected chunk ids, built at index time from co-mentions.
+adjacency: dict[str, list[str]] = {}
+
+
+def run(query: str, top_k: int = TOP_K) -> list[dict]:
+    """Seed hits by similarity, then walk the graph for what connects."""
+    if client is None or embed is None:
+        raise QdrantUnwired(
+            "wire a QdrantClient and an embed(text) callable before running -- "
+            "an empty result from an unwired store would read as 'no evidence'"
+        )
+    seeds = client.search(
+        collection_name=COLLECTION, query_vector=embed(query),
+        limit=top_k, with_payload=True,
+    )
+    found = {str(hit.id): {"id": str(hit.id), "score": hit.score,
+                           "hop": 0, **(hit.payload or {})}
+             for hit in seeds}
+    frontier = list(found)
+    for hop in range(1, MAX_HOPS + 1):
+        connected = [
+            chunk_id
+            for chunk_id in frontier
+            for entity in found[chunk_id].get("entities", [])
+            for chunk_id2 in adjacency.get(entity, [])
+        ]
+        fresh = [c for c in dict.fromkeys(connected) if c not in found]
+        if not fresh:
+            break
+        records = client.retrieve(collection_name=COLLECTION, ids=fresh,
+                                  with_payload=True)
+        for record in records:
+            found[str(record.id)] = {"id": str(record.id), "score": 0.0,
+                                     "hop": hop, **(record.payload or {})}
+        frontier = fresh
+    return sorted(found.values(), key=lambda r: (r["hop"], -r["score"]))

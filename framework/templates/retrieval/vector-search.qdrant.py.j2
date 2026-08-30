@@ -1,0 +1,60 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Vectors in the store the client already operates. A dedicated vector database
+earns its place exactly the way this realization was reached: it was already
+running, already backed up, already somebody's job at three in the morning --
+so reuse beat adoption. Where nothing was running, the in-process or
+Postgres realizations win, for the same reason in reverse.
+
+**The same contract as the in-process implementation.** Swapping between them
+changes this file and nothing about the architecture.
+
+One operational note worth carrying: payload filters run *inside* the vector
+search here, not after it -- a filtered top-k over an unfiltered index is a
+different (and quietly worse) result set than an index that filters as it
+walks.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any
+
+interface = "{{ interface }}"
+approach = "{{ approach }}"
+stack = "{{ stack }}"
+
+COLLECTION = "{{ component }}_chunks"
+TOP_K = 8
+
+
+class QdrantUnwired(RuntimeError):
+    """No client is wired; retrieval refuses rather than returning nothing."""
+
+
+# Injected at wiring time: a qdrant_client.QdrantClient. Kept injectable so
+# tests run without a server and the boundary decides where the store lives.
+client: Any = None
+embed: Callable[[str], list[float]] | None = None
+
+
+def run(query: str, top_k: int = TOP_K, where: dict | None = None) -> list[dict]:
+    """The top passages for a query, payload-filtered inside the search."""
+    if client is None or embed is None:
+        raise QdrantUnwired(
+            "wire a QdrantClient and an embed(text) callable before running -- "
+            "an empty result from an unwired store would read as 'no evidence'"
+        )
+    hits = client.search(
+        collection_name=COLLECTION,
+        query_vector=embed(query),
+        limit=top_k,
+        query_filter=where,
+        with_payload=True,
+    )
+    return [
+        {"id": str(hit.id), "score": hit.score, **(hit.payload or {})}
+        for hit in hits
+    ]

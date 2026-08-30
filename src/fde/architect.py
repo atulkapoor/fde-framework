@@ -42,6 +42,7 @@ class Architecture:
     assumptions: list[str] = field(default_factory=list)
     disagreements: list[Disagreement] = field(default_factory=list)
     unrealizable: dict[str, str] = field(default_factory=dict)
+    already_running: set[str] = field(default_factory=set)
 
     # What was known when this was decided. Carried so the documents can quote
     # a stated budget rather than reconstruct it from a rationale.
@@ -86,6 +87,7 @@ def architect(
         licences[chosen.stack] = registry.stacks[chosen.stack].licence
 
     return Architecture(
+        already_running=set(already_running or ()),
         components=components,
         decisions=decisions,
         graph=graph,

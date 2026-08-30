@@ -134,9 +134,22 @@ def _prompt(project: Path, check_tail: str) -> str:
 
 
 def _run_agent(project: Path, agent_cmd: str, prompt: str) -> bool:
+    """Run the agent with the brief on stdin, or via {prompt_file}.
+
+    The placeholder exists because not every agent reads stdin: aider takes
+    --message-file, and anything with the same shape slots in as
+    --agent-cmd "aider --yes --message-file {prompt_file}".
+    """
+    stdin = prompt
+    if "{prompt_file}" in agent_cmd:
+        brief = project / ".implement" / "brief.md"
+        brief.parent.mkdir(exist_ok=True)
+        brief.write_text(prompt)
+        agent_cmd = agent_cmd.replace("{prompt_file}", str(brief))
+        stdin = ""
     result = subprocess.run(  # noqa: S603 - the agent is the caller's own command
         shlex.split(agent_cmd),
-        cwd=project, input=prompt, capture_output=True, text=True, timeout=3600,
+        cwd=project, input=stdin, capture_output=True, text=True, timeout=3600,
     )
     return result.returncode == 0
 
