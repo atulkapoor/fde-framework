@@ -154,3 +154,13 @@ def test_triage_refuses_a_single_candidate():
     result = runner.invoke(app, ["triage", "--registry", str(FRAMEWORK),
                                  "--statement", "just one"])
     assert result.exit_code == 1
+
+
+def test_triage_flags_a_statement_bundling_two_workflows():
+    result = runner.invoke(app, [
+        "triage", "--registry", str(FRAMEWORK),
+        "--statement", "An agent platform for two workflows: drafting research "
+                       "notes, and surveilling trades for market abuse.",
+        "--statement", "Read supplier invoices into the ledger.",
+    ])
+    assert "more than one workflow" in result.output

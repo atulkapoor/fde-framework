@@ -9,10 +9,10 @@ ask_role: [admin, user, eval_owner]
 values: [structured_data, documents, scanned_documents, text, images, streams]
 recognises:
   scanned_documents: [scanned, photographed, faxed, image of the document]
-  documents: [pdfs, pdf, word documents, contracts, invoices, statements, reports]
+  documents: [pdfs, pdf, word documents, contracts, invoices, statements, reports, manuals, filings, policy document, submission documents]
   structured_data: [from our database, csv, tables, warehouse, api responses]
   text: [emails, tickets, chat logs, transcripts, free text]
-  images: [photographs, imagery, product images]
+  images: [photographs, photos, imagery, product images, camera feed, visual inspection, visual defect]
   streams: [events, telemetry, clickstream, sensor]
 refines:
   scanned_documents: documents

@@ -9,7 +9,7 @@ ask_role: [user, eval_owner, sponsor]
 values: [lookup, multi_hop, comparative]
 recognises:
   lookup: [find the, look up, what is the value of, retrieve the]
-  multi_hop: [how are these connected, trace the relationship, across systems, chain of, connecting evidence, evidence across, connect information across, spans several documents]
+  multi_hop: [how are these connected, trace the relationship, across systems, chain of, connecting evidence, evidence across, connect information across, spans several documents, correlate]
   comparative: [compare, which of these, rank against, summarise across]
 ---
 Decides how much retrieval machinery is worth building.

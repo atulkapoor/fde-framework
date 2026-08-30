@@ -334,3 +334,57 @@ def test_multi_hop_spoken_as_connecting_evidence(reg):
     )
     assert any(f.dimension == "query_pattern" and f.value == "multi_hop"
                for f in facts)
+
+
+# --- the ten-industry battery: capability language, not constraint language --
+
+
+def test_uploaded_photos_are_an_image_workload(reg):
+    facts = parse_prose("Claimants upload photos of the damage.", reg)
+    assert any(f.dimension == "input_format" and f.value == "images" for f in facts)
+
+
+def test_visual_inspection_is_an_image_workload(reg):
+    facts = parse_prose("The line needs visual defect inspection.", reg)
+    assert any(f.dimension == "input_format" and f.value == "images" for f in facts)
+
+
+def test_filings_and_manuals_are_documents(reg):
+    for sentence in ("Analysts read the quarterly filings.",
+                     "Technicians consult the equipment manuals."):
+        facts = parse_prose(sentence, reg)
+        assert any(f.dimension == "input_format" and f.value == "documents"
+                   for f in facts), sentence
+
+
+def test_a_factory_production_line_is_not_a_production_environment(reg):
+    """Bare 'production' read a manufacturing line as a deployment
+    lifetime -- a word with two industries in it needs its anchor."""
+    facts = parse_prose("Agents run on the factory floor on production lines.", reg)
+    assert not any(f.dimension == "environment_lifetime" for f in facts)
+
+
+def test_deploying_to_production_still_reads_as_permanent(reg):
+    facts = parse_prose("This goes to production next quarter and it stays.", reg)
+    assert any(f.dimension == "environment_lifetime" and f.value == "permanent"
+               for f in facts)
+
+
+def test_correlating_events_into_incidents_is_multi_hop(reg):
+    facts = parse_prose(
+        "It must correlate alarms from many elements into coherent incidents.", reg)
+    assert any(f.dimension == "query_pattern" and f.value == "multi_hop"
+               for f in facts)
+
+
+def test_a_multi_modal_statement_declines_loudly(reg):
+    """Three input forms in one sentence is a property of the system, not an
+    ambiguity of phrasing -- and a decline nobody hears is a miss."""
+    declines = []
+    facts = parse_prose(
+        "It inspects camera feed from the line, reads the equipment manuals, "
+        "and watches sensor telemetry.",
+        reg, declines=declines,
+    )
+    assert not any(f.dimension == "input_format" for f in facts)
+    assert any("input_format" in d and "multi-valued" in d for d in declines)

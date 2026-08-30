@@ -298,8 +298,11 @@ def frame(
     registry = _registry(registry_root)
     engagement = _engagement(root)
 
-    facts = parse_prose(body, registry, source=source)
+    declines: list[str] = []
+    facts = parse_prose(body, registry, source=source, declines=declines)
     typer.echo(restate(facts, registry))
+    for decline in declines:
+        typer.echo(f"\n  declined -- {decline}")
 
     if reader == "llm":
         from fde.intake.llm_reader import (
@@ -1588,12 +1591,18 @@ def triage_cmd(
             values.get(d) in entry.boundary_when
             for d, entry in registry.dimensions.items() if entry.boundary_when
         )
+        lowered = text.lower()
+        bundled = any(marker in lowered for marker in (
+            "two workflows", "two functions", "two groups", "two teams",
+            "serving two", "for two ",
+        ))
         rows.append({
             "text": text,
             "facts": len(values),
             "settled": completeness(profile, registry),
             "components": len(list(components)),
             "boundary": boundary,
+            "bundled": bundled,
         })
 
     rows.sort(key=lambda r: (-r["settled"], -r["facts"]))
@@ -1606,6 +1615,12 @@ def triage_cmd(
             f"gets decided settled, {row['components']} component(s) in scope"
             + (", crosses a data boundary" if row["boundary"] else "")
         )
+        if row["bundled"]:
+            typer.echo(
+                "     reads like more than one workflow in one statement -- "
+                "worth splitting into separate engagements before fde start, "
+                "since one pipeline gets built per engagement"
+            )
     typer.echo(
         "\nThis ranks decidability, not value: the business case comes from "
         "the baseline, and the baseline comes after `fde start`. A candidate "

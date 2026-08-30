@@ -86,15 +86,24 @@ def parse_prose(
     registry: Registry,
     source: str | None = None,
     model: Any = None,  # noqa: ARG001 - reserved; P1 never calls one
+    declines: list[str] | None = None,
 ) -> list[Fact]:
     """Read a brief into facts. `model` is accepted and ignored: an
-    LLM-assisted parser is a later realization behind this same signature."""
+    LLM-assisted parser is a later realization behind this same signature.
+
+    `declines`, when given, collects what was seen and *refused* -- a sentence
+    naming several values of one dimension declines to guess, and a decline
+    nobody hears is indistinguishable from a miss. A multi-modal statement
+    ("photos of damage, the policy document, sensor history") is the common
+    case: three input forms in one sentence is a real property of the system
+    being described, not an ambiguity of phrasing, and today this framework
+    can only carry one of them per engagement."""
     facts: list[Fact] = []
     for dimension in registry.dimensions.values():
         if dimension.type is ValueType.DURATION_MS:
             facts.extend(_read_duration(dimension, text, source))
         elif dimension.type not in (ValueType.COUNT, ValueType.RATIO, ValueType.MONEY):
-            facts.extend(_read_vocabulary(dimension, text, source))
+            facts.extend(_read_vocabulary(dimension, text, source, declines))
 
     facts.extend(_read_quantities(registry, text, source))
     return sorted(facts, key=lambda f: (f.span or (0, 0), f.dimension))
@@ -191,7 +200,10 @@ def _scaled(match: re.Match) -> int:
     return int(value)
 
 
-def _read_vocabulary(dimension: Dimension, text: str, source: str | None) -> list[Fact]:
+def _read_vocabulary(
+    dimension: Dimension, text: str, source: str | None,
+    declines: list[str] | None = None,
+) -> list[Fact]:
     """Match declared phrases, and decline when the match is not clean.
 
     Phrases live in the registry, so recognising more is a content change. What
@@ -217,7 +229,16 @@ def _read_vocabulary(dimension: Dimension, text: str, source: str | None) -> lis
 
     # Two values that do not refine each other is a real requirement -- different
     # rules for different regions, say -- that the model cannot yet hold. Picking
-    # one would hide it behind a confident answer.
+    # one would hide it behind a confident answer -- and declining silently
+    # would hide the requirement, so the decline is reported to whoever asked.
+    if len(hits) > 1 and declines is not None:
+        declines.append(
+            f"{dimension.id}: one passage says both "
+            f"{' and '.join(sorted(hits))} -- that reads as a real "
+            f"multi-valued requirement, which one engagement cannot yet "
+            f"carry. Recorded neither; say which one this engagement is, "
+            f"or split the engagement."
+        )
     if len(hits) != 1:
         return []
 
