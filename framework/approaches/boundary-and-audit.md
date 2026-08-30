@@ -4,7 +4,7 @@ name: Boundary and audit
 complexity: 1
 components: [governance]
 applies_when: [data_residency == cannot_leave, hosting == air-gapped]
-avoid_when: [data_residency == may_leave]
+avoid_when: [access_model == role_based, data_residency == may_leave]
 evidence: {case_ids: [structured-extraction], confidence: high, last_verified: 2026-08-21}
 ---
 Not needed where nothing forbids egress -- a boundary around data free to

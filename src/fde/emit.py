@@ -80,7 +80,9 @@ def emit(
 
     (out / "app" / "components").mkdir(parents=True, exist_ok=True)
     _write_package(architecture, out)
-    scaffolded = _write_components(architecture, out, env)
+    scaffolded = _write_components(
+        architecture, out, env, sensitive_fields=_sensitive_fields(pairs_path)
+    )
     _write_pipeline(architecture, out, registry)
     if architecture.graph.sensitive_nodes():
         _write_boundary(architecture, out)
@@ -216,7 +218,32 @@ def _write_package(architecture: Architecture, out: Path) -> None:
     (out / "app" / "components" / "__init__.py").write_text("")
 
 
-def _write_components(architecture: Architecture, out: Path, env) -> list[str]:
+def _sensitive_fields(pairs_path: Path | None) -> str:
+    """The declared sensitive fields, as a Python tuple body for templates.
+
+    Two sources, unioned: what the contract auto-marked from the field names,
+    and what an FDE marked by hand with `fde samples --sensitive`. Declared
+    beats detected everywhere else in this framework; here detection only
+    ever *adds* caution, so the union is safe.
+    """
+    if not pairs_path or not Path(pairs_path).exists():
+        return ""
+    try:
+        fields = set(infer_contract(load_pairs(pairs_path)).sensitive_fields)
+    except Exception:  # noqa: BLE001 - unreadable pairs already refused earlier
+        fields = set()
+    marks = Path(pairs_path).parent / "sensitive_fields.json"
+    if marks.exists():
+        try:
+            fields.update(json.loads(marks.read_text()))
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return "".join(f"{name!r}, " for name in sorted(fields))
+
+
+def _write_components(
+    architecture: Architecture, out: Path, env, sensitive_fields: str = ""
+) -> list[str]:
     scaffolded = []
     for component, decision in sorted(architecture.decisions.items()):
         path = out / "app" / "components" / f"{component}.py"
@@ -230,7 +257,9 @@ def _write_components(architecture: Architecture, out: Path, env) -> list[str]:
                 _unfilled(component, architecture.unrealizable.get(component, "no realization"))
             )
             continue
-        body, was_scaffold = _implementation(component, decision, realization, env)
+        body, was_scaffold = _implementation(
+            component, decision, realization, env, sensitive_fields
+        )
         if was_scaffold:
             scaffolded.append(component)
         path.write_text(body)
@@ -289,7 +318,9 @@ def _scaffold(component: str, decision, realization) -> str:
     )
 
 
-def _implementation(component: str, decision, realization, env) -> str:
+def _implementation(
+    component: str, decision, realization, env, sensitive_fields: str = ""
+) -> str:
     """The reference implementation if one exists, a scaffold otherwise.
 
     A scaffold is the honest output when the framework knows what to build and
@@ -309,6 +340,7 @@ def _implementation(component: str, decision, realization, env) -> str:
         rationale=decision.rationale,
         class_name=_class_name(component),
         rejected=decision.rejected,
+        sensitive_fields=sensitive_fields,
     ), False
 
 
@@ -933,6 +965,24 @@ def _posture_section(architecture: Architecture) -> list[str]:
             f"{', '.join(sorted(set(gates))) or 'nothing -- review this'}; "
             f"idempotency key `{node.idempotency_key or 'unset'}` so re-running "
             f"cannot act twice."
+        )
+    access = (architecture.values or {}).get("access_model")
+    if access == "role_based":
+        lines.append(
+            "- Access is role-scoped: the approval gate refuses an approval "
+            "that names no approver role, and the audit records the role "
+            "beside the person. The role names are client content."
+        )
+    elif access == "open_internal":
+        lines.append(
+            "- Anyone internal may invoke this, so per-user approval is "
+            "impossible by construction -- rate caps and the audit trail "
+            "carry what approval cannot."
+        )
+    elif access == "single_operator":
+        lines.append(
+            "- One operating team acts here; the audit names people, not "
+            "roles."
         )
     integration = architecture.realizations.get("integration")
     if integration is not None:

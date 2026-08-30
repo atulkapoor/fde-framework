@@ -1,7 +1,7 @@
 ---
 id: perception
 name: Perception
-caps: [representation, embedding, retrieval, memory, planning, reasoning, integration]
+caps: [redaction, representation, embedding, retrieval, memory, planning, reasoning, integration]
 required_when:
   - always
 ---

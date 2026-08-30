@@ -1,0 +1,44 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Named fields replaced by stable hashes before anything downstream sees the
+record. Deterministic so joins survive masking; declared so nothing guesses.
+"""
+
+from __future__ import annotations
+
+import hashlib
+
+# The fields the contract marked sensitive. Declared, never detected: a model
+# guessing which fields matter will one day guess wrong in the direction that
+# matters. Regenerate after `fde samples --sensitive <field>` to extend.
+SENSITIVE_FIELDS: tuple[str, ...] = ({{ sensitive_fields }})
+
+
+interface = "{{ interface }}"
+approach = "{{ approach }}"
+stack = "{{ stack }}"
+
+
+class UndeclaredSensitivity(RuntimeError):
+    """This component was required but no field is marked sensitive."""
+
+
+def mask_value(value: object) -> str:
+    digest = hashlib.sha256(str(value).encode()).hexdigest()[:12]
+    return f"masked:{digest}"
+
+
+def run(record: dict) -> dict:
+    """The record with its sensitive fields masked, everything else intact."""
+    if not SENSITIVE_FIELDS:
+        raise UndeclaredSensitivity(
+            "redaction is in the pipeline because sensitive fields exist, but "
+            "none are declared here -- mark them with `fde samples --sensitive "
+            "<field>` and rebuild, or implement by hand and say so"
+        )
+    return {
+        key: mask_value(value) if key in SENSITIVE_FIELDS else value
+        for key, value in record.items()
+    }

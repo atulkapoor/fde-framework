@@ -1,0 +1,40 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+A model rewrites free text with identifying entities removed -- for names
+living inside narrative fields where field-level masking cannot reach. The
+scrubbing model sees the unscrubbed text, so it runs wherever the data is
+allowed to be, and nowhere else.
+"""
+
+from __future__ import annotations
+
+interface = "{{ interface }}"
+approach = "{{ approach }}"
+stack = "{{ stack }}"
+
+# Injected at wiring time: a callable(str) -> str that returns the text with
+# identifying entities removed. Kept injectable so the boundary decides where
+# the model runs, not this module.
+scrub = None
+
+FREE_TEXT_FIELDS: tuple[str, ...] = ({{ sensitive_fields }})
+
+
+class ScrubberUnwired(RuntimeError):
+    """Redaction is in the pipeline but no scrubbing model is wired."""
+
+
+def run(record: dict) -> dict:
+    if scrub is None:
+        raise ScrubberUnwired(
+            "wire a scrub(text) callable before running -- an unscrubbed "
+            "record passing through silently is the failure this module "
+            "exists to prevent"
+        )
+    return {
+        key: scrub(value) if key in FREE_TEXT_FIELDS and isinstance(value, str)
+        else value
+        for key, value in record.items()
+    }

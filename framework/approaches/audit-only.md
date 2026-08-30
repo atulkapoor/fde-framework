@@ -4,7 +4,7 @@ name: Audit trail
 complexity: 0
 components: [governance]
 applies_when: [data_residency == may_leave]
-avoid_when: [data_residency == cannot_leave, hosting == air-gapped]
+avoid_when: [access_model == role_based, data_residency == cannot_leave, hosting == air-gapped]
 evidence: {case_ids: [churn-scoring], confidence: high, last_verified: 2026-08-25}
 ---
 A record of what happened, without a boundary around where it happened.

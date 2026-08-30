@@ -305,6 +305,11 @@ def frame(
 def samples_cmd(
     root: Annotated[Path, typer.Argument(help="The engagement directory.")],
     file: Annotated[Path, typer.Option(help="A .jsonl of input/output pairs.")],
+    sensitive: Annotated[list[str] | None, typer.Option(
+        "--sensitive",
+        help="Mark a field as sensitive (repeatable). Declared beats "
+             "detected: the masking the build emits reads this list."
+    )] = None,
 ) -> None:
     """Read sample pairs: the contract, the metric, and the golden set.
 
@@ -320,9 +325,27 @@ def samples_cmd(
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
 
+    # PII lives in inputs at least as often as in outputs, so a mark may
+    # name either side of the pair.
+    known_fields = set(contract.fields)
+    for pair in pairs:
+        if isinstance(pair.get("input"), dict):
+            known_fields.update(pair["input"])
+    unknown = sorted(set(sensitive or []) - known_fields)
+    if unknown:
+        typer.echo(
+            f"not fields in these pairs: {', '.join(unknown)}. "
+            f"Fields: {', '.join(sorted(known_fields))}", err=True,
+        )
+        raise typer.Exit(1)
+
     # Copied before anything is reported, so a failure here cannot arrive
     # after a success message has already scrolled past.
     (engagement.artifacts_dir / "pairs.jsonl").write_text(body)
+    if sensitive:
+        (engagement.artifacts_dir / "sensitive_fields.json").write_text(
+            json.dumps(sorted(set(sensitive)))
+        )
 
     suite = build_eval_set(pairs)
     typer.echo(f"{len(pairs)} pairs, {len(contract.fields)} fields\n")
@@ -342,6 +365,9 @@ def samples_cmd(
         typer.echo(f"\n{warning}")
 
     facts = samples_to_facts(pairs)
+    if sensitive and not any(f.dimension == "sensitivity_present" for f in facts):
+        facts.append(Fact("sensitivity_present", True, Provenance.ARTIFACT,
+                          source="sample pairs, marked by hand"))
     engagement.append(
         Session(
             session_id=_next_session_id(engagement, "samples"),
@@ -1428,6 +1454,67 @@ def scan_cmd(
         )
     )
     typer.echo("\nrecorded as detected -- outranks anything stated about this box")
+
+
+@app.command("triage")
+def triage_cmd(
+    statement: Annotated[list[str], typer.Option(
+        "--statement", help="A candidate problem, in prose (repeatable)."
+    )],
+    registry_root: Annotated[Path, typer.Option("--registry")] = DEFAULT_ROOT,
+) -> None:
+    """Rank candidate problems by what discovery can already decide.
+
+    Upstream of `fde start`, and honest about what it ranks: decidability,
+    not business value. A statement that names its shape, its boundary and
+    its numbers gives discovery a running start; one that names none of them
+    costs a discovery phase before anything can be compared. The business
+    case still comes from the baseline -- this only says which candidate is
+    closest to being buildable as stated.
+    """
+    registry = _registry(registry_root)
+    if len(statement) < 2:
+        typer.echo("triage compares -- give at least two --statement candidates.",
+                   err=True)
+        raise typer.Exit(1)
+
+    from fde.decompose import decompose
+    from fde.gates import completeness
+    from fde.intake.prose import parse_prose
+
+    rows = []
+    for text in statement:
+        profile = Profile()
+        profile.ingest(parse_prose(text, registry))
+        values = profile.values()
+        components = decompose(profile, registry).components
+        boundary = any(
+            values.get(d) in entry.boundary_when
+            for d, entry in registry.dimensions.items() if entry.boundary_when
+        )
+        rows.append({
+            "text": text,
+            "facts": len(values),
+            "settled": completeness(profile, registry),
+            "components": len(list(components)),
+            "boundary": boundary,
+        })
+
+    rows.sort(key=lambda r: (-r["settled"], -r["facts"]))
+    typer.echo("ranked by what the statement already settles:\n")
+    for rank, row in enumerate(rows, 1):
+        shown = row["text"] if len(row["text"]) <= 64 else row["text"][:61] + "..."
+        typer.echo(f"  {rank}. {shown}")
+        typer.echo(
+            f"     {row['facts']} fact(s) read, {row['settled']:.0%} of what "
+            f"gets decided settled, {row['components']} component(s) in scope"
+            + (", crosses a data boundary" if row["boundary"] else "")
+        )
+    typer.echo(
+        "\nThis ranks decidability, not value: the business case comes from "
+        "the baseline, and the baseline comes after `fde start`. A candidate "
+        "ranked low is under-described, not unworthy."
+    )
 
 
 @app.command("cost")
