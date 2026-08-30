@@ -44,6 +44,17 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 - Emitted `evals/acceptance.md` (blind user-acceptance protocol) and
   `evals/load.py` (p95 against the stated budget; fails until the pipeline
   is implemented, like the harness).
+- `access_model` moves the governance decision (role-scoped authority),
+  `sensitivity_present` earns a redaction component in the crossed case
+  (sensitive fields, data free to leave), and `fde triage` ranks candidate
+  problems by decidability, honestly labelled.
+- `fde frame --reader llm`: a model proposes facts for what the
+  deterministic reader left open -- validated against the registry,
+  landing at weakest provenance, hosted path refused unless data may
+  leave, local OpenAI-compatible endpoints always allowed.
+- `fde implement`: drives a coding agent until the emitted evals pass,
+  with the evals, boundary, controls and decision documents hashed as a
+  fence -- an agent that edits the exam is caught, reverted, and stopped.
 - Sanitisation gate in CI: allowed paths only, history scan, credential and
   PII patterns, denylist, no AI attribution, no pending cases.
 

@@ -1501,6 +1501,57 @@ def scan_cmd(
     typer.echo("\nrecorded as detected -- outranks anything stated about this box")
 
 
+@app.command("implement")
+def implement_cmd(
+    project: Annotated[Path, typer.Argument(
+        help="An emitted project directory (holds evals/ and app/)."
+    )],
+    agent_cmd: Annotated[str, typer.Option(
+        "--agent-cmd",
+        help="The coding agent, as a command reading its brief on stdin. "
+             "Default: claude -p --permission-mode acceptEdits",
+    )] = "claude -p --permission-mode acceptEdits",
+    max_rounds: Annotated[int, typer.Option(
+        help="The step cap. The loop is bounded, like everything this "
+             "framework emits."
+    )] = 5,
+    check: Annotated[str | None, typer.Option(
+        help="The command that decides green. Default: the same harness "
+             "invocation the emitted CI runs."
+    )] = None,
+) -> None:
+    """Drive a coding agent until the emitted evals pass, inside guardrails.
+
+    The harness is the stop condition; the evals, boundary, controls and
+    decision documents are the fence -- hashed first, restored and loudly
+    reported if the agent touches them. Every round lands in
+    ops/implement-log.md.
+    """
+    from fde.implement import run_loop
+
+    project = Path(project)
+    if not (project / "evals").is_dir() or not (project / "app").is_dir():
+        typer.echo(
+            f"{project}: not an emitted project (no evals/ and app/). "
+            f"`fde build` writes one.", err=True,
+        )
+        raise typer.Exit(1)
+
+    report = run_loop(project, agent_cmd=agent_cmd, max_rounds=max_rounds,
+                      check=check)
+    (project / "ops").mkdir(exist_ok=True)
+    (project / "ops" / "implement-log.md").write_text(report.log())
+
+    for entry in report.rounds:
+        state = "green" if entry.check_passed else "red"
+        extras = f" -- {entry.violation}" if entry.violation else ""
+        changed = f" ({len(entry.changed)} file(s) changed)" if entry.changed else ""
+        typer.echo(f"round {entry.number}: {state}{changed}{extras}")
+    typer.echo(f"\nstopped by: {report.stopped_by}. Log: ops/implement-log.md")
+    if not report.done:
+        raise typer.Exit(1)
+
+
 @app.command("triage")
 def triage_cmd(
     statement: Annotated[list[str], typer.Option(

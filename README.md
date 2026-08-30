@@ -222,6 +222,7 @@ project/
 |---|---|
 | `fde start <name> --statement "..."` | begin an engagement |
 | `fde frame <eng> --file brief.pdf` | prose or documents → facts, played back for correction |
+| `fde frame <eng> --reader llm --endpoint http://localhost:11434` | a local model proposes what the deterministic reader missed, at weakest provenance |
 | `fde samples <eng> --file pairs.jsonl` | input/output pairs → contract, metrics, golden set |
 | `fde ask <eng> --role admin` | role-scoped interview, ordered by what changes the design |
 | `fde ask <eng> --role admin --scope non_functional` | one scope axis at a time — the dedicated NFR pass |
@@ -232,6 +233,8 @@ project/
 | `fde locale <eng> eu-gdpr` | jurisdiction pack: presets plus obligations emitted as COMPLIANCE.md |
 | `fde architect <eng>` | the design, rationale and rejections |
 | `fde build <eng> --out project` | emit; refuses while gates block |
+| `fde implement project/` | drive a coding agent until the emitted evals pass, inside guardrails |
+| `fde triage --statement "..." --statement "..."` | rank candidate problems by what discovery can already decide |
 | `fde override --component X --choose Y --because "..."` | your call, recorded and honoured |
 | `fde observe / retro` | record trigger firings; capture the case |
 | `fde cost --requests-per-day N --model-b B` | dated fleet sizing |
