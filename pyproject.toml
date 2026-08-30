@@ -35,7 +35,11 @@ dev = ["pytest>=8", "ruff>=0.6"]
 # Document readers are optional: plain-text intake needs nothing, and an
 # air-gapped install should not drag in what it will not use.
 documents = ["pypdf>=4", "python-docx>=1"]
-all = ["fde-framework[documents]"]
+# The hosted-model path for `fde frame --reader llm`. The local path (vLLM or
+# Ollama via --endpoint) is stdlib-only on purpose: the offline install must
+# not grow a dependency.
+llm = ["anthropic>=0.40"]
+all = ["fde-framework[documents,llm]"]
 
 [project.scripts]
 fde = "fde.cli:app"

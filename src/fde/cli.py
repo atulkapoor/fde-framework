@@ -269,6 +269,19 @@ def frame(
     root: Annotated[Path, typer.Argument(help="The engagement directory.")],
     text: Annotated[str | None, typer.Option(help="The brief, inline.")] = None,
     file: Annotated[Path | None, typer.Option(help="A file holding the brief.")] = None,
+    reader: Annotated[str, typer.Option(
+        help="'deterministic' (default, offline) or 'llm': a model proposes "
+             "facts for what the deterministic pass left open, at the weakest "
+             "provenance, validated against the registry."
+    )] = "deterministic",
+    endpoint: Annotated[str | None, typer.Option(
+        help="OpenAI-compatible local server for --reader llm (vLLM/Ollama "
+             "on this machine). Without it, the hosted model is used -- "
+             "which the boundary doctrine only permits when data may leave."
+    )] = None,
+    model: Annotated[str | None, typer.Option(
+        help="Model name for --reader llm."
+    )] = None,
     registry_root: Annotated[Path, typer.Option("--registry")] = DEFAULT_ROOT,
 ) -> None:
     """Read prose into facts, and play back what was understood."""
@@ -287,6 +300,38 @@ def frame(
 
     facts = parse_prose(body, registry, source=source)
     typer.echo(restate(facts, registry))
+
+    if reader == "llm":
+        from fde.intake.llm_reader import (
+            BoundaryRefusal,
+            ReaderUnavailable,
+            read_with_llm,
+        )
+
+        already = dict(engagement.profile.values())
+        already.update({f.dimension: f.value for f in facts})
+        try:
+            proposed, dropped = read_with_llm(
+                body, registry, already, endpoint=endpoint, model=model,
+            )
+        except (BoundaryRefusal, ReaderUnavailable) as exc:
+            typer.echo(f"\n{exc}", err=True)
+            proposed, dropped = [], []
+        if proposed:
+            typer.echo(
+                "\nThe model also read (weakest provenance -- any stated "
+                "answer outranks these; correct anything wrong):"
+            )
+            for fact in proposed:
+                shown = " ".join(str(fact.value).split())
+                typer.echo(f"  - {fact.dimension} = {shown}")
+            facts = facts + proposed
+        for reason in dropped:
+            typer.echo(f"  (refused from the model: {reason})")
+    elif reader != "deterministic":
+        typer.echo(f"{reader!r} is not a reader. One of: deterministic, llm.",
+                   err=True)
+        raise typer.Exit(1)
 
     # An empty session file is noise in an append-only log.
     if not facts:
