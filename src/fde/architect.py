@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from fde.decide import Decision, Decisions, Rejected, decide_all
+from fde.decide import Decision, Decisions, Rejected, base_component, decide_all
 from fde.decompose import ComponentGraph, decompose
 from fde.graph import TOPOLOGY_DIMENSION
 from fde.models.profile import Disagreement, Profile
@@ -73,7 +73,8 @@ def architect(
     for component, decision in decisions.decided().items():
         try:
             chosen = realization_for(
-                decision.approach, component, registry, topology, already_running
+                decision.approach, base_component(component), registry,
+                topology, already_running,
             )
         except (NoRealization, UnsupportedTopology) as exc:
             unrealizable[component] = str(exc)

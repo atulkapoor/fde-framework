@@ -1,6 +1,7 @@
 ---
 id: input_format
 type: enum
+multi_valued: true
 scope: functional
 kind: requirement
 weight: 2.0

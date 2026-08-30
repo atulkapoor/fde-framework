@@ -171,6 +171,15 @@ def status(
             typer.echo(f"  {labels[scope]}:")
             for dimension in dims:
                 fact = profile.fact(dimension)
+                if fact is None:
+                    # Peers standing together: several values, each with its
+                    # own speaker, resolved as the union.
+                    for peer in profile.peers(dimension):
+                        shown = " ".join(str(peer.value).split())
+                        typer.echo(
+                            f"    {dimension} += {shown}   [{_who(peer)}]"
+                        )
+                    continue
                 shown = " ".join(str(fact.value).split())
                 typer.echo(f"    {dimension} = {shown}   [{_who(fact)}]")
         if registry:
@@ -485,21 +494,31 @@ def ask(
             passed_on.add(question.resolves)
             continue
 
-        fact = Fact(
-            question.resolves,
-            answer.value,
-            Provenance.INTERVIEW,
-            kind=registry.dimensions[question.resolves].kind,
-            # Stamped now, not only when the session is written: the live
-            # profile drives the contest offers, and a fact with no speaker
-            # was offered back to its own speaker as "system said X".
-            respondent=respondent,
+        dimension_entry = registry.dimensions[question.resolves]
+        answered_values = (
+            list(answer.value) if isinstance(answer.value, tuple) else [answer.value]
         )
+        new_facts = [
+            Fact(
+                question.resolves,
+                value,
+                Provenance.INTERVIEW,
+                kind=dimension_entry.kind,
+                # Stamped now, not only when the session is written: the live
+                # profile drives the contest offers, and a fact with no speaker
+                # was offered back to its own speaker as "system said X".
+                respondent=respondent,
+                additive=dimension_entry.multi_valued,
+            )
+            for value in answered_values
+        ]
         try:
             # A contested dimension stays out of the space: the space would
             # call the second answer a contradiction, but two people
             # differing is a finding, and the profile records it as one.
-            if question.resolves in space.dimensions() and not question.contest_of:
+            if (question.resolves in space.dimensions() and not question.contest_of
+                    and not isinstance(answer.value, tuple)
+                    and not dimension_entry.multi_valued):
                 space = space.answer(question.resolves, answer.value)
         except Contradiction as exc:
             typer.echo(f"  that conflicts: {exc}")
@@ -508,8 +527,9 @@ def ask(
         if question.contest_of:
             _warn_if_impossible(question.resolves, answer.value, profile, registry)
 
-        gathered.append(fact)
-        profile = _with(profile, fact)
+        gathered.extend(new_facts)
+        for new_fact in new_facts:
+            profile = _with(profile, new_fact)
 
     if not gathered:
         typer.echo("Nothing recorded.")

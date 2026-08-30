@@ -2,6 +2,7 @@
 id: perception
 name: Perception
 caps: [redaction, representation, embedding, retrieval, memory, planning, reasoning, integration]
+fan_out_on: input_format
 required_when:
   - always
 ---

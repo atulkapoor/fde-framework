@@ -157,6 +157,21 @@ def validate_links(registry: Registry) -> list[LinkError]:
                     )
                 )
 
+    for component in registry.components.values():
+        if component.fan_out_on:
+            target = registry.dimensions.get(component.fan_out_on)
+            if target is None:
+                errors.append(
+                    f"{component.id}: fan_out_on names unknown dimension "
+                    f"{component.fan_out_on!r}"
+                )
+            elif not target.multi_valued:
+                errors.append(
+                    f"{component.id}: fan_out_on names {component.fan_out_on!r}, "
+                    f"which is not multi_valued -- fanning over a single-valued "
+                    f"dimension would mint instances no engagement can have"
+                )
+
     return errors
 
 

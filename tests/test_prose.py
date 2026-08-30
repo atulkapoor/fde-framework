@@ -377,14 +377,29 @@ def test_correlating_events_into_incidents_is_multi_hop(reg):
                for f in facts)
 
 
-def test_a_multi_modal_statement_declines_loudly(reg):
+def test_a_multi_modal_statement_records_every_modality(reg):
     """Three input forms in one sentence is a property of the system, not an
-    ambiguity of phrasing -- and a decline nobody hears is a miss."""
+    ambiguity of phrasing. It declined once; now input_format is
+    multi_valued and all three land as peers."""
     declines = []
     facts = parse_prose(
         "It inspects camera feed from the line, reads the equipment manuals, "
         "and watches sensor telemetry.",
         reg, declines=declines,
     )
-    assert not any(f.dimension == "input_format" for f in facts)
-    assert any("input_format" in d and "multi-valued" in d for d in declines)
+    values = {f.value for f in facts if f.dimension == "input_format"}
+    assert values == {"images", "documents", "streams"}
+    assert not declines
+
+
+def test_a_single_valued_dimension_still_declines_loudly(reg):
+    """The decline machinery survives for dimensions that really are one
+    answer: a sentence naming two hosting values still refuses to guess,
+    and says so."""
+    declines = []
+    facts = parse_prose(
+        "Some of it runs air-gapped and the rest is a hosted api.",
+        reg, declines=declines,
+    )
+    assert not any(f.dimension == "hosting" for f in facts)
+    assert any("hosting" in d for d in declines)

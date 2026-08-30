@@ -225,6 +225,28 @@ def _read_vocabulary(
             hits.setdefault(value, (at, at + len(phrase)))
             break
 
+    # A multi-valued dimension takes every value it matched: photos AND
+    # manuals AND telemetry is three answers standing together, and decompose
+    # fans one perception path per value. Refinement still applies, but only
+    # between *nearby* matches: "scanned supplier invoices" is one noun
+    # phrase stated precisely, while "camera feed ... equipment manuals" is
+    # two modalities that happen to share a sentence.
+    if dimension.multi_valued and hits:
+        refines = getattr(dimension, "refines", {}) or {}
+        kept = {}
+        for value, span in hits.items():
+            narrower = [n for n, broad in refines.items() if broad == value]
+            if any(
+                n in hits and abs(hits[n][0] - span[0]) <= NEAR
+                for n in narrower
+            ):
+                continue
+            kept[value] = span
+        return [
+            _fact(dimension, _typed(dimension, value), span, source)
+            for value, span in sorted(kept.items())
+        ]
+
     hits = _most_specific(dimension, hits)
 
     # Two values that do not refine each other is a real requirement -- different
@@ -315,6 +337,7 @@ def _fact(dimension: Dimension, value: Any, span: tuple[int, int], source: str |
         kind=dimension.kind or DimensionKind.REQUIREMENT,
         span=span,
         source=source,
+        additive=dimension.multi_valued,
     )
 
 

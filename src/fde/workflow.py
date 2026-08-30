@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 from dataclasses import dataclass, field
 
+from fde.decide import base_component
 from fde.registry import Registry
 
 # Components that act on the world rather than reasoning about it.
@@ -143,15 +144,19 @@ def build_graph(decisions, registry: Registry, values: dict | None = None) -> Wo
     for component, decision in decisions.items():
         # Undecided components become nodes too, marked unfilled. A component
         # that disappears between "you need this" and "here is the design" is a
-        # hole nobody finds until build time.
+        # hole nobody finds until build time. An instance node
+        # (perception:images) carries its base component, so everything keyed
+        # on what a component *is* -- pipeline membership, mutativity,
+        # sensitivity -- reads the base.
+        base = base_component(component)
         graph.nodes[component] = Node(
             id=component,
             type=_node_type(decision.approach),
             unfilled=decision.approach is None,
-            component=component,
-            mutative=component in MUTATIVE,
-            irreversible=component in IRREVERSIBLE,
-            sensitive=sensitive and component in DATA_HANDLING,
+            component=base,
+            mutative=base in MUTATIVE,
+            irreversible=base in IRREVERSIBLE,
+            sensitive=sensitive and base in DATA_HANDLING,
         )
         graph.placement[component] = "in_boundary"
 
@@ -198,9 +203,11 @@ def _by_caps(components: list[str], registry: Registry) -> list[str]:
     present = set(components)
 
     def parents(component: str) -> list[str]:
+        base = base_component(component)
         return [
-            c.id for c in registry.components.values()
-            if component in c.caps and c.id in present
+            c for c in present
+            for entry in [registry.components.get(base_component(c))]
+            if entry is not None and base in entry.caps
         ]
 
     depths: dict[str, int] = {}

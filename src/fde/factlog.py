@@ -74,6 +74,10 @@ class Session:
                             ("kind", str(f.kind)),
                             ("span", list(f.span) if f.span else None),
                             ("source", f.source),
+                            # additive is resolution semantics: dropping it on
+                            # write would collapse three modalities into the
+                            # last one the moment the session is re-read.
+                            ("additive", f.additive or None),
                         )
                         if v is not None
                     }

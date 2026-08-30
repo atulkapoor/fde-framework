@@ -69,6 +69,19 @@ def _enum(dimension: Dimension, text: str) -> Answer:
     for value in dimension.values:
         if lowered == value.lower():
             return Answer(value=value)
+    if dimension.multi_valued:
+        parts = [p.strip() for chunk in lowered.split(",")
+                 for p in chunk.split(" and ") if p.strip()]
+        matched = []
+        for part in parts:
+            hit = _match_one(dimension, part)
+            if hit is None:
+                return Answer(probe=f"{part!r} is not one of: "
+                                    f"{', '.join(dimension.values)}.")
+            if hit not in matched:
+                matched.append(hit)
+        if matched:
+            return Answer(value=tuple(matched) if len(matched) > 1 else matched[0])
     # Accept the way people actually talk, resolved the same way the prose
     # parser resolves it -- negation guard, most-specific value wins. A
     # first-match-wins loop here once recorded "on-prem with cloud burst" as
@@ -90,6 +103,17 @@ def _enum(dimension: Dimension, text: str) -> Answer:
     if len(hits) > 1:
         return Answer(probe=f"That could mean {' or '.join(sorted(hits))} -- which one?")
     return Answer(probe=f"I need one of: {', '.join(dimension.values)}.")
+
+
+def _match_one(dimension: Dimension, part: str) -> str | None:
+    """One comma-separated fragment against declared values, then phrases."""
+    for value in dimension.values:
+        if part == value.lower():
+            return value
+    for value, phrases in (dimension.recognises or {}).items():
+        if any(phrase.lower() in part for phrase in phrases):
+            return value
+    return None
 
 
 def _duration(dimension: Dimension, text: str) -> Answer:  # noqa: ARG001

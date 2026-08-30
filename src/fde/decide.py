@@ -191,6 +191,16 @@ def decide_component(
     )
 
 
+def base_component(component: str) -> str:
+    """The registry id behind an instance key: perception:images -> perception.
+
+    Fan-out gives a component one instance per value of its declared
+    dimension; everything that looks a component up in the registry goes
+    through here so an instance is never mistaken for a new kind of thing.
+    """
+    return component.split(":", 1)[0]
+
+
 def decide_all(
     values: Mapping[str, Any], registry: Registry, components: list[str] | None = None
 ) -> Decisions:
@@ -200,10 +210,33 @@ def decide_all(
     disappear. It stays, with no approach and a rationale saying why, because a
     component that vanishes between "you need this" and "here is the design" is
     a hole nobody notices until build time.
+
+    A component that declares fan_out_on fans into one instance per value
+    when the engagement carries several -- a claims system taking photos AND
+    the policy document gets perception:images and perception:documents, each
+    decided by the same rules with that one modality bound. Multi-modality is
+    the normaliser's property: downstream components see what perception
+    produced, so they decide once.
     """
     wanted = components if components is not None else list(registry.components)
     decisions = Decisions()
     for component in wanted:
+        entry = registry.components.get(base_component(component))
+        fan = entry.fan_out_on if entry else None
+        carried = values.get(fan) if fan else None
+        if fan and isinstance(carried, tuple) and len(carried) > 1:
+            for modality in carried:
+                bound = {**values, fan: modality}
+                key = f"{component}:{modality}"
+                decision = decide_component(component, bound, registry)
+                if decision is None:
+                    decision = Decision(
+                        component=key, approach=None,
+                        rationale="no approach in the registry serves this component",
+                        considered=0,
+                    )
+                decisions[key] = decision
+            continue
         decision = decide_component(component, values, registry)
         if decision is None:
             decision = Decision(

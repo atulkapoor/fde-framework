@@ -18,9 +18,9 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from fde.models.base import Provenance, wins
+from fde.models.base import wins
 from fde.models.fact import Fact
-from fde.models.respondent import Respondent, Role
+from fde.models.respondent import Respondent
 
 
 class Disagreement(BaseModel):
@@ -86,10 +86,26 @@ class Profile:
 
     def get(self, dimension: str) -> Any:
         f = self.fact(dimension)
-        return f.value if f else None
+        if f is not None:
+            return f.value
+        peers = self.peers(dimension)
+        if peers:
+            return tuple(sorted({str(p.value) for p in peers}))
+        return None
+
+    def peers(self, dimension: str) -> list[Fact]:
+        """The additive facts standing together, when several stand.
+
+        Non-empty only for a dimension whose surviving facts are all marked
+        additive -- photos AND documents AND telemetry is three answers, not
+        a disagreement, and the union is the resolution."""
+        contenders = self._contenders(dimension)
+        if len(contenders) > 1 and all(f.additive for f in contenders):
+            return contenders
+        return []
 
     def resolved(self, dimension: str) -> bool:
-        return self.fact(dimension) is not None
+        return self.fact(dimension) is not None or bool(self.peers(dimension))
 
     def values(self) -> dict[str, Any]:
         return {d: self.get(d) for d in self._history if self.resolved(d)}
@@ -104,7 +120,7 @@ class Profile:
         out = []
         for dimension in self._history:
             contenders = self._contenders(dimension)
-            if len(contenders) > 1:
+            if len(contenders) > 1 and not all(f.additive for f in contenders):
                 out.append(Disagreement(dimension=dimension, facts=contenders))
         return out
 
@@ -128,10 +144,13 @@ class Profile:
             surviving.append(candidate)
 
         # Among equals, a respondent's later answer supersedes their earlier one:
-        # people correct themselves, and that is not a disagreement.
-        latest_per_source: dict[tuple[Role, str | None, Provenance], Fact] = {}
+        # people correct themselves, and that is not a disagreement. Additive
+        # facts are additions, not corrections -- three modalities from one
+        # reader are three answers, so distinct values each keep their place.
+        latest_per_source: dict[tuple, Fact] = {}
         for fact in surviving:
-            key = (fact.respondent.role, fact.respondent.name, fact.provenance)
+            key = (fact.respondent.role, fact.respondent.name, fact.provenance,
+                   str(fact.value) if fact.additive else None)
             latest_per_source[key] = fact
 
         distinct = list(latest_per_source.values())

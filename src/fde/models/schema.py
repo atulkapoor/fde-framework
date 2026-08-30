@@ -160,6 +160,13 @@ class Dimension(BaseModel):
     # cannot leave needs a judge that runs inside.
     needs_judge: list[str] = Field(default_factory=list)
 
+    # A dimension whose values are peers rather than rivals: a system that
+    # takes photos AND documents AND telemetry has three answers here, not a
+    # disagreement. Only input-shaped enums earn this -- most dimensions are
+    # genuinely single-valued, and marking one multi_valued is a design
+    # decision about the whole downstream, not a convenience.
+    multi_valued: bool = False
+
     # Who can actually answer this. Absence means never ask that role -- one
     # source of truth, rather than an ask/never pair that drifts apart.
     ask_role: list[str] = Field(default_factory=list)
@@ -186,6 +193,8 @@ class Dimension(BaseModel):
     def _check_values(self) -> Dimension:
         if self.type is ValueType.ENUM and not self.values:
             raise ValueError(f"{self.id}: an enum dimension must declare its values")
+        if self.multi_valued and self.type is not ValueType.ENUM:
+            raise ValueError(f"{self.id}: only an enum dimension can be multi_valued")
         if self.type is not ValueType.ENUM and self.values:
             raise ValueError(f"{self.id}: only an enum dimension may declare values")
         for value in self.prunes:
@@ -391,6 +400,12 @@ class Component(BaseModel):
     # passes through, and chaining one once crashed every generated
     # pipeline at the third step.
     pipeline: bool = True
+
+    # The dimension this component fans out over, one instance per value,
+    # when the engagement carries several. Perception declares input_format:
+    # it is the normaliser, so multi-modality is its property and nobody
+    # else's -- downstream components see what perception produced.
+    fan_out_on: str | None = None
 
     @model_validator(mode="after")
     def _check_caps(self) -> Component:

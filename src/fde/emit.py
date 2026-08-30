@@ -20,6 +20,7 @@ from pathlib import Path
 from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 
 from fde.architect import Architecture
+from fde.decide import base_component as _base
 from fde.deploy import write_deploy
 from fde.intake.samples import build_eval_set, infer_contract, infer_metrics, load_pairs
 from fde.moves import BoundaryViolation, assert_boundary
@@ -246,7 +247,7 @@ def _write_components(
 ) -> list[str]:
     scaffolded = []
     for component, decision in sorted(architecture.decisions.items()):
-        path = out / "app" / "components" / f"{component}.py"
+        path = out / "app" / "components" / f"{_module_name(component)}.py"
         realization = architecture.realizations.get(component)
 
         if not decision.approach:
@@ -264,6 +265,12 @@ def _write_components(
             scaffolded.append(component)
         path.write_text(body)
     return scaffolded
+
+
+def _module_name(component: str) -> str:
+    """An instance key as a Python module name: perception:images ->
+    perception_images."""
+    return component.replace(":", "_")
 
 
 def _unfilled(component: str, reason: str) -> str:
@@ -398,7 +405,9 @@ def _write_pipeline(architecture: Architecture, out: Path, registry=None) -> Non
         _write_controls(architecture, out)
     control_ids = {n.id for n in controls}
 
-    running = sorted({n.component for n in ordered if n.component and not n.unfilled})
+    running = sorted({
+        _module_name(n.id) for n in ordered if n.component and not n.unfilled
+    })
     imports = "\n".join(
         f"from app.components import {name}" for name in running
     )
@@ -431,8 +440,9 @@ def _write_pipeline(architecture: Architecture, out: Path, registry=None) -> Non
                 f"guards={_guarded(architecture, n.id)!r})),"
             )
         elif n.component and not n.unfilled:
+            module = _module_name(n.id)
             lines.append(
-                f"    ({n.component!r}, {n.component}.{_class_name(n.component)}()),"
+                f"    ({n.id!r}, {module}.{_class_name(n.id)}()),"
             )
     steps = "\n".join(lines)
 
@@ -880,7 +890,11 @@ def _scope_sections(architecture: Architecture, registry: Registry | None) -> li
             lines.append("")
             continue
         lines.append(f"**{label}**")
-        lines.extend(f"- `{_flat(d)}` = {_flat(v)}" for d, v in items)
+        lines.extend(
+            f"- `{_flat(d)}` = "
+            f"{_flat(', '.join(v) if isinstance(v, tuple) else v)}"
+            for d, v in items
+        )
         lines.append("")
     return lines
 
@@ -906,7 +920,7 @@ def _tools_section(architecture: Architecture, registry: Registry | None) -> lis
     for component, realization in sorted(architecture.realizations.items()):
         decision = architecture.decisions.get(component)
         try:
-            pattern = pattern_for(decision.approach, component, registry)
+            pattern = pattern_for(decision.approach, _base(component), registry)
         except Exception:  # noqa: BLE001 - a missing pattern is not this table's problem
             pattern = None
         alternatives = []
@@ -1098,4 +1112,5 @@ def render_architecture(architecture: Architecture, registry: Registry | None = 
 
 
 def _class_name(component: str) -> str:
-    return "".join(part.capitalize() for part in component.replace("-", "_").split("_"))
+    cleaned = component.replace("-", "_").replace(":", "_")
+    return "".join(part.capitalize() for part in cleaned.split("_"))

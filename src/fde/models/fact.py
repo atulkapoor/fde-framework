@@ -27,6 +27,11 @@ class Fact(BaseModel, frozen=True):
     span: tuple[int, int] | None = None
     source: str | None = None
 
+    # Stamped at creation, where the registry is in hand: this fact's
+    # dimension holds peers, not rivals, so another value beside it is an
+    # addition rather than a disagreement. The profile stays registry-free.
+    additive: bool = False
+
     def __init__(self, dimension: str, value: Any = None, provenance: Provenance = None, **kw):
         # Positional construction reads far better at call sites and in tests.
         super().__init__(dimension=dimension, value=value, provenance=provenance, **kw)
