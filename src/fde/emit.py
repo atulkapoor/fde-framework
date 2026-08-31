@@ -812,9 +812,12 @@ def main():
 
     golden = next(layer for layer in report if layer["layer"] == "golden")
     if golden["cases"] == 0:
-        print("golden set is empty -- a visible gap, not a passing grade",
+        # An empty exam graded green once: it printed "not a passing grade"
+        # and returned 0, and CI stayed green on a system with no evals.
+        print("golden set is empty -- nothing was measured, so nothing "
+              "passed. Seed pairs with `fde samples` and rebuild.",
               file=sys.stderr)
-        return 0
+        return 1
     if golden.get("errors"):
         print(f"{{golden['errors']}} golden case(s) errored -- the pipeline is "
               f"not yet implemented end to end", file=sys.stderr)

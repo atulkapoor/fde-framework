@@ -209,3 +209,29 @@ def test_an_ansible_shop_with_an_ephemeral_environment_keeps_the_floor(reg):
         "hosting": "customer-vpc",
     }, reg)
     assert decision.approach == "manual-runbook"
+
+
+def test_a_labelled_decision_is_a_classifier_not_an_optimisation(reg):
+    """Twelve thousand pass-or-repair labels are a function to learn, not
+    constraints to satisfy -- a solver given that job has nothing to
+    optimise, and it was winning on complexity."""
+    decision = decide_component("reasoning", {
+        "output_shape": "decision", "labelled_count": 12_000,
+    }, reg)
+    assert decision.approach == "classical-ml"
+
+
+def test_an_unlabelled_allocation_still_gets_the_solver(reg):
+    decision = decide_component("reasoning", {
+        "output_shape": "decision", "labelled_count": 0,
+    }, reg)
+    assert decision.approach == "optimisation-reasoning"
+
+
+def test_planning_keeps_optimisation_regardless_of_reasoning_labels(reg):
+    """The split's point: an airline recovery plan and a per-unit
+    disposition share an algorithm family and nothing else."""
+    decision = decide_component("planning", {
+        "output_shape": "decision", "labelled_count": 12_000,
+    }, reg)
+    assert decision.approach == "optimisation"

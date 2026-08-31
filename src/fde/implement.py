@@ -145,7 +145,10 @@ def _run_agent(project: Path, agent_cmd: str, prompt: str) -> bool:
         brief = project / ".implement" / "brief.md"
         brief.parent.mkdir(exist_ok=True)
         brief.write_text(prompt)
-        agent_cmd = agent_cmd.replace("{prompt_file}", str(brief))
+        # Absolute, because the agent runs with cwd=project: a relative
+        # project path substituted here once produced delivery/delivery/...
+        # from inside the project, and the agent died reading its own brief.
+        agent_cmd = agent_cmd.replace("{prompt_file}", str(brief.resolve()))
         stdin = ""
     result = subprocess.run(  # noqa: S603 - the agent is the caller's own command
         shlex.split(agent_cmd),

@@ -136,3 +136,23 @@ def test_an_agent_that_takes_a_brief_file_gets_one(tmp_path):
     ])
     assert result.exit_code == 0, result.output
     assert "harness green" in result.output
+
+
+def test_the_brief_path_survives_a_relative_project_path(tmp_path, monkeypatch):
+    """The agent runs with cwd=project; a relative project path substituted
+    into {prompt_file} once double-counted itself and the agent died
+    reading its own brief."""
+    import sys as _sys
+
+    project = toy_project(tmp_path)
+    fake_agent = tmp_path / "agent.py"
+    fake_agent.write_text(
+        "import pathlib, sys\n"
+        "brief = pathlib.Path(sys.argv[1]).read_text()\n"
+        "pathlib.Path('app/impl.py').write_text('DONE = True\\n')\n"
+    )
+    monkeypatch.chdir(tmp_path)
+    report = run_loop(Path("project"),
+                      agent_cmd=f"{_sys.executable} {fake_agent} {{prompt_file}}",
+                      max_rounds=3)
+    assert report.done, report.rounds[-1]

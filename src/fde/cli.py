@@ -418,6 +418,14 @@ def samples_cmd(
         f"evals:  {len(suite.golden)} golden, {len(suite.edge_case)} edge, "
         f"{len(suite.adversarial)} adversarial"
     )
+    unverified = sum(1 for pair in pairs if not pair.get("verified"))
+    if unverified:
+        typer.echo(
+            f"\n{unverified} pair(s) carry no `verified: true`, so they were "
+            f"kept for mining, never for measurement -- an unchecked example "
+            f"cannot be ground truth. Mark the ones a person has actually "
+            f"checked and re-run; the golden set is built only from those."
+        )
     for warning in assess(pairs):
         typer.echo(f"\n{warning}")
 

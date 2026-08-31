@@ -186,3 +186,19 @@ def test_a_field_naming_mismatch_between_pairs_is_reported(tmp_path):
     path.write_text('{"id": "a"}\n')
     with pytest.raises(ValueError, match="output"):
         load_pairs(path)
+
+
+def test_a_single_label_field_is_a_decision_not_a_structured_record():
+    """{"disposition": "pass"} is a verdict. Calling it structured once
+    silently corrected a client's stated decision with the contract's own
+    misreading -- both spoke at artifact strength, and the later won."""
+    pairs = [{"id": str(i), "input": {"u": i},
+              "output": {"disposition": "pass" if i % 3 else "repair"}}
+             for i in range(9)]
+    assert infer_contract(pairs).shape == "decision"
+
+
+def test_many_fields_stay_structured():
+    pairs = [{"id": str(i), "input": {"u": i},
+              "output": {"vendor": f"v{i}", "total": i}} for i in range(4)]
+    assert infer_contract(pairs).shape == "structured"

@@ -96,3 +96,21 @@ def test_a_stated_count_survives_a_later_sample_file(tmp_path):
     profile = load_engagement(root).profile
     assert profile.get("corpus_size") == 200_000
     assert profile.get("labelled_count") == 8_000
+
+
+def test_unverified_pairs_are_named_not_silently_mined(tmp_path):
+    """48 labelled pairs once produced 0 golden cases and no explanation:
+    the verified doctrine held, silently. The doctrine stays; the silence
+    goes."""
+    import json
+
+    root = tmp_path / "eng"
+    runner.invoke(app, ["start", "eng", "--base", str(tmp_path)])
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text("".join(
+        json.dumps({"id": str(i), "input": {"u": i}, "output": {"d": "x"}}) + "\n"
+        for i in range(6)
+    ))
+    result = runner.invoke(app, ["samples", str(root), "--file", str(pairs)])
+    assert "6 pair(s) carry no `verified: true`" in result.output
+    assert "cannot be ground truth" in result.output

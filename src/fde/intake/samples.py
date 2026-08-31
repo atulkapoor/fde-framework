@@ -111,20 +111,32 @@ def infer_contract(pairs: list[dict[str, Any]]) -> Contract:
             present.setdefault(name, []).append(value)
 
     total = len(outputs) or 1
-    return Contract(
-        fields={
-            name: Field(
-                name=name,
-                type=_type_of(values),
-                # Absence, not emptiness. A field nobody filled in is optional;
-                # a field filled in with nothing is a required field with a gap.
-                required=len(values) == total,
-                sensitivity=_sensitivity(name),
-            )
-            for name, values in present.items()
-        },
-        shape="structured",
-    )
+    fields = {
+        name: Field(
+            name=name,
+            type=_type_of(values),
+            # Absence, not emptiness. A field nobody filled in is optional;
+            # a field filled in with nothing is a required field with a gap.
+            required=len(values) == total,
+            sensitivity=_sensitivity(name),
+        )
+        for name, values in present.items()
+    }
+
+    # One field, drawn from a handful of repeated labels, is a decision --
+    # {"disposition": "pass"} is not a structured record that happens to be
+    # small, it is a verdict. Calling it structured once silently corrected a
+    # client's stated "decision" with the contract's own misreading, because
+    # both spoke at artifact strength and the later one won.
+    shape = "structured"
+    if len(present) == 1:
+        values = next(iter(present.values()))
+        distinct = {str(v) for v in values}
+        if (len(values) >= 3 and len(distinct) <= 5
+                and all(isinstance(v, str) for v in values)):
+            shape = "decision"
+
+    return Contract(fields=fields, shape=shape)
 
 
 def infer_metrics(contract: Contract) -> list[str]:

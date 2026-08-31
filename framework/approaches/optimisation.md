@@ -2,7 +2,7 @@
 id: optimisation
 name: Optimisation
 complexity: 1
-components: [planning, reasoning]
+components: [planning]
 applies_when: [output_shape == decision]
 avoid_when: [output_shape == freeform, output_shape == structured, output_shape == classification]
 evidence: {case_ids: [route-planning], confidence: high, last_verified: 2026-08-21}

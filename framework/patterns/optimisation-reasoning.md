@@ -1,7 +1,7 @@
 ---
 id: optimisation-reasoning
 component: reasoning
-approach: optimisation
+approach: optimisation-reasoning
 realizations:
   - {stack: plain-python, template: reasoning/optimisation.plain.py.j2, provides: Generator}
   - {stack: ortools, template: reasoning/optimisation.ortools.py.j2, provides: Generator}

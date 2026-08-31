@@ -233,14 +233,17 @@ def test_the_emitted_evaluation_gate_can_fail(reg, tmp_path):
     assert "not yet implemented" in result.stderr or "errored" in result.stderr
 
 
-def test_an_empty_golden_set_is_a_visible_gap_not_a_red_build(reg, tmp_path):
+def test_an_empty_golden_set_is_a_red_build(reg, tmp_path):
+    """The earlier version of this test pinned the opposite: exit 0 with a
+    stderr note. A note is for people; the exit code is for CI, and CI was
+    green on a system with no evals at all."""
     out = tmp_path / "out"
     emit(architect(profile(**COMPLETE), reg), out)
     result = subprocess.run(
         [sys.executable, "evals/harness.py"], cwd=out, capture_output=True, text=True,
     )
-    assert result.returncode == 0
-    assert "empty" in result.stderr
+    assert result.returncode == 1
+    assert "nothing was measured" in result.stderr
 
 
 # --- every legal topology builds ------------------------------------------
@@ -365,7 +368,9 @@ def test_the_harness_runs(built):
     result = subprocess.run(
         [sys.executable, "evals/harness.py"], cwd=built, capture_output=True, text=True
     )
-    assert result.returncode == 0, result.stderr
+    # The fixture has no pairs, so the honest exit is red -- but the report
+    # still renders, which is what this test guards.
+    assert result.returncode == 1
     assert "golden" in result.stdout
 
 
@@ -627,3 +632,23 @@ def test_a_false_answer_is_not_rendered_as_silence(built):
     assert _flat(False) == "False"
     assert _flat(0) == "0"
     assert _flat(None) == ""
+
+
+def test_an_empty_golden_set_fails_the_harness(built, tmp_path):
+    """It printed "not a passing grade" and returned 0 -- CI green on a
+    system with no evals. An empty exam proves nothing and must say so
+    with its exit code, which is the only part CI reads."""
+    import shutil
+    import subprocess
+    import sys as _sys
+
+    project = tmp_path / "p"
+    shutil.copytree(built, project)
+    for name in ("golden", "edge_case", "adversarial"):
+        (project / "evals" / f"{name}.jsonl").write_text("")
+    result = subprocess.run(
+        [_sys.executable, "evals/harness.py", "--min-score", "0"],
+        cwd=project, capture_output=True, text=True,
+    )
+    assert result.returncode == 1
+    assert "nothing was measured" in result.stderr
