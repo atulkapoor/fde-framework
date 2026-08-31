@@ -233,11 +233,22 @@ def _read_vocabulary(
     # two modalities that happen to share a sentence.
     if dimension.multi_valued and hits:
         refines = getattr(dimension, "refines", {}) or {}
+
+        def one_noun_phrase(a: tuple[int, int], b: tuple[int, int]) -> bool:
+            # "scanned supplier invoices" is one thing described precisely;
+            # "site reports and inspection photographs" is two things joined.
+            # The coordinator is the signal, not the distance -- a proximity
+            # rule ate the documents out of that second sentence.
+            lo, hi = min(a[1], b[1]), max(a[0], b[0])
+            between = lowered[lo:hi]
+            return "," not in between and " and " not in between \
+                and abs(a[0] - b[0]) <= NEAR
+
         kept = {}
         for value, span in hits.items():
             narrower = [n for n, broad in refines.items() if broad == value]
             if any(
-                n in hits and abs(hits[n][0] - span[0]) <= NEAR
+                n in hits and one_noun_phrase(hits[n], span)
                 for n in narrower
             ):
                 continue

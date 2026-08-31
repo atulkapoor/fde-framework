@@ -1622,7 +1622,7 @@ def triage_cmd(
         lowered = text.lower()
         bundled = any(marker in lowered for marker in (
             "two workflows", "two functions", "two groups", "two teams",
-            "serving two", "for two ",
+            "two agentic", "two capabilities", "serving two", "for two ",
         ))
         rows.append({
             "text": text,

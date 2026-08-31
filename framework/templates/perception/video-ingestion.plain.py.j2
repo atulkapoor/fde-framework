@@ -1,0 +1,35 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Frames sampled from footage and handed on as images. The sampler is the
+design surface: event-triggered around what the stream layer flags, never a
+fixed rate nobody can justify.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+
+from app.contract import RefusedInput
+
+interface = "{{ interface }}"
+approach = "{{ approach }}"
+stack = "{{ stack }}"
+
+# Injected at wiring time: callable(video_ref, at_seconds) -> frame_ref.
+extract_frame: Callable[[str, float], str] | None = None
+
+MAX_FRAMES = 32  # bounded: dense sampling drowns the pipeline it feeds
+
+
+class {{ class_name }}:
+    def run(self, payload: dict) -> dict:
+        if extract_frame is None:
+            raise RefusedInput("no frame extractor is wired")
+        video_ref = payload.get("video_ref")
+        if not video_ref:
+            raise RefusedInput("no video reference -- nothing was recorded")
+        moments = (payload.get("flagged_moments") or [0.0])[:MAX_FRAMES]
+        frames = [extract_frame(video_ref, at) for at in moments]
+        return {**payload, "frame_refs": frames}

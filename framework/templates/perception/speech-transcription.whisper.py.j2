@@ -1,0 +1,39 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Open-weights transcription running wherever the boundary requires. Load once,
+transcribe per call; the model choice trades word error rate against latency
+and memory, and the right size is the smallest whose per-language error rate,
+measured on the client's own callers, clears the acceptance bar.
+"""
+
+from __future__ import annotations
+
+from app.contract import RefusedInput
+
+interface = "{{ interface }}"
+approach = "{{ approach }}"
+stack = "{{ stack }}"
+
+_model = None
+
+
+def _load():
+    global _model
+    if _model is None:
+        import whisper
+
+        _model = whisper.load_model("small")
+    return _model
+
+
+class {{ class_name }}:
+    def run(self, payload: dict) -> dict:
+        audio_ref = payload.get("audio_ref")
+        if not audio_ref:
+            raise RefusedInput("no audio reference -- nothing was said, or "
+                               "nothing was recorded")
+        result = _load().transcribe(audio_ref)
+        return {**payload, "transcript": result["text"],
+                "language": result.get("language")}

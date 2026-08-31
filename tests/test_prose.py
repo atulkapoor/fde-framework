@@ -403,3 +403,43 @@ def test_a_single_valued_dimension_still_declines_loudly(reg):
     )
     assert not any(f.dimension == "hosting" for f in facts)
     assert any("hosting" in d for d in declines)
+
+
+# --- battery two: coordinators, voice, and the trades' own words ------------
+
+
+def test_a_coordinator_keeps_two_modalities_apart(reg):
+    """"site reports and inspection photographs" is two things joined, and a
+    proximity rule once collapsed them into one because they stood close."""
+    facts = parse_prose(
+        "Issues surface from site reports and inspection photographs.", reg)
+    values = {f.value for f in facts if f.dimension == "input_format"}
+    assert values == {"documents", "images"}
+
+
+def test_one_noun_phrase_still_collapses_without_a_coordinator(reg):
+    facts = parse_prose("Scanned supplier invoices arrive daily.", reg)
+    values = [f.value for f in facts if f.dimension == "input_format"]
+    assert values == ["scanned_documents"]
+
+
+def test_delivery_by_voice_is_an_audio_workload(reg):
+    facts = parse_prose("Advice is delivered largely by voice on basic phones.", reg)
+    assert any(f.dimension == "input_format" and f.value == "audio" for f in facts)
+
+
+def test_camera_footage_is_a_video_workload(reg):
+    facts = parse_prose("The system reviews camera footage from the depot.", reg)
+    assert any(f.dimension == "input_format" and f.value == "video" for f in facts)
+
+
+def test_fault_codes_are_structured_data(reg):
+    facts = parse_prose("It interprets fault codes from the fleet.", reg)
+    assert any(f.dimension == "input_format" and f.value == "structured_data"
+               for f in facts)
+
+
+def test_engineering_drawings_are_documents(reg):
+    facts = parse_prose("It interprets the engineering drawings.", reg)
+    assert any(f.dimension == "input_format" and f.value == "documents"
+               for f in facts)

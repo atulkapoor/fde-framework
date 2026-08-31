@@ -235,3 +235,13 @@ def test_planning_keeps_optimisation_regardless_of_reasoning_labels(reg):
         "output_shape": "decision", "labelled_count": 12_000,
     }, reg)
     assert decision.approach == "optimisation"
+
+
+def test_voice_input_reaches_a_transcriber(reg):
+    decision = decide_component("perception", {"input_format": "audio"}, reg)
+    assert decision.approach == "speech-transcription"
+
+
+def test_video_input_reaches_a_sampler(reg):
+    decision = decide_component("perception", {"input_format": "video"}, reg)
+    assert decision.approach == "video-ingestion"

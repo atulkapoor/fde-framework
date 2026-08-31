@@ -1,0 +1,37 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Voice to text before anything downstream reasons about it. The transcriber
+is injected so the boundary decides where the model runs -- and so the word
+error rate can be measured by substituting recorded calls.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+
+from app.contract import RefusedInput
+
+interface = "{{ interface }}"
+approach = "{{ approach }}"
+stack = "{{ stack }}"
+
+# Injected at wiring time: a callable(audio_ref) -> str returning the
+# transcript. Kept injectable so tests run without a model and the boundary
+# decides where it lives.
+transcribe: Callable[[str], str] | None = None
+
+
+class {{ class_name }}:
+    def run(self, payload: dict) -> dict:
+        if transcribe is None:
+            raise RefusedInput(
+                "no transcriber is wired -- an empty transcript passing "
+                "downstream would read as a silent caller"
+            )
+        audio_ref = payload.get("audio_ref")
+        if not audio_ref:
+            raise RefusedInput("no audio reference -- nothing was said, or "
+                               "nothing was recorded")
+        return {**payload, "transcript": transcribe(audio_ref)}
