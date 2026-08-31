@@ -144,7 +144,7 @@ def test_the_brief_path_survives_a_relative_project_path(tmp_path, monkeypatch):
     reading its own brief."""
     import sys as _sys
 
-    project = toy_project(tmp_path)
+    toy_project(tmp_path)
     fake_agent = tmp_path / "agent.py"
     fake_agent.write_text(
         "import pathlib, sys\n"
