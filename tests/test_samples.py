@@ -124,18 +124,37 @@ def test_edge_cases_come_from_the_layouts_that_differ_most(reg=None):
     assert {c["layout"] for c in suite.edge_case} - {"boxed_form"}
 
 
-def test_the_adversarial_layer_is_built_from_the_contract(reg=None):
-    """Not from the pairs. Everything the contract forbids is a test nobody
-    supplied, and those are the ones a client never thinks of."""
+def test_the_adversarial_layer_is_executable(reg=None):
+    """The earlier layer emitted prose probes compared against prose
+    expectations -- unpassable by construction, 0% forever. A probe is only
+    a probe if the pipeline can be run on it: a mutated real input, expecting
+    the same correct answer or a refusal."""
     suite = build_eval_set(PAIRS)
     kinds = {c["kind"] for c in suite.adversarial}
-    assert {"missing_required", "type_violation", "prompt_injection"} <= kinds
+    assert {"prompt_injection", "empty_input"} <= kinds
+    for case in suite.adversarial:
+        assert "output" in case or case.get("expect_refusal"), case["kind"]
 
 
-def test_the_injection_case_targets_the_input_not_the_schema(reg=None):
+def test_injection_must_not_change_the_answer(reg=None):
+    """The injected case expects the ORIGINAL pair's output: a system that
+    follows text inside the document fails by disagreeing with itself."""
     suite = build_eval_set(PAIRS)
     injection = next(c for c in suite.adversarial if c["kind"] == "prompt_injection")
     assert "ignore" in injection["input"].lower()
+    assert injection["output"] in [p["output"] for p in PAIRS]
+
+
+def test_dict_inputs_get_field_level_probes(reg=None):
+    pairs = [{"id": str(i), "verified": True,
+              "input": {"note": f"unit {i}", "sensor": {"vibration": 3.0 + i}},
+              "output": {"disposition": "pass"}} for i in range(6)]
+    suite = build_eval_set(pairs)
+    kinds = {c["kind"] for c in suite.adversarial}
+    assert {"prompt_injection", "type_violation", "missing_field"} <= kinds
+    violation = next(c for c in suite.adversarial if c["kind"] == "type_violation")
+    assert violation["input"]["sensor"]["vibration"] == "four thousand"
+    assert violation.get("expect_refusal")
 
 
 # --- facts ---------------------------------------------------------------
@@ -202,3 +221,22 @@ def test_many_fields_stay_structured():
     pairs = [{"id": str(i), "input": {"u": i},
               "output": {"vendor": f"v{i}", "total": i}} for i in range(4)]
     assert infer_contract(pairs).shape == "structured"
+
+
+def test_rarity_is_relative_to_the_corpus_balance(reg=None):
+    """Two polymer units among forty machined are the shape the system
+    fails on first; the old absolute rule (n <= 1) called them common."""
+    pairs = [{"id": str(i), "verified": True, "layout": "machined",
+              "input": f"doc {i}", "output": {"total": float(i)}}
+             for i in range(40)]
+    pairs += [{"id": f"p{i}", "verified": True, "layout": "polymer",
+               "input": f"poly {i}", "output": {"total": 1.0}} for i in range(2)]
+    suite = build_eval_set(pairs)
+    assert any(c["layout"] == "polymer" for c in suite.edge_case)
+
+
+def test_one_layout_means_nothing_is_rare(reg=None):
+    pairs = [{"id": str(i), "verified": True, "layout": "same",
+              "input": f"doc {i}", "output": {"total": float(i)}}
+             for i in range(10)]
+    assert build_eval_set(pairs).edge_case == []

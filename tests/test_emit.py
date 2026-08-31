@@ -399,17 +399,21 @@ def test_the_golden_set_is_seeded_from_the_clients_own_pairs(reg, tmp_path):
 
 
 def test_the_adversarial_layer_covers_what_nobody_supplied(reg, tmp_path):
+    """Executable probes mutated from a real case: an injection that must
+    change nothing, and forbidden input that must be refused. (Sensitive
+    egress moved out of this layer when the probes became executable -- the
+    boundary and the masking component own it structurally.)"""
     import json
 
     pairs = tmp_path / "pairs.jsonl"
-    pairs.write_text(json.dumps(
-        {"id": "a", "input": "x", "verified": True,
-         "output": {"total": 1.0, "account": "****1"}}) + "\n")
+    pairs.write_text("".join(json.dumps(
+        {"id": str(i), "input": f"Total: {i}.00", "verified": True,
+         "output": {"total": float(i)}}) + "\n" for i in range(4)))
     out = tmp_path / "proj"
     emit(architect(profile(**COMPLETE), reg), out, pairs_path=pairs)
     cases = (out / "evals" / "adversarial.jsonl").read_text()
     assert "prompt_injection" in cases
-    assert "sensitive_egress" in cases
+    assert "expect_refusal" in cases
 
 
 def test_the_harness_can_fail_a_build(built):
@@ -568,9 +572,11 @@ def test_the_emitted_pipeline_can_reach_green(reg, tmp_path):
 import re
 from app import boundary  # noqa: F401
 from app.components import representation
+from app.contract import RefusedInput
 
 CONTRACT = ["total_due", "vat"]
 SYNONYMS = {"total_due": ["amount payable", "amount due", "total"]}
+KNOWN = {label for labels in SYNONYMS.values() for label in labels} | set(CONTRACT)
 MONEY = re.compile(r"[-+]?\\d[\\d,]*(?:\\.\\d+)?")
 
 def _raw(text):
@@ -578,8 +584,9 @@ def _raw(text):
     for segment in re.split(r"[\\n|]", text):
         match = MONEY.search(segment)
         if match:
-            label = segment[: match.start()].strip(" .:\\t$")
-            if label:
+            label = segment[: match.start()].strip(" .:\\t$").lower()
+            if (label in KNOWN or label.replace(" ", "_") in KNOWN
+                    or label.replace("_", " ") in KNOWN):
                 out[label] = float(match.group().replace(",", ""))
     return out
 
@@ -587,10 +594,12 @@ STEP = representation.Representation(synonyms=SYNONYMS)
 
 def run(payload):
     if isinstance(payload, str):
+        if not payload.strip():
+            raise RefusedInput("an empty document holds no fields to extract")
         payload = {"contract": CONTRACT, "records": [{"id": "case", "raw": _raw(payload)}]}
     record = STEP.run(payload)["records"][0]
     if record["unmapped"] or record["rejected"]:
-        raise ValueError(str(record))
+        raise RefusedInput(str(record))
     return record["mapped"]
 ''')
     result = subprocess.run(

@@ -217,6 +217,21 @@ def _write_package(architecture: Architecture, out: Path) -> None:
         f'between two builds means a decision changed.\n"""\n'
     )
     (out / "app" / "components" / "__init__.py").write_text("")
+    (out / "app" / "contract.py").write_text(
+        '"""The one contract every step shares: forbidden input is refused.\n'
+        '\n'
+        "Raise RefusedInput for input the pipeline must not act on -- a\n"
+        "missing field, a type violation, an empty document. The adversarial\n"
+        "layer of the eval harness treats RefusedInput as the CORRECT answer\n"
+        "to a forbidden probe, and anything else -- a crash, or worse, a\n"
+        "confident output -- as the failure it is. Accepting forbidden input\n"
+        'is how a system invents an answer nobody can trace.\n"""\n'
+        "\n"
+        "\n"
+        "class RefusedInput(ValueError):\n"
+        '    """This input is forbidden by the contract, and saying so is\n'
+        '    the correct behaviour."""\n'
+    )
 
 
 def _sensitive_fields(pairs_path: Path | None) -> str:
@@ -762,9 +777,28 @@ def run_layer(name, cases, predict):
     if not cases:
         return {{"layer": name, "cases": 0, "score": None, "note": "no cases supplied"}}
 
+    from app.contract import RefusedInput
+
     correct, errors, failures = 0, 0, []
     for case in cases:
         expected = case.get("output", case.get("expect"))
+        if case.get("expect_refusal"):
+            # A forbidden probe: refusing IS the correct answer. A crash is
+            # an error; a confident output is the failure the probe exists
+            # to catch.
+            try:
+                actual = predict(case.get("input"))
+            except RefusedInput:
+                correct += 1
+            except Exception as exc:  # noqa: BLE001
+                errors += 1
+                failures.append({{"id": case.get("id"), "source": classify(
+                    None, None, {{"exception": exc}})}})
+            else:
+                failures.append({{"id": case.get("id"),
+                                 "source": "prediction",
+                                 "note": f"accepted forbidden input: {{actual!r}}"}})
+            continue
         try:
             actual = predict(case.get("input"))
         except Exception as exc:  # noqa: BLE001
@@ -827,6 +861,14 @@ def main():
         return 1
     if golden["score"] < args.min_score:
         print(f"below {{args.min_score:.1%}}", file=sys.stderr)
+        return 1
+    adversarial = next(layer for layer in report if layer["layer"] == "adversarial")
+    if adversarial["cases"] and (adversarial.get("errors")
+                                 or adversarial["score"] < 1.0):
+        print("the attack layer found takers -- an injected instruction was "
+              "followed, or forbidden input was accepted or crashed the "
+              "pipeline instead of being refused (see failures above)",
+              file=sys.stderr)
         return 1
     return 0
 
