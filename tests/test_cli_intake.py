@@ -269,3 +269,15 @@ def test_an_impossible_contest_value_is_named_a_contradiction(tmp_path):
                                  "--name", "Ada", "--scope", "data"],
                           input="may_leave\n\n" * 10)
     assert "one side of this disagreement is a contradiction" in result.output
+
+
+def test_frame_offers_the_follow_ups_where_the_gap_appears(tmp_path):
+    """A statement read at 8%% completeness must not dead-end at 'correct
+    anything wrong' -- the three questions that most change the design are
+    offered right there, with who to ask."""
+    root = engagement(tmp_path)
+    result = runner.invoke(app, ["frame", str(root),
+                                 "--text", "Extract fields from supplier invoices."])
+    assert "worth asking next" in result.output
+    assert "fde ask" in result.output
+    assert result.output.count("- ") >= 3

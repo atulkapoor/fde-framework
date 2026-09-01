@@ -212,3 +212,71 @@ def _warn_if_stale(today: str | None) -> None:
             UserWarning,
             stacklevel=3,
         )
+
+
+# --- unit economics: the arbitrage-trap check -------------------------------
+
+WORKDAYS_PER_MONTH = 22
+
+# Reused prompt prefixes bill at roughly a tenth of the input rate on the
+# hosted APIs that support prompt caching. Dated like every figure here.
+CACHED_PREFIX_DISCOUNT = 0.10
+
+
+def unit_economics(
+    workflows_per_day: float,
+    price_per_seat_month: float,
+    steps_per_workflow: int = 5,
+    tokens_per_step: int = TOKENS_PER_REQUEST,
+    cheap_path_coverage: float | None = None,
+    cached_prefix_share: float = 0.0,
+    today: str | None = None,
+) -> dict:
+    """Whether a seat earns more than it burns, and which lever moves it.
+
+    The failure this exists to name: a per-seat price set before anyone
+    multiplied cost-per-workflow by workflows-per-day by workdays. A margin
+    that collapses the moment users actually adopt the product is not a
+    pricing problem, it is an architecture bill arriving late -- and the
+    three levers below are the same decisions this corpus already makes:
+    a cheap deterministic path in front of the model (cascade), cached
+    prompt prefixes, and a bounded loop.
+    """
+    _warn_if_stale(today)
+
+    def seat_cost(steps: int, coverage: float, cached: float) -> float:
+        model_workflows = workflows_per_day * (1.0 - coverage)
+        tokens = model_workflows * steps * tokens_per_step
+        effective = tokens * ((1.0 - cached) + cached * CACHED_PREFIX_DISCOUNT)
+        return effective / 1e6 * MANAGED_COST_PER_MILLION_TOKENS * WORKDAYS_PER_MONTH
+
+    coverage = cheap_path_coverage or 0.0
+    cost = seat_cost(steps_per_workflow, coverage, cached_prefix_share)
+    margin = price_per_seat_month - cost
+
+    levers = []
+    if coverage < 0.5:
+        levers.append((
+            "route the measurable share to rules first (cascade at 50% coverage)",
+            price_per_seat_month - seat_cost(steps_per_workflow, 0.5, cached_prefix_share),
+        ))
+    if cached_prefix_share < 0.7:
+        levers.append((
+            "cache the shared prefix (70% of tokens at the cached rate)",
+            price_per_seat_month - seat_cost(steps_per_workflow, coverage, 0.7),
+        ))
+    if steps_per_workflow > 3:
+        levers.append((
+            "bound the loop at 3 steps (the cap the posture section documents)",
+            price_per_seat_month - seat_cost(3, coverage, cached_prefix_share),
+        ))
+
+    return {
+        "cost_per_workflow": round(cost / (workflows_per_day * WORKDAYS_PER_MONTH), 4)
+        if workflows_per_day else 0.0,
+        "cost_per_seat_month": round(cost, 2),
+        "price_per_seat_month": price_per_seat_month,
+        "margin_per_seat": round(margin, 2),
+        "underwater": margin <= 0,
+        "levers": [(reason, round(new_margin, 2)) for reason, new_margin in levers],
+    }

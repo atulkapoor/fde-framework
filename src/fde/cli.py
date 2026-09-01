@@ -313,6 +313,18 @@ def frame(
     for decline in declines:
         typer.echo(f"\n  declined -- {decline}")
 
+    # The follow-ups, right where the gap appears. The interview is the full
+    # instrument; these are the three questions that most change the design,
+    # so a statement never dead-ends at "correct anything wrong".
+    with_new = _with_all(engagement.profile, facts)
+    space_now = Space.from_registry(registry).apply(with_new)
+    follow_ups = remaining_questions(space_now, with_new, registry)[:3]
+    if follow_ups:
+        typer.echo("\nworth asking next (fde ask <eng> --role <who>):")
+        for question in follow_ups:
+            roles = "/".join(question.roles) if question.roles else "anyone"
+            typer.echo(f"  - {question.asks}   [{roles}]")
+
     if reader == "llm":
         from fde.intake.llm_reader import (
             BoundaryRefusal,
@@ -551,6 +563,12 @@ def ask(
         )
     )
     typer.echo(f"\nRecorded {len(gathered)} answer(s) from {respondent}.")
+
+
+def _with_all(profile, facts):
+    for fact in facts:
+        profile = _with(profile, fact)
+    return profile
 
 
 def _warn_if_impossible(dimension, value, profile, registry):
@@ -1694,6 +1712,17 @@ def cost_cmd(
         bool | None, typer.Option(help="Is somebody waiting on each request?")
     ] = None,
     today: Annotated[str, typer.Option(help="For staleness checks; defaults to today.")] = "",
+    price_per_seat: Annotated[float | None, typer.Option(
+        help="Monthly price per seat: adds the unit-economics check -- "
+             "whether a seat earns more than it burns."
+    )] = None,
+    workflows_per_day: Annotated[float, typer.Option(
+        help="Workflows one seat runs daily, for the unit-economics check."
+    )] = 8.0,
+    steps: Annotated[int, typer.Option(
+        help="Agent-loop steps per workflow. Unbounded loops price like this "
+             "number being large."
+    )] = 5,
 ) -> None:
     """Size the fleet and compare hosting, with every figure dated.
 
@@ -1745,6 +1774,28 @@ def cost_cmd(
     typer.echo(
         f"\n  as of {plan['as_of']} -- {plan['rederive']}"
     )
+
+    if price_per_seat is not None:
+        from fde.costing import unit_economics
+
+        coverage = None
+        if root is not None:
+            coverage = _engagement(root).profile.values().get("cheap_path_coverage")
+        economics = unit_economics(
+            workflows_per_day, price_per_seat, steps_per_workflow=steps,
+            cheap_path_coverage=coverage, today=stamp,
+        )
+        typer.echo(
+            f"\nunit economics at ${price_per_seat:.2f}/seat, "
+            f"{workflows_per_day:g} workflows/day, {steps} step(s):"
+        )
+        typer.echo(f"  ${economics['cost_per_workflow']:.4f}/workflow -> "
+                   f"${economics['cost_per_seat_month']:.2f}/seat-month in model spend")
+        drowned = "  -- UNDERWATER: every new user costs money"
+        typer.echo(f"  margin: ${economics['margin_per_seat']:.2f}/seat"
+                   + (drowned if economics["underwater"] else ""))
+        for reason, new_margin in economics["levers"]:
+            typer.echo(f"  lever: {reason} -> margin ${new_margin:.2f}")
 
 
 @kb.command("ingest-case")
@@ -1874,3 +1925,5 @@ def kb_gaps(
 
 if __name__ == "__main__":  # pragma: no cover
     app()
+
+
