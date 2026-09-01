@@ -1510,6 +1510,29 @@ def scan_cmd(
         if not adapt.ok:
             typer.echo(f"\nfull finetune: no -- {adapt.reason}")
 
+    # Which local models this box serves, for the judge, the reader, and
+    # the implement loop -- sized from what was measured, dated like every
+    # costing figure, because model releases move monthly.
+    from fde.scan import MODEL_GUIDANCE_AS_OF, recommend_local_models
+
+    plan = recommend_local_models(hardware)
+    typer.echo(f"\nlocal models (guidance as of {MODEL_GUIDANCE_AS_OF} -- "
+               f"releases move monthly, verify before install)")
+    typer.echo(f"  runtime: {plan.runtime} -- {plan.runtime_reason}")
+    typer.echo(f"  usable memory budget: ~{plan.budget_gb}GB")
+    typer.echo(f"  judge + frame reader: {plan.judge_model}   "
+               f"({plan.serve_hint.format(model=plan.judge_model)})")
+    typer.echo(f"  implement-loop coder: {plan.coder_model}   "
+               f"({plan.serve_hint.format(model=plan.coder_model)})")
+    typer.echo(f"  then: export LLM_ENDPOINT={plan.endpoint}")
+    typer.echo(
+        "  the judge is sized by the calibration gate, not the leaderboard: "
+        "the smallest model whose agreement with your graders clears 0.8 on "
+        "your data is the right one"
+    )
+    for note in plan.notes:
+        typer.echo(f"  note: {note}")
+
     if root is None:
         return
     if not measured:

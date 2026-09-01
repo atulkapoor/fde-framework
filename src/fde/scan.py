@@ -366,3 +366,114 @@ def _ram_gb() -> float:
         return os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 1e9
     except (ValueError, AttributeError, OSError):  # pragma: no cover - platform dependent
         return 0.0
+
+
+# --- which local model, on this box ---------------------------------------
+
+# Dated deliberately, like every figure in costing: model releases move
+# monthly, and an undated recommendation is a stale one wearing a fresh
+# tool's authority. Sizes are quantized on-disk footprints, roughly Q4.
+MODEL_GUIDANCE_AS_OF = "2026-09"
+
+
+@dataclass
+class LocalModelPlan:
+    runtime: str            # ollama | vllm | none
+    runtime_reason: str
+    endpoint: str
+    serve_hint: str
+    judge_model: str        # also the frame-reader model; small on purpose
+    coder_model: str
+    budget_gb: float
+    notes: list[str] = field(default_factory=list)
+
+
+def _judge_model(budget_gb: float) -> str:
+    # Judging and schema-bound extraction are the easy jobs; the calibration
+    # gate, not the leaderboard, decides if the size is enough.
+    if budget_gb >= 12:
+        return "qwen3.5:9b"
+    if budget_gb >= 6:
+        return "qwen3.5:4b"
+    return "qwen3.5:2b"
+
+
+def _coder_model(budget_gb: float) -> str:
+    if budget_gb >= 28:
+        return "qwen3-coder:30b-a3b"   # MoE, ~19GB, best coder per GB
+    if budget_gb >= 20:
+        return "devstral:24b"          # agent-tuned, ~16GB, Apache-2.0
+    if budget_gb >= 12:
+        return "gpt-oss:20b"           # MoE, ~14GB native MXFP4
+    if budget_gb >= 6:
+        return "qwen2.5-coder:7b"      # ~4.7GB, strongest 7B-class coder
+    return "qwen3.5:4b"                # below coder territory; say so
+
+
+def recommend_local_models(
+    hardware: Hardware, platform_system: str | None = None,
+    is_arm_mac: bool | None = None,
+) -> LocalModelPlan:
+    """Runtime and models this box can actually serve, sized from what was
+    measured -- never from what somebody remembered about the machine.
+
+    Detection defaults to the scanner's own probes: platform.machine() under
+    a Rosetta-translated Python says x86_64 on Apple silicon, which is the
+    exact lie _darwin_is_arm() exists to see through."""
+    import platform as _platform
+
+    if platform_system is None:
+        platform_system = _platform.system()
+    if is_arm_mac is None:
+        is_arm_mac = platform_system == "Darwin" and _darwin_is_arm()
+    unified = is_arm_mac and not hardware.gpus
+    budget = (
+        hardware.ram_gb * 0.66 if unified          # shared with everything else
+        else hardware.largest_vram_gb * UTILISATION if hardware.gpus
+        else hardware.ram_gb * 0.5                 # CPU-only: llama.cpp-class
+    )
+
+    notes = []
+    if unified:
+        runtime, reason = "ollama", (
+            "Apple silicon: Ollama runs on the MLX backend (0.19+); "
+            "vllm-metal exists for the same box when concurrency arrives"
+        )
+        endpoint, serve = "http://localhost:11434", "ollama pull {model}"
+        if hardware.ram_gb < 32:
+            notes.append(
+                "the MLX backend previews at 32GB unified memory and above; "
+                "below that Ollama still serves, on the default backend"
+            )
+    elif hardware.gpus:
+        runtime, reason = "vllm", (
+            "a CUDA-class card: vLLM for one box; SGLang where many requests "
+            "share long prefixes (agents, RAG) -- roughly a quarter more "
+            "throughput there"
+        )
+        endpoint, serve = "http://localhost:8000", "vllm serve {model}"
+    else:
+        runtime, reason = "ollama", (
+            "no accelerator measured: Ollama (llama.cpp backend) serves "
+            "small models on CPU; expect seconds per reply, not tokens "
+            "per breath"
+        )
+        endpoint, serve = "http://localhost:11434", "ollama pull {model}"
+
+    if budget < 6:
+        notes.append(
+            f"{budget:.0f}GB of usable memory is below coder territory -- "
+            f"the judge and reader fit, `fde implement` wants a hosted or "
+            f"remote agent"
+        )
+
+    return LocalModelPlan(
+        runtime=runtime,
+        runtime_reason=reason,
+        endpoint=endpoint,
+        serve_hint=serve,
+        judge_model=_judge_model(budget),
+        coder_model=_coder_model(budget),
+        budget_gb=round(budget, 1),
+        notes=notes,
+    )

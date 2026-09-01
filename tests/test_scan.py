@@ -361,3 +361,44 @@ def test_an_intel_mac_answers_no_even_under_rosetta_style_confusion(monkeypatch)
     import platform
     monkeypatch.setattr(platform, "machine", lambda: "arm64")
     assert scan._darwin_is_arm() is False
+
+
+# --- which local model, on this box -----------------------------------------
+
+
+def test_an_apple_silicon_laptop_gets_ollama_and_a_mid_judge():
+    from fde.scan import Hardware, recommend_local_models
+
+    plan = recommend_local_models(Hardware(ram_gb=36.0), "Darwin", is_arm_mac=True)
+    assert plan.runtime == "ollama"
+    assert plan.judge_model == "qwen3.5:9b"
+    assert plan.coder_model == "qwen2.5-coder:7b" or plan.budget_gb >= 12
+    assert "11434" in plan.endpoint
+
+
+def test_a_cuda_box_gets_vllm_sized_by_vram():
+    from fde.scan import GPU, Hardware, recommend_local_models
+
+    plan = recommend_local_models(
+        Hardware(gpus=[GPU("rtx-4090", vram_gb=24.0)], ram_gb=64.0),
+        "Linux", is_arm_mac=False,
+    )
+    assert plan.runtime == "vllm"
+    assert plan.coder_model == "devstral:24b"
+    assert "8000" in plan.endpoint
+
+
+def test_a_small_box_is_told_the_truth_about_coding():
+    from fde.scan import Hardware, recommend_local_models
+
+    plan = recommend_local_models(Hardware(ram_gb=8.0), "Darwin", is_arm_mac=True)
+    assert plan.judge_model == "qwen3.5:2b"
+    assert any("below coder territory" in n for n in plan.notes)
+
+
+def test_cpu_only_linux_still_gets_a_path():
+    from fde.scan import Hardware, recommend_local_models
+
+    plan = recommend_local_models(Hardware(ram_gb=32.0), "Linux", is_arm_mac=False)
+    assert plan.runtime == "ollama"
+    assert "CPU" in plan.runtime_reason or "accelerator" in plan.runtime_reason

@@ -1,0 +1,47 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Ollama on the box: the packaged single-user path. The endpoint speaks the
+OpenAI-compatible shape, so swapping to vLLM when concurrency arrives changes
+an environment variable and this file's pull command -- not the architecture.
+
+**One model resident at a time is the honest default** on a laptop-class
+machine: unified memory is shared with everything else running, and two
+resident models page each other out in ways no benchmark predicted.
+"""
+
+from __future__ import annotations
+
+import json
+import urllib.request
+from typing import Any
+
+interface = "{{ interface }}"
+approach = "{{ approach }}"
+stack = "{{ stack }}"
+
+ENDPOINT = "http://localhost:11434"
+
+
+class {{ class_name }}:
+    """ModelServer, as self-hosted via ollama."""
+
+    def __init__(self, model: str = "qwen3.5:9b", endpoint: str = ENDPOINT) -> None:
+        self.model = model
+        self.endpoint = endpoint
+
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        body = json.dumps({
+            "model": self.model,
+            "messages": [{"role": "user", "content": payload["prompt"]}],
+            "temperature": 0,
+        }).encode()
+        request = urllib.request.Request(
+            self.endpoint.rstrip("/") + "/v1/chat/completions",
+            data=body, headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=300) as response:
+            reply = json.load(response)
+        return {**payload,
+                "completion": reply["choices"][0]["message"]["content"]}
