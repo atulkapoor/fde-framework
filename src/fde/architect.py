@@ -111,20 +111,32 @@ def _apply_overrides(decisions: Decisions, overrides: dict[str, dict]) -> None:
     the signal -- nobody can tell an honoured override from a forgotten one.
     """
     for component, override in overrides.items():
-        if component not in decisions:
-            continue
-        previous = decisions[component]
-        decisions[component] = Decision(
-            component=component,
-            approach=override["chosen"],
-            rationale=f"overridden on site: {override.get('because', 'no reason recorded')}",
-            rejected=(
-                [Rejected(id=previous.approach, reason="recommended, overridden on site")]
-                if previous.approach and previous.approach != override["chosen"]
-                else []
-            ),
-            considered=previous.considered,
-        )
+        # A fanned component holds instance keys (perception:images ...).
+        # An override of the base name applies to every instance -- the
+        # promise "your choice is honoured" does not get to lapse because
+        # the engagement turned out to be multi-modal -- and an instance
+        # key targets exactly one. A base override that matches nothing is
+        # the silent-drop this comment used to describe; it is now
+        # impossible for any component that decided at all.
+        targets = [
+            key for key in decisions
+            if key == component or key.startswith(component + ":")
+        ]
+        for key in targets:
+            previous = decisions[key]
+            decisions[key] = Decision(
+                component=key,
+                approach=override["chosen"],
+                rationale=f"overridden on site: "
+                          f"{override.get('because', 'no reason recorded')}",
+                rejected=(
+                    [Rejected(id=previous.approach,
+                              reason="recommended, overridden on site")]
+                    if previous.approach and previous.approach != override["chosen"]
+                    else []
+                ),
+                considered=previous.considered,
+            )
 
 
 def _assumptions(profile: Profile, registry: Registry) -> list[str]:

@@ -31,3 +31,15 @@ def test_measured_coverage_from_the_engagement_lowers_the_bill():
     with_routing = unit_economics(8, 25.0, cheap_path_coverage=0.6,
                                   today="2026-09-01")
     assert with_routing["cost_per_seat_month"] < without["cost_per_seat_month"]
+
+
+def test_a_percent_mistake_is_refused_not_rewarded():
+    """coverage=50 (the natural percent slip) once produced a negative seat
+    cost and a confidently healthy margin -- the exact failure the check
+    exists to name."""
+    import pytest
+
+    with pytest.raises(ValueError, match="divide by 100"):
+        unit_economics(8, 25.0, cheap_path_coverage=50, today="2026-09-01")
+    with pytest.raises(ValueError, match="fraction"):
+        unit_economics(8, 25.0, cached_prefix_share=2.0, today="2026-09-01")

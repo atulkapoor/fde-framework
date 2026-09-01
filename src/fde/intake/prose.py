@@ -144,14 +144,30 @@ def _read_quantities(registry: Registry, text: str, source: str | None) -> list[
     facts: list[Fact] = []
     claimed_numbers: set[tuple[int, int]] = set()
     claimed_dimensions: set[str] = set()
+    lowered_text = text.lower()
     for _distance, dimension_id, match in sorted(candidates, key=lambda c: (c[0], c[1])):
         if match.span() in claimed_numbers or dimension_id in claimed_dimensions:
             continue
+        dimension = registry.dimensions[dimension_id]
+        if dimension.type is ValueType.RATIO:
+            # A share, not a count: "0.6" stays 0.6 -- int() once truncated
+            # every prose-read ratio to zero at artifact strength, which then
+            # decided the cascade on a number nobody said. "40 percent" is
+            # 0.40; a bare 40 against a ratio dimension is nobody's answer
+            # and is dropped rather than guessed at.
+            value = _numeric(match.group("num"))
+            trailing = lowered_text[match.end(): match.end() + 12]
+            if "%" in trailing or "percent" in trailing:
+                value /= 100.0
+            if not 0.0 <= value <= 1.0:
+                continue
+            claimed_numbers.add(match.span())
+            claimed_dimensions.add(dimension_id)
+            facts.append(_fact(dimension, value, match.span(), source))
+            continue
         claimed_numbers.add(match.span())
         claimed_dimensions.add(dimension_id)
-        facts.append(
-            _fact(registry.dimensions[dimension_id], _scaled(match), match.span(), source)
-        )
+        facts.append(_fact(dimension, _scaled(match), match.span(), source))
     return facts
 
 
@@ -218,7 +234,16 @@ def _read_vocabulary(
             at = lowered.find(phrase.lower())
             if at < 0:
                 continue
-            if NEGATIONS.search(lowered[max(0, at - LOOKBACK) : at]):
+            window = lowered[max(0, at - LOOKBACK): at]
+            # A negation only speaks for its own sentence: "never been
+            # calibrated. Recall within a session" once suppressed the
+            # recall answer, because the lookback leaked across the full
+            # stop into the sentence before it.
+            for terminator in (".", "!", "?"):
+                cut = window.rfind(terminator)
+                if cut != -1:
+                    window = window[cut + 1:]
+            if NEGATIONS.search(window):
                 # Something inverts this. Which value it selects is beyond a
                 # matcher, and the interview will ask.
                 continue

@@ -134,3 +134,29 @@ def test_one_noun_phrase_stated_precisely_is_still_one_answer(reg):
     profile = Profile()
     profile.ingest(parse_prose("Scanned supplier invoices arrive daily.", reg))
     assert profile.values()["input_format"] == "scanned_documents"
+
+
+# --- overrides reach fanned instances ----------------------------------------
+
+
+def test_an_override_of_a_fanned_component_applies_to_every_instance(reg):
+    from fde.architect import architect as build_architecture
+
+    profile = multimodal_profile(reg)
+    arch = build_architecture(profile, reg, overrides={
+        "perception": {"chosen": "passthrough", "because": "client insists"},
+    })
+    instances = {k: d.approach for k, d in arch.decisions.items()
+                 if k.startswith("perception:")}
+    assert instances and all(a == "passthrough" for a in instances.values())
+
+
+def test_an_instance_override_targets_exactly_one_modality(reg):
+    from fde.architect import architect as build_architecture
+
+    profile = multimodal_profile(reg)
+    arch = build_architecture(profile, reg, overrides={
+        "perception:images": {"chosen": "passthrough", "because": "camera feed is pre-parsed"},
+    })
+    assert arch.decisions["perception:images"].approach == "passthrough"
+    assert arch.decisions["perception:streams"].approach == "windowed-ingestion"

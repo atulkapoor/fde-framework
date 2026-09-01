@@ -102,11 +102,13 @@ def _tracked_files(project: Path) -> dict[Path, str]:
     }
 
 
-def _run_check(project: Path, check: str | None) -> tuple[bool, str]:
+def _run_check(project: Path, check: str | None,
+               extra: list[str] | None = None) -> tuple[bool, str]:
     # The same command the emitted CI runs -- the loop's green is CI's green.
     command = shlex.split(check) if check else [
         sys.executable, "evals/harness.py", "--min-score", "0.0",
     ]
+    command = command + (extra or [])
     result = subprocess.run(  # noqa: S603 - the check is the caller's own command
         command, cwd=project, capture_output=True, text=True, timeout=1800,
     )
@@ -167,28 +169,60 @@ def run_loop(
     max_rounds: int = 5,
     check: str | None = None,
     invoke_agent=None,
+    holdout: Path | None = None,
 ) -> ImplementReport:
     """The loop. `invoke_agent` is injectable for tests."""
     project = Path(project)
     guarded = _snapshot(project)
+    protected_dirs = [project / "evals"]
+    known_protected = {
+        path for directory in protected_dirs if directory.is_dir()
+        for path in directory.rglob("*") if path.is_file()
+    }
     invoke = invoke_agent or (lambda prompt: _run_agent(project, agent_cmd, prompt))
     rounds: list[Round] = []
+
+    def green_report(number: int, tail: str) -> ImplementReport:
+        if holdout is not None:
+            held, held_tail = _run_check(
+                project, check, extra=["--cases", str(Path(holdout).resolve())]
+            )
+            if not held:
+                rounds.append(Round(number, False, held_tail,
+                                    violation="green golden, red holdout -- "
+                                              "the golden file may have been "
+                                              "memorized; not accepting this"))
+                return ImplementReport(rounds, done=False,
+                                       stopped_by="holdout red")
+            tail += "\nholdout: green (cases the implementer never saw)"
+        rounds.append(Round(number, True, tail))
+        return ImplementReport(rounds, done=True, stopped_by="harness green")
 
     for number in range(1, max_rounds + 1):
         passed, tail = _run_check(project, check)
         if passed:
-            rounds.append(Round(number, True, tail))
-            return ImplementReport(rounds, done=True, stopped_by="harness green")
+            return green_report(number, tail)
 
         before = _tracked_files(project)
         agent_ok = invoke(_prompt(project, tail))
 
-        # The exam stays the exam: restore anything protected that moved.
+        # The exam stays the exam: restore anything protected that moved,
+        # and remove anything NEW planted beside it -- a conftest.py dropped
+        # into evals/ is not an edit the hash sees, but it is an edit.
         violations = []
         for path, (digest, body) in guarded.items():
             if not path.exists() or _digest(path) != digest:
                 path.write_bytes(body)
                 violations.append(str(path.relative_to(project)))
+        for directory in protected_dirs:
+            if not directory.is_dir():
+                continue
+            for path in directory.rglob("*"):
+                if path.is_file() and path not in known_protected:
+                    path.unlink()
+                    violations.append(
+                        f"{path.relative_to(project)} (planted, removed)"
+                    )
         changed = [
             str(p.relative_to(project))
             for p, d in _tracked_files(project).items()
@@ -210,8 +244,7 @@ def run_loop(
             return ImplementReport(rounds, done=False, stopped_by="agent failed")
 
     passed, tail = _run_check(project, check)
+    if passed:
+        return green_report(max_rounds + 1, tail)
     rounds.append(Round(max_rounds + 1, passed, tail))
-    return ImplementReport(
-        rounds, done=passed,
-        stopped_by="harness green" if passed else "round cap",
-    )
+    return ImplementReport(rounds, done=False, stopped_by="round cap")

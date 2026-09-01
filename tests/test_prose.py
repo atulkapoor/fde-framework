@@ -443,3 +443,62 @@ def test_engineering_drawings_are_documents(reg):
     facts = parse_prose("It interprets the engineering drawings.", reg)
     assert any(f.dimension == "input_format" and f.value == "documents"
                for f in facts)
+
+
+# --- the cross-feature battery: ratios, and self-negating answers -----------
+
+
+def test_a_prose_ratio_survives_as_a_fraction(reg):
+    """0.6 once extracted as 0 -- int() truncated every prose-read ratio at
+    artifact strength, and the cascade then decided on a number nobody said."""
+    facts = parse_prose("Records that have an identifier are 0.6 of the corpus.", reg)
+    assert any(f.dimension == "cheap_path_coverage" and f.value == 0.6 for f in facts)
+
+
+def test_a_percentage_becomes_a_fraction(reg):
+    facts = parse_prose("The cheap path settles about 40 percent of records.", reg)
+    assert any(f.dimension == "cheap_path_coverage" and f.value == 0.4 for f in facts)
+
+
+def test_a_bare_forty_against_a_ratio_is_nobody_answer(reg):
+    facts = parse_prose("Rules alone handle 40 of these.", reg)
+    assert not any(f.dimension == "cheap_path_coverage" for f in facts)
+
+
+def test_never_calibrated_is_an_answer_not_a_negation(reg):
+    """The phrase starts at its own negation, so the lookback guard sees a
+    clean prefix: 'never been calibrated' IS the false answer, stated."""
+    facts = parse_prose("Confidence has never been calibrated.", reg)
+    assert any(f.dimension == "confidence_calibrated" and f.value is False
+               for f in facts)
+
+
+def test_the_helpline_register(reg):
+    """The phrasings a health-insurer paragraph actually used, each of which
+    read as silence on first contact."""
+    checks = [
+        ("The fields contain pii.", "sensitivity_present", True),
+        ("A person is waiting on the line.", "human_waiting", "yes"),
+        ("Explainability is required for the regulator.",
+         "interpretability_required", True),
+        ("The box has a single gpu.", "accelerator", "single"),
+        ("The team runs containers already.", "container_competence", True),
+        ("Recall within a session is enough.", "recall_span", "within_session"),
+    ]
+    for sentence, dimension, expected in checks:
+        facts = parse_prose(sentence, reg)
+        assert any(f.dimension == dimension and f.value == expected
+                   for f in facts), sentence
+
+
+def test_a_negation_speaks_only_for_its_own_sentence(reg):
+    """"never been calibrated. Recall within a session is enough" -- the
+    lookback once leaked across the full stop and suppressed the recall
+    answer with the previous sentence's negation."""
+    facts = parse_prose(
+        "Confidence has never been calibrated. Recall within a session is enough.",
+        reg,
+    )
+    values = {f.dimension: f.value for f in facts}
+    assert values.get("confidence_calibrated") is False
+    assert values.get("recall_span") == "within_session"

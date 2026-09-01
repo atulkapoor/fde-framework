@@ -156,3 +156,93 @@ def test_the_brief_path_survives_a_relative_project_path(tmp_path, monkeypatch):
                       agent_cmd=f"{_sys.executable} {fake_agent} {{prompt_file}}",
                       max_rounds=3)
     assert report.done, report.rounds[-1]
+
+
+def test_a_memorizing_agent_is_caught_by_the_holdout(tmp_path):
+    """The answer key ships readable beside the exam, so an agent can go
+    green by memorizing golden.jsonl. Cases the implementer never saw are
+    the only honest counter -- green golden beside red holdout stops the
+    loop with the accusation spelled out."""
+    project = toy_project(tmp_path)
+    (project / "evals" / "harness.py").write_text(
+        "import argparse, json, sys\n"
+        "from pathlib import Path\n\n"
+        "p = argparse.ArgumentParser()\n"
+        "p.add_argument('--min-score', type=float, default=0.0)\n"
+        "p.add_argument('--cases', default=None)\n"
+        "a = p.parse_args()\n"
+        "sys.path.insert(0, '.')\n"
+        "from app.impl import answer\n"
+        "cases = [json.loads(x) for x in Path(\n"
+        "    a.cases or 'evals/golden.jsonl').read_text().splitlines() if x.strip()]\n"
+        "ok = all(answer(c['input']) == c['output'] for c in cases)\n"
+        "sys.exit(0 if ok else 1)\n"
+    )
+    (project / "evals" / "golden.jsonl").write_text(
+        '{"id": "a", "input": "q1", "output": "a1"}\n'
+    )
+    holdout = tmp_path / "holdout.jsonl"
+    holdout.write_text('{"id": "h", "input": "q9", "output": "a9"}\n')
+
+    def memorizer(prompt):
+        (project / "app" / "impl.py").write_text(
+            "import json\nfrom pathlib import Path\n"
+            "KEY = {json.loads(x)['input']: json.loads(x)['output']\n"
+            "       for x in Path('evals/golden.jsonl').read_text().splitlines()}\n"
+            "def answer(q):\n    return KEY.get(q)\n"
+        )
+        return True
+
+    report = run_loop(project, invoke_agent=memorizer, max_rounds=3,
+                      holdout=holdout)
+    assert not report.done
+    assert report.stopped_by == "holdout red"
+    assert "memorized" in report.rounds[-1].violation
+
+
+def test_a_real_implementation_passes_the_holdout(tmp_path):
+    project = toy_project(tmp_path)
+    (project / "evals" / "harness.py").write_text(
+        "import argparse, json, sys\n"
+        "from pathlib import Path\n\n"
+        "p = argparse.ArgumentParser()\n"
+        "p.add_argument('--min-score', type=float, default=0.0)\n"
+        "p.add_argument('--cases', default=None)\n"
+        "a = p.parse_args()\n"
+        "sys.path.insert(0, '.')\n"
+        "from app.impl import answer\n"
+        "cases = [json.loads(x) for x in Path(\n"
+        "    a.cases or 'evals/golden.jsonl').read_text().splitlines() if x.strip()]\n"
+        "ok = all(answer(c['input']) == c['output'] for c in cases)\n"
+        "sys.exit(0 if ok else 1)\n"
+    )
+    (project / "evals" / "golden.jsonl").write_text(
+        '{"id": "a", "input": "q1", "output": "A1"}\n'
+    )
+    holdout = tmp_path / "holdout.jsonl"
+    holdout.write_text('{"id": "h", "input": "q9", "output": "A9"}\n')
+
+    def implementer(prompt):
+        (project / "app" / "impl.py").write_text(
+            "def answer(q):\n    return q.upper().replace('Q', 'A')\n"
+        )
+        return True
+
+    report = run_loop(project, invoke_agent=implementer, max_rounds=3,
+                      holdout=holdout)
+    assert report.done, report.rounds[-1]
+    assert "holdout: green" in report.rounds[-1].check_tail
+
+
+def test_a_file_planted_in_evals_is_removed_and_fatal(tmp_path):
+    project = toy_project(tmp_path)
+
+    def planter(prompt):
+        (project / "evals" / "conftest.py").write_text("RIGGED = True\n")
+        (project / "app" / "impl.py").write_text("DONE = True\n")
+        return True
+
+    report = run_loop(project, invoke_agent=planter, max_rounds=3)
+    assert report.stopped_by == "guardrail"
+    assert not (project / "evals" / "conftest.py").exists()
+    assert "planted" in report.rounds[-1].violation

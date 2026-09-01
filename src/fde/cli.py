@@ -411,6 +411,17 @@ def samples_cmd(
     # Copied before anything is reported, so a failure here cannot arrive
     # after a success message has already scrolled past.
     (engagement.artifacts_dir / "pairs.jsonl").write_text(body)
+    # The holdout stays with the engagement and never ships in a delivery:
+    # golden.jsonl sits readable beside the exam, so a green that was
+    # memorized from it is caught only by cases the implementer never saw.
+    from fde.intake.samples import split_pairs
+
+    holdout_ids = set(split_pairs(pairs).holdout_ids)
+    if holdout_ids:
+        (engagement.artifacts_dir / "holdout.jsonl").write_text("".join(
+            json.dumps(pair) + "\n" for pair in pairs
+            if pair.get("id") in holdout_ids
+        ))
     if sensitive:
         (engagement.artifacts_dir / "sensitive_fields.json").write_text(
             json.dumps(sorted(set(sensitive)))
@@ -1078,10 +1089,13 @@ def override_cmd(
     """
     registry = _registry(registry_root)
     engagement = _engagement(root)
-    if component not in registry.components:
+    from fde.decide import base_component
+
+    if base_component(component) not in registry.components:
         typer.echo(
             f"{component!r} is not a component in this registry. Components: "
-            f"{', '.join(sorted(registry.components))}", err=True,
+            f"{', '.join(sorted(registry.components))} (an instance of a "
+            f"fanned component works too, e.g. perception:images)", err=True,
         )
         raise typer.Exit(1)
     if choose not in registry.approaches:
@@ -1411,11 +1425,25 @@ def build_cmd(
             w for w in engagement.gate_state().get("overrides", [])
             if w["gate"] in applied
         ]
+        # Applied-only, exactly like waivers: an override that did not take
+        # effect in THIS build (the component decided under different keys,
+        # or a later override superseded it) must not appear in the client
+        # document as a design change that was made.
+        recorded_overrides = _jsonl(engagement.root / "overrides.jsonl")
+        applied_overrides = [
+            o for o in recorded_overrides
+            if any(
+                (key == o.get("component")
+                 or key.startswith(str(o.get("component")) + ":"))
+                and d.approach == o.get("chosen")
+                for key, d in architecture.decisions.items()
+            )
+        ]
         report = emit(architecture, out, registry=registry,
                       templates=Path(registry_root) / "templates",
                       pairs_path=Path(root) / "artifacts" / "pairs.jsonl",
                       waivers=waivers,
-                      overrides=_jsonl(engagement.root / "overrides.jsonl"))
+                      overrides=applied_overrides)
     except BuildRefused as exc:
         typer.echo(f"refused: {exc}", err=True)
         raise typer.Exit(1) from exc
@@ -1591,6 +1619,11 @@ def implement_cmd(
         help="The command that decides green. Default: the same harness "
              "invocation the emitted CI runs."
     )] = None,
+    holdout: Annotated[Path | None, typer.Option(
+        help="A jsonl of pairs the delivery never shipped (fde samples "
+             "writes <eng>/artifacts/holdout.jsonl). Green golden beside "
+             "red holdout means the golden file was memorized."
+    )] = None,
 ) -> None:
     """Drive a coding agent until the emitted evals pass, inside guardrails.
 
@@ -1610,7 +1643,7 @@ def implement_cmd(
         raise typer.Exit(1)
 
     report = run_loop(project, agent_cmd=agent_cmd, max_rounds=max_rounds,
-                      check=check)
+                      check=check, holdout=holdout)
     (project / "ops").mkdir(exist_ok=True)
     (project / "ops" / "implement-log.md").write_text(report.log())
 

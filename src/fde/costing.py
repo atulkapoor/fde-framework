@@ -244,6 +244,16 @@ def unit_economics(
     """
     _warn_if_stale(today)
 
+    for name, fraction in (("cheap_path_coverage", cheap_path_coverage),
+                           ("cached_prefix_share", cached_prefix_share)):
+        if fraction is not None and not 0.0 <= fraction <= 1.0:
+            raise ValueError(
+                f"{name} is a fraction between 0 and 1, got {fraction!r} -- "
+                f"if that was a percentage, divide by 100. A share above one "
+                f"turns the seat cost negative and reports a bogus healthy "
+                f"margin, which is the exact failure this check exists to name."
+            )
+
     def seat_cost(steps: int, coverage: float, cached: float) -> float:
         model_workflows = workflows_per_day * (1.0 - coverage)
         tokens = model_workflows * steps * tokens_per_step
