@@ -236,6 +236,8 @@ project/
 | `fde baseline / data-access / security-review / waive / restate` | satisfy or knowingly waive a gate |
 | `fde cost --price-per-seat 25 --workflows-per-day 8` | unit economics: whether a seat earns more than it burns, with the levers priced |
 | `fde samples <eng> --file pairs.jsonl --sensitive <field>` | golden/edge/adversarial evals from the client's own pairs, sensitive fields marked |
+| `fde kb suggest --file brief.md --endpoint http://localhost:11434` | mine a brief for recogniser gaps — proposed, never applied |
+| `fde kb export-training <eng> --out train.jsonl` | (brief, facts) pairs — the fine-tune flywheel, kept with the engagement |
 | `fde reuse <eng> <stack>` | record what the client already operates, so reuse can beat adoption |
 | `fde locale <eng> eu-gdpr` | jurisdiction pack: presets plus obligations emitted as COMPLIANCE.md |
 | `fde architect <eng>` | the design, rationale and rejections |
@@ -329,15 +331,22 @@ anywhere** — it works on a plane and inside an air gap, and a text editor is
 always a legal way into its state. Discovery, decisions, and builds never call
 an LLM.
 
-Three commands are the deliberate exceptions, each opt-in and each governed by
+Four commands are the deliberate exceptions, each opt-in and each governed by
 the framework's own boundary doctrine: `fde frame --reader llm` (a model
 proposes facts, at the weakest provenance — refused to hosted models unless the
-engagement states data may leave; local endpoints always allowed), `fde
-implement` (drives a coding agent you name), and the judge-based eval harness
-in *generated* projects whose evaluation decided `judged` (configured by
-`LLM_ENDPOINT`, hosted path refused inside a boundary). Nothing calls a model
-silently, and `fde scan` recommends a local model sized to your hardware so
-none of it needs to leave the machine.
+engagement states data may leave; local endpoints always allowed), `fde kb
+suggest` (mines a brief for recogniser gaps under the same rule, proposing —
+never applying — vocabulary), `fde implement` (drives a coding agent you
+name), and the judge-based eval harness in *generated* projects whose
+evaluation decided `judged` (configured by `LLM_ENDPOINT`, hosted path refused
+inside a boundary). Nothing calls a model silently, and `fde scan` recommends
+a local model sized to your hardware so none of it needs to leave the machine.
+The LLM is everywhere as a **proposer**; the decision path stays
+deterministic, because fingerprints, byte-identical rebuilds and an
+accountable RISKS.md are the product. Fine-tuning follows the corpus's own
+client rule: `fde kb export-training` builds the (brief, facts) corpus from
+retained briefs, and a fine-tuned reader earns adoption when the pairs number
+in the thousands *and* the measured base-model hit rate falls short.
 
 Engagement directories (client facts, baselines, gate state) are excluded
 from version control by construction and enforced in CI — along with

@@ -361,9 +361,19 @@ def frame(
     if not facts:
         return
 
+    session_id = _next_session_id(engagement, "frame")
+    # The brief itself is retained beside the facts. Every fact carries a
+    # span pointing into this text; a span into a document nobody kept is a
+    # citation to nowhere -- and the (text, facts) pair is the training
+    # example a future fine-tuned reader learns from. Client data, in the
+    # engagement directory, never committed: same rules as everything here.
+    briefs = engagement.artifacts_dir / "briefs"
+    briefs.mkdir(parents=True, exist_ok=True)
+    (briefs / f"{session_id}.txt").write_text(body)
+
     engagement.append(
         Session(
-            session_id=_next_session_id(engagement, "frame"),
+            session_id=session_id,
             respondent=Respondent(role=Role.SYSTEM),
             facts=facts,
         )
@@ -1478,6 +1488,12 @@ def build_cmd(
         _write_compliance(Path(out), locale)
 
     typer.echo(f"wrote {out}")
+    # The delivery is finishable, and the finishing move is one command.
+    holdout_path = engagement.root / "artifacts" / "holdout.jsonl"
+    hint = f"fde implement {out}"
+    if holdout_path.exists():
+        hint += f" --holdout {holdout_path}"
+    typer.echo(f"next: {hint}")
     if architecture.decisions.undecided():
         typer.echo(
             f"  {len(architecture.decisions.undecided())} component(s) raise on use -- "
@@ -1899,6 +1915,113 @@ def kb_ingest_case(
     typer.echo(f"wrote {target}  [sanitization: pending]")
     typer.echo("review it, then set sanitization: reviewed -- the gate refuses "
                "pending cases")
+
+
+@kb.command("export-training")
+def kb_export_training(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    out: Annotated[Path, typer.Option(help="Where to write the .jsonl.")],
+) -> None:
+    """Export (brief, facts) pairs -- the fine-tune flywheel.
+
+    Every retained brief beside the facts it yielded, one JSON object per
+    session. This is the corpus a fine-tuned reader learns from -- and the
+    corpus's own doctrine for clients applies to the framework itself: a
+    fine-tune earns adoption when the pairs cross a real threshold AND the
+    measured hit rate of the base model falls short, not before. The output
+    is client data; it belongs wherever the engagement does, never in a
+    repository.
+    """
+    engagement = _engagement(root)
+    briefs = engagement.root / "artifacts" / "briefs"
+    if not briefs.is_dir():
+        typer.echo(
+            "no retained briefs here -- pairs come from `fde frame` runs "
+            "made after briefs began to be retained. Re-frame the brief "
+            "and re-export.", err=True,
+        )
+        raise typer.Exit(1)
+
+    sessions = {
+        path.stem: Session.from_yaml(path.read_text(), path.stem)
+        for path in sorted(engagement.facts_dir.glob("*.yaml"))
+    }
+    rows = []
+    for brief_path in sorted(briefs.glob("*.txt")):
+        session = sessions.get(brief_path.stem)
+        if session is None:
+            continue
+        rows.append({
+            "text": brief_path.read_text(),
+            "facts": [
+                {"dimension": f.dimension, "value": f.value,
+                 "span": list(f.span) if f.span else None}
+                for f in session.facts
+            ],
+        })
+    if not rows:
+        typer.echo("no (brief, facts) pairs found", err=True)
+        raise typer.Exit(1)
+    out.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    typer.echo(
+        f"wrote {len(rows)} pair(s) to {out}\n"
+        f"doctrine: fine-tune the reader when the pairs number in the "
+        f"thousands AND the measured base-model hit rate falls short -- "
+        f"the same bar the corpus holds clients to."
+    )
+
+
+@kb.command("suggest")
+def kb_suggest(
+    text: Annotated[str | None, typer.Option(help="The brief, inline.")] = None,
+    file: Annotated[Path | None, typer.Option(help="A file holding the brief.")] = None,
+    endpoint: Annotated[str | None, typer.Option(
+        help="OpenAI-compatible local model server. Without it the hosted "
+             "model is used -- refused unless the text itself may leave."
+    )] = None,
+    model: Annotated[str | None, typer.Option(help="Model name.")] = None,
+    registry_root: Annotated[Path, typer.Option("--registry")] = DEFAULT_ROOT,
+) -> None:
+    """Mine a brief for recogniser gaps -- the vocabulary treadmill, automated.
+
+    Runs the deterministic reader and a model reader over the same text and
+    proposes recogniser phrases for exactly the delta: facts the model found,
+    validated against the registry's declared values, that the vocabulary
+    missed. Output is a review-ready diff for framework/dimensions/ -- it
+    never edits the registry, because a recogniser is a content change that
+    deserves a human eye and a test.
+    """
+    if not text and not file:
+        typer.echo("Give me --text or --file.", err=True)
+        raise typer.Exit(1)
+    body = file.read_text() if file else (text or "")
+    registry = _registry(registry_root)
+
+    from fde.intake.llm_reader import (
+        BoundaryRefusal,
+        ReaderUnavailable,
+        suggest_recognisers,
+    )
+
+    try:
+        suggestions, dropped = suggest_recognisers(
+            body, registry, endpoint=endpoint, model=model,
+        )
+    except (BoundaryRefusal, ReaderUnavailable) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+
+    if not suggestions:
+        typer.echo("the model found nothing the vocabulary missed")
+        return
+    typer.echo("recogniser candidates -- review, test, then edit the "
+               "dimension file by hand:\n")
+    for s in suggestions:
+        typer.echo(f"  framework/dimensions/{s['dimension']}.md")
+        typer.echo(f"    {s['value']}: add phrase {s['phrase']!r}")
+        typer.echo(f"    evidence: {s['evidence']!r}\n")
+    for reason in dropped:
+        typer.echo(f"  (refused: {reason})")
 
 
 @kb.command("sweep")

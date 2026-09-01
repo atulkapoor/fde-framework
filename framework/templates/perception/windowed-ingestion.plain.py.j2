@@ -15,6 +15,12 @@ from typing import Any
 
 # Whichever closes first wins. Both bounds exist because a quiet stream
 # must still flush, and a loud one must still fit in memory.
+{% if (values | default({})).get('arrival_rate') %}
+# Sized from the engagement's stated flow: {{ values['arrival_rate'] }}/day at
+# peak. At that rate a 60-second window holds roughly
+# {{ (values['arrival_rate'] / 1440) | round(1) }} events on the mean minute --
+# tune MAX_EVENTS against the measured burst, not this arithmetic.
+{% endif %}
 MAX_EVENTS = 500
 MAX_SPAN = 60.0  # seconds of event time
 

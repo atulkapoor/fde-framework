@@ -255,3 +255,82 @@ def read_with_llm(
         for name, value in kept
     ]
     return facts, dropped
+
+
+def suggest_recognisers(
+    text: str,
+    registry: Registry,
+    endpoint: str | None = None,
+    model: str | None = None,
+    complete=None,
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """The vocabulary treadmill, automated: what the model reads that the
+    deterministic reader missed, as recogniser candidates.
+
+    Three battery rounds taught the same lesson by hand -- "photos" was not
+    an image workload, "the customer VPC" was nobody's hosting -- and every
+    round was a person diffing model-grade reading against the vocabulary.
+    This runs that diff. The output is a proposal, never an edit: each
+    candidate names its dimension, its declared value, the phrase, and the
+    evidence sentence, and a human puts it in the corpus with a test or
+    does not.
+    """
+    from fde.intake.prose import parse_prose
+
+    if complete is None:
+        # The brief is the data being mined; the boundary rule is the same
+        # as the reader's, with no profile to consult: unknown, so refused
+        # for hosted models, always allowed for a local endpoint.
+        check_boundary({}, registry, endpoint)
+
+    deterministic = {f.dimension for f in parse_prose(text, registry)}
+    unresolved = sorted(
+        name for name, entry in registry.dimensions.items()
+        if entry.weight > 0 and name not in deterministic
+        and (entry.recognises or entry.type is ValueType.ENUM)
+    )
+    if not unresolved:
+        return [], []
+
+    schema = extraction_schema(registry, unresolved)
+    prompt = (
+        "Read this text. For each field, extract a value ONLY when the text "
+        "states it, and quote the EXACT phrase (verbatim substring of the "
+        "text) that states it. Omit everything unstated.\n\n"
+        f"Fields, as JSON schema:\n{json.dumps(schema, indent=1)}\n\n"
+        f"Text:\n{text}\n\n"
+        'Reply with a single JSON object mapping field name to '
+        '{"value": ..., "phrase": "..."} and nothing else.'
+    )
+    if complete is not None:
+        raw = complete(prompt)
+    elif endpoint:
+        raw = _complete_local(endpoint, model or "default", prompt)
+    else:
+        raw = _complete_hosted(model or HOSTED_MODEL, prompt)
+
+    lowered = text.lower()
+    suggestions, dropped = [], []
+    for name, entry in _parse_reply(raw).items():
+        dimension = registry.dimensions.get(name)
+        if dimension is None or name not in unresolved:
+            dropped.append(f"{name} (not asked)")
+            continue
+        if not isinstance(entry, dict):
+            dropped.append(f"{name} (malformed reply)")
+            continue
+        value, phrase = entry.get("value"), str(entry.get("phrase") or "")
+        if dimension.type is ValueType.ENUM and value not in dimension.values:
+            dropped.append(f"{name}={value!r} (not a declared value)")
+            continue
+        if not phrase or phrase.lower() not in lowered:
+            # A phrase the text does not contain is a hallucinated citation.
+            dropped.append(f"{name} (phrase not found verbatim in the text)")
+            continue
+        suggestions.append({
+            "dimension": name,
+            "value": str(value),
+            "phrase": phrase.lower(),
+            "evidence": phrase,
+        })
+    return suggestions, dropped

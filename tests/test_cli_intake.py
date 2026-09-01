@@ -281,3 +281,14 @@ def test_frame_offers_the_follow_ups_where_the_gap_appears(tmp_path):
     assert "worth asking next" in result.output
     assert "fde ask" in result.output
     assert result.output.count("- ") >= 3
+
+
+def test_frame_retains_the_brief_beside_its_facts(tmp_path):
+    """A fact's span points into text; a span into a document nobody kept is
+    a citation to nowhere -- and the (text, facts) pair is the fine-tune
+    flywheel's raw material."""
+    root = engagement(tmp_path)
+    runner.invoke(app, ["frame", str(root), "--text", BRIEF])
+    briefs = list((root / "artifacts" / "briefs").glob("*.txt"))
+    assert len(briefs) == 1
+    assert BRIEF in briefs[0].read_text()

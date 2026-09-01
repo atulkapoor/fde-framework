@@ -64,6 +64,14 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
   hardware, dated.
 - fde implement --holdout: cases the delivery never shipped, against
   memorized greens.
+- The LLM as proposer at every seam: fde kb suggest mines briefs for
+  recogniser gaps (verbatim-citation guard, boundary-gated), fde frame
+  retains briefs so spans stay meaningful, and fde kb export-training
+  builds the fine-tune corpus -- adoption governed by the corpus's own
+  finetune rule.
+- Emitted code carries the engagement's numbers: templates receive the
+  settled profile, and a build ends by naming its finishing move
+  (fde implement, with the holdout when one exists).
 - `fde implement`: drives a coding agent until the emitted evals pass,
   with the evals, boundary, controls and decision documents hashed as a
   fence -- an agent that edits the exam is caught, reverted, and stopped.

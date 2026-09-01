@@ -26,6 +26,11 @@ from typing import Any
 # A loop with no cap is an outage waiting for a slow afternoon.
 MAX_STEPS = 8
 MAX_COST = 100.0
+{% if (values | default({})).get('latency_budget_ms') %}
+# The engagement's own stated budget, at p95 under expected peak -- not a
+# reference default. A loop that would blow it is stopped, not apologised for.
+LATENCY_BUDGET_MS = {{ values['latency_budget_ms'] }}
+{% endif %}
 
 
 class {{ class_name }}:

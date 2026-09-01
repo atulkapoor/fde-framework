@@ -274,7 +274,8 @@ def _write_components(
             )
             continue
         body, was_scaffold = _implementation(
-            component, decision, realization, env, sensitive_fields
+            component, decision, realization, env, sensitive_fields,
+            values=architecture.values,
         )
         if was_scaffold:
             scaffolded.append(component)
@@ -341,7 +342,8 @@ def _scaffold(component: str, decision, realization) -> str:
 
 
 def _implementation(
-    component: str, decision, realization, env, sensitive_fields: str = ""
+    component: str, decision, realization, env, sensitive_fields: str = "",
+    values: dict | None = None,
 ) -> str:
     """The reference implementation if one exists, a scaffold otherwise.
 
@@ -363,6 +365,10 @@ def _implementation(
         class_name=_class_name(component),
         rejected=decision.rejected,
         sensitive_fields=sensitive_fields,
+        # Everything discovery settled, so a template can carry the
+        # engagement's own numbers instead of a reference default -- the
+        # difference between generated code and generic code.
+        values=values or {},
     ), False
 
 

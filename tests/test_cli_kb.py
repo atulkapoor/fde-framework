@@ -44,3 +44,25 @@ def test_gaps_reports_without_failing(framework):
     """Gaps are work items, not errors."""
     r = runner.invoke(app, ["kb", "gaps", "--root", str(framework)])
     assert r.exit_code == 0
+
+
+def test_export_training_pairs_briefs_with_their_facts(tmp_path):
+    from typer.testing import CliRunner
+
+    from fde.cli import app
+
+    runner = CliRunner()
+    runner.invoke(app, ["start", "eng", "--base", str(tmp_path)])
+    root = tmp_path / "eng"
+    runner.invoke(app, ["frame", str(root),
+                        "--text", "Extract fields from 200,000 scanned documents."])
+    out = tmp_path / "train.jsonl"
+    result = runner.invoke(app, ["kb", "export-training", str(root),
+                                 "--out", str(out)])
+    assert result.exit_code == 0, result.output
+    import json
+
+    row = json.loads(out.read_text().splitlines()[0])
+    assert "scanned documents" in row["text"]
+    assert any(f["dimension"] == "corpus_size" for f in row["facts"])
+    assert "doctrine" in result.output

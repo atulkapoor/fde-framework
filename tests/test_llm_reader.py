@@ -185,3 +185,33 @@ def test_an_unreachable_local_server_leaves_the_deterministic_reading(tmp_path):
     assert result.exit_code == 0
     assert "How many items in total: 500,000" in result.output
     assert "no model answered" in result.output
+
+
+# --- the vocabulary treadmill, automated ------------------------------------
+
+
+def test_suggest_keeps_only_cited_registry_legal_candidates(reg):
+    import json
+
+    reply = json.dumps({
+        "hosting": {"value": "on-prem", "phrase": "racked in our own basement"},
+        "query_pattern": {"value": "telepathy", "phrase": "basement"},
+        "human_waiting": {"value": "yes", "phrase": "not in the text at all"},
+    })
+    from fde.intake.llm_reader import suggest_recognisers
+
+    suggestions, dropped = suggest_recognisers(
+        "The system is racked in our own basement.", reg,
+        complete=lambda prompt: reply,
+    )
+    assert [s["dimension"] for s in suggestions] == ["hosting"]
+    assert suggestions[0]["phrase"] == "racked in our own basement"
+    assert any("telepathy" in d for d in dropped)
+    assert any("phrase not found verbatim" in d for d in dropped)
+
+
+def test_suggest_refuses_hosted_without_permission(reg):
+    from fde.intake.llm_reader import suggest_recognisers
+
+    with pytest.raises(BoundaryRefusal):
+        suggest_recognisers("Some client text.", reg, endpoint=None)
