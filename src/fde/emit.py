@@ -580,6 +580,84 @@ def _write_boundary(architecture: Architecture, out: Path) -> None:
     )
 
 
+_LLM_PROVIDER = '''"""The one place this project talks to a language model.
+
+Configuration is environment, not code:
+
+- LLM_ENDPOINT   an OpenAI-compatible server on this machine or network
+                 (vLLM, Ollama) -- the first-class path, because it works
+                 inside a boundary.
+- LLM_MODEL      model name for that endpoint (or the hosted default).
+- ANTHROPIC_API_KEY  the hosted path -- refused outright when this build
+                 carries a boundary, because a brief that may not leave
+                 does not get to leave via the judge.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import urllib.request
+
+
+class ModelUnconfigured(RuntimeError):
+    """No model is reachable; nothing here guesses instead."""
+
+
+def _boundary_present() -> bool:
+    try:
+        import app.boundary  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def complete(prompt: str, timeout: float = 120.0) -> str:
+    endpoint = os.environ.get("LLM_ENDPOINT")
+    if endpoint:
+        body = json.dumps({
+            "model": os.environ.get("LLM_MODEL", "default"),
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0,
+        }).encode()
+        request = urllib.request.Request(
+            endpoint.rstrip("/") + "/v1/chat/completions",
+            data=body, headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return json.load(response)["choices"][0]["message"]["content"]
+
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        if _boundary_present():
+            raise ModelUnconfigured(
+                "this build carries a data boundary, so the hosted model is "
+                "refused -- point LLM_ENDPOINT at a model inside it"
+            )
+        import anthropic
+
+        response = anthropic.Anthropic().messages.create(
+            model=os.environ.get("LLM_MODEL", "claude-haiku-4-5-20251001"),
+            max_tokens=1024,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return "".join(b.text for b in response.content if b.type == "text")
+
+    raise ModelUnconfigured(
+        "no model is configured -- set LLM_ENDPOINT to an OpenAI-compatible "
+        "local server (vLLM or Ollama), or ANTHROPIC_API_KEY where the "
+        "boundary allows it"
+    )
+'''
+
+
+def _needs_model(architecture: Architecture) -> bool:
+    approaches = {
+        d.approach for d in architecture.decisions.values() if d.approach
+    }
+    return bool(approaches & {"judged", "llm", "llm-extraction", "llm-scrubbing",
+                              "cascade", "model-planner"})
+
+
 def _write_evals(architecture: Architecture, out: Path, pairs_path: Path | None) -> None:
     """The measurement the project ships with.
 
@@ -606,8 +684,15 @@ def _write_evals(architecture: Architecture, out: Path, pairs_path: Path | None)
             "".join(json.dumps(c, default=str) + "\n" for c in cases)
         )
 
+    evaluation = architecture.decisions.get("evaluation")
+    judged = bool(evaluation and evaluation.approach == "judged")
+    if _needs_model(architecture):
+        (out / "app" / "llm.py").write_text(_LLM_PROVIDER)
+
     (evals / "taxonomy.py").write_text(_TAXONOMY)
-    (evals / "harness.py").write_text(_HARNESS.format(metrics=json.dumps(metrics)))
+    (evals / "harness.py").write_text(
+        _HARNESS.format(metrics=json.dumps(metrics), judged=judged)
+    )
 
     golden_count = len(suite.golden) if suite else 0
     (evals / "acceptance.md").write_text(_acceptance(architecture, golden_count))
@@ -773,6 +858,34 @@ def load(name):
     return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
 
 
+# A freeform answer never equals its reference byte for byte, so a judged
+# evaluation scores golden cases with a model comparing candidate to
+# reference -- the CI-grade smoke check. Human calibration of the full judge
+# stays in evals/acceptance.md; this gate only refuses the obviously wrong.
+JUDGED = {judged}
+JUDGE_THRESHOLD = 0.7
+
+
+def judge_score(actual, expected):
+    from app.llm import complete
+
+    reply = complete(
+        "Reference answer:\\n" + repr(expected) + "\\n\\nCandidate answer:\\n"
+        + repr(actual) + "\\n\\nDoes the candidate convey the same content as "
+        "the reference? Reply with one number from 0 to 1 and nothing else."
+    )
+    try:
+        return max(0.0, min(1.0, float(reply.strip())))
+    except ValueError:
+        return 0.0  # an ungradeable reply is a failing grade, visibly
+
+
+def matches(actual, expected):
+    if not JUDGED:
+        return actual == expected
+    return judge_score(actual, expected) >= JUDGE_THRESHOLD
+
+
 def run_layer(name, cases, predict):
     if not cases:
         return {{"layer": name, "cases": 0, "score": None, "note": "no cases supplied"}}
@@ -806,7 +919,7 @@ def run_layer(name, cases, predict):
             failures.append({{"id": case.get("id"), "source": classify(
                 expected, None, {{"exception": exc}})}})
             continue
-        if actual == expected:
+        if matches(actual, expected):
             correct += 1
         else:
             failures.append({{"id": case.get("id"),
@@ -834,8 +947,14 @@ def main():
     # fails, which is the point: a gate that cannot say no is not a gate.
     from app.pipeline import run as predict
 
-    report = [run_layer(n, load(n), predict)
-              for n in ("golden", "edge_case", "adversarial")]
+    try:
+        report = [run_layer(n, load(n), predict)
+                  for n in ("golden", "edge_case", "adversarial")]
+    except Exception as exc:
+        if type(exc).__name__ == "ModelUnconfigured":
+            print(f"the evaluation is judge-based and {{exc}}", file=sys.stderr)
+            return 1
+        raise
 
     print(f"metrics: {{', '.join(METRICS)}}")
     for layer in report:

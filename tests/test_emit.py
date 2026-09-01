@@ -661,3 +661,118 @@ def test_an_empty_golden_set_fails_the_harness(built, tmp_path):
     )
     assert result.returncode == 1
     assert "nothing was measured" in result.stderr
+
+
+# --- the judge reaches the harness ------------------------------------------
+
+
+FREEFORM = dict(
+    output_shape="freeform", input_format="documents", corpus_size=60_000,
+    data_residency="may_leave", hosting="customer-vpc", human_waiting="yes",
+    latency_budget_ms=4000, query_pattern="lookup",
+)
+
+
+def test_a_judged_evaluation_emits_a_judge_based_harness(reg, tmp_path):
+    """Freeform output decides judged evaluation, and prose never equals its
+    reference byte for byte -- an exact-match harness for that system is an
+    exam nobody can pass honestly."""
+    out = tmp_path / "p"
+    emit(architect(profile(**FREEFORM), reg), out)
+    harness = (out / "evals" / "harness.py").read_text()
+    assert "JUDGED = True" in harness
+    assert (out / "app" / "llm.py").exists()
+
+
+def test_a_field_match_evaluation_keeps_exact_scoring(reg, tmp_path):
+    out = tmp_path / "p"
+    emit(architect(profile(**COMPLETE), reg), out)
+    harness = (out / "evals" / "harness.py").read_text()
+    assert "JUDGED = False" in harness
+
+
+def test_the_provider_refuses_hosted_models_inside_a_boundary(reg, tmp_path):
+    """The judge is not an exception to the boundary: a brief that may not
+    leave does not get to leave via the grader."""
+    values = {**FREEFORM, "data_residency": "cannot_leave", "hosting": "on-prem"}
+    out = tmp_path / "p"
+    emit(architect(profile(**values), reg), out)
+    result = subprocess.run(
+        [sys.executable, "-c",
+         "from app.llm import complete, ModelUnconfigured\n"
+         "try:\n    complete('x')\nexcept ModelUnconfigured as e:\n"
+         "    print('REFUSED:', e)"],
+        cwd=out, capture_output=True, text=True,
+        env={"PATH": "/usr/bin", "ANTHROPIC_API_KEY": "sk-test"},
+    )
+    assert "REFUSED:" in result.stdout
+    assert "boundary" in result.stdout
+
+
+def test_a_judged_harness_scores_against_a_local_judge(reg, tmp_path):
+    """End to end: emitted freeform project, a stub pipeline, a judge on a
+    localhost endpoint -- the harness produces a meaningful score instead
+    of comparing prose for equality."""
+    import json as jsonlib
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text("".join(jsonlib.dumps(
+        {"id": str(i), "verified": True,
+         "input": f"Question {i} about the guideline.",
+         "output": f"An answer citing section {i}."}) + "\n" for i in range(5)))
+    out = tmp_path / "p"
+    emit(architect(profile(**FREEFORM), reg), out, pairs_path=pairs)
+
+    (out / "app" / "pipeline.py").write_text(
+        "from app.contract import RefusedInput\n\n\n"
+        "def run(payload):\n"
+        "    if isinstance(payload, str) and not payload.strip():\n"
+        "        raise RefusedInput('empty question')\n"
+        "    return 'A paraphrased but faithful answer.'\n"
+    )
+
+    class Judge(BaseHTTPRequestHandler):
+        def do_POST(self):
+            body = jsonlib.dumps({"choices": [{"message": {"content": "0.9"}}]}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Judge)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        result = subprocess.run(
+            [sys.executable, "evals/harness.py", "--min-score", "0.5"],
+            cwd=out, capture_output=True, text=True,
+            env={"PATH": "/usr/bin",
+                 "LLM_ENDPOINT": f"http://127.0.0.1:{server.server_port}"},
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+        assert "100.0%" in result.stdout
+    finally:
+        server.shutdown()
+
+
+def test_an_unconfigured_judge_is_a_clear_red(reg, tmp_path):
+    import json as jsonlib
+
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text("".join(jsonlib.dumps(
+        {"id": str(i), "verified": True, "input": f"Q{i}?", "output": f"A{i}."})
+        + "\n" for i in range(4)))
+    out = tmp_path / "p"
+    emit(architect(profile(**FREEFORM), reg), out, pairs_path=pairs)
+    (out / "app" / "pipeline.py").write_text("def run(p):\n    return 'x'\n")
+    result = subprocess.run(
+        [sys.executable, "evals/harness.py"], cwd=out,
+        capture_output=True, text=True, env={"PATH": "/usr/bin"},
+    )
+    assert result.returncode == 1
+    assert "judge-based" in result.stderr and "no model is configured" in result.stderr
