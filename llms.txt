@@ -6,7 +6,8 @@
 > cites evidence and names rejected alternatives, and code generation that
 > emits a working project with an evaluation harness, deployment assets,
 > an operations runbook, and a risk page. It supports on-premise,
-> customer-VPC and air-gapped deployment, and never calls an LLM itself —
+> customer-VPC and air-gapped deployment, and never calls an LLM on its
+> decision path —
 > the same profile always produces the same project.
 
 Key facts:
@@ -14,7 +15,7 @@ Key facts:
 - Intake surfaces: free-flow prose, documents (PDF/docx), sample
   input/output pairs, a role-scoped interview (sponsor, eval owner, user,
   admin, skeptic — optionally one scope axis at a time via --scope:
-  functional, non-functional, data, environment, operational, commercial),
+  functional, non_functional, data, environment, operational, commercial),
   and a hardware scan. All emit Facts into one Profile.
 - Provenance ordering is dimension-dependent: measurements outrank
   statements about the environment; stated requirements outrank
@@ -27,6 +28,14 @@ Key facts:
   intends to ship, and a client security review whenever the system lives
   in their environment or touches their systems. Waivers are recorded with reasons and shipped in the
   generated RISKS.md.
+- Multi-modal input is first-class: a system taking photos AND documents
+  AND telemetry (or voice, or video) fans one perception path per
+  modality, each decided by its own rules, all ordered before downstream.
+- fde triage ranks candidate problem statements by what discovery can
+  already decide; fde cost sizes fleets, compares hosting, and computes
+  per-seat unit economics with the cascade/caching/loop-bound levers
+  priced; fde scan recommends a local model sized to the measured
+  hardware.
 - Hosting topologies: public-saas, managed-api, customer-vpc, hybrid,
   on-prem, air-gapped. Hybrid is first-class: sensitive work pinned
   inside, burst outside, the boundary between them enforced in the

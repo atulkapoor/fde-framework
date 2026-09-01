@@ -40,6 +40,8 @@ intake ──> fact log ──> permutation space ──> gates ──> decide �
 | `space.py` | The permutation space; facts prune candidates to a fixed point |
 | `predicate.py` | The tiny predicate grammar (`always`, `==`, `and`, comparisons) |
 | `gates.py` | Seven gates before building; one hard, six waivable with reasons |
+| `implement.py` | Bounded agent loop: harness as stop condition, evals/boundary/contract hashed as a fence, holdout against memorized greens |
+| `intake/llm_reader.py` | Optional model-proposed facts at weakest provenance; registry-derived schema; boundary-gated |
 | `decide.py` | Simplest applicable approach per component, evidence cited, rejections named |
 | `decompose.py` | Which components a profile puts in scope |
 | `architect.py` | The join: decisions + graph + topology + realizations + licences |

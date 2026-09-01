@@ -8,7 +8,7 @@ asks: "What accelerator does the machine this runs on have?"
 values: [none, single, multi]
 recognises:
   none: [no gpu, cpu only, cpu-only, no accelerator, no cards]
-  single: [one gpu, a single gpu, one card]
+  single: [one gpu, a single gpu, single gpu, one card]
   multi: [several gpus, multiple gpus, a gpu node, eight cards, four cards]
 ask_role: [admin]
 ---

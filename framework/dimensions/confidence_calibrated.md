@@ -11,6 +11,11 @@ recognises:
     - confidence is calibrated
     - we measured the error rate
     - validated against ground truth
+  "false":
+    - never been calibrated
+    - never calibrated
+    - not calibrated
+    - confidence is a guess
 ---
 Whether a confidence score means anything.
 

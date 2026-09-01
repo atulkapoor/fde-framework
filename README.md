@@ -33,10 +33,10 @@ fde build acme --out project     # code + evals + deploy assets + runbook
 | | |
 |---|---|
 | **Discovery that compounds** | Prose, PDFs, sample pairs, a role-scoped interview and a hardware scan all feed one profile — provenance decides conflicts, never arrival order, and disagreement between people is surfaced as a finding |
-| **Gates before building** | Six checks with remedies; verified data access cannot be waived, and every waiver ships in the project's `RISKS.md` with its reason |
+| **Gates before building** | Seven checks with remedies; verified data access cannot be waived, and every waiver ships in the project's `RISKS.md` with its reason |
 | **Decisions with receipts** | Simplest applicable approach per component, cited evidence, named rejected alternatives — and `fde override` records your call and honours it on every later run |
 | **A real project out** | Pipeline in topological order, fail-closed approval gates and critics, an eval harness CI can gate on, deploy assets for the substrate that was actually earned, runbook, SLOs, teardown |
-| **Deterministic by design** | The framework itself never calls an LLM: same profile, byte-identical project — a diff between builds means a decision changed |
+| **Deterministic by design** | The decision path never calls an LLM: same profile, byte-identical project — a diff between builds means a decision changed. Model assistance exists only as opt-in commands, and the boundary doctrine governs them |
 | **Jurisdiction as data** | Locale packs preset answers at the weakest provenance and attach dated compliance obligations to the build; they can never change how decisions are made |
 | **Self-evolution, honestly** | Overrides, trigger calibration and anonymised cases are captured per engagement; the corpus grows only through human-reviewed ingestion |
 
@@ -63,7 +63,7 @@ pairs, role-scoped interview, hardware scan) → fact log with provenance →
 permutation space → seven gates → decide → architect → build (code, evals,
 deploy and ops assets, `RISKS.md`, `COMPLIANCE.md`) → retro and case
 capture. Overrides are honoured on the next run, trigger observations feed
-calibration, and a reviewed case can enter the corpus. ~700 tests; three
+calibration, and a reviewed case can enter the corpus. over 800 tests; three
 adversarial review rounds (108 findings, each fixed and pinned as a
 regression test); CI gates on the suite, lint, and a sanitisation scan of
 the tree *and its history*; the evidence corpus is anchored to publicly
@@ -109,8 +109,9 @@ with cited evidence, ranked rejected alternatives, and a measurable trigger for
 when to graduate to something more sophisticated. Seven gates stand before
 building: verified data access (the one that cannot be waived), a re-measurable
 baseline, a named evaluation owner, scope drift against the original statement,
-offline evaluability for air-gapped deployments, and licence compatibility
-against what the client intends to ship.
+offline evaluability for air-gapped deployments, licence compatibility
+against what the client intends to ship, and a client security review wherever
+the system lives in their environment or touches their systems.
 
 **Output** is a project: code, an evaluation harness seeded from the client's
 own examples, deployment artifacts for whichever substrate was actually chosen
@@ -147,7 +148,7 @@ Prerequisites: Python 3.11+ and git. Not yet on PyPI — install from source:
 git clone https://github.com/atulkapoor/fde-framework.git
 cd fde-framework
 python3 --version   # must say 3.11+; an older python3 makes pip backtrack for ages instead of failing fast
-python3 -m venv .venv && .venv/bin/pip install -e ".[dev,documents]"
+python3 -m venv .venv && .venv/bin/pip install -e ".[dev,documents]"  # add ,llm for the hosted-model reader path
 ```
 
 Or with [uv](https://docs.astral.sh/uv/): `uv venv && uv pip install -e ".[dev,documents]"`
@@ -206,9 +207,13 @@ project/
 │   ├── components/       #   implementations or honest scaffolds — never silent gaps
 │   ├── pipeline.py       #   topological order; approval gates before anything mutative
 │   ├── controls.py       #   fail-closed: an unwired gate refuses, loudly
-│   └── boundary.py       #   imported at startup when data may not leave
+│   ├── boundary.py       #   imported at startup when data may not leave
+│   ├── contract.py       #   RefusedInput: forbidden input is refused, never guessed at
+│   └── llm.py            #   the one model touchpoint, when a decision needs one (boundary-gated)
 ├── evals/                # golden / edge / adversarial sets from the client's own pairs
-│   └── harness.py        #   fails CI until the pipeline is implemented end to end
+│   ├── harness.py        #   fails CI until implemented; judge-based when the evaluation decided judged
+│   ├── acceptance.md     #   blind UAT protocol for the client's own judges
+│   └── load.py           #   p95 against the stated budget (when one was stated)
 ├── deploy/               # the substrate that was earned + TEARDOWN.md for all of it
 ├── ops/                  # runbook keyed to the failure taxonomy, SLOs, rollback
 ├── ARCHITECTURE.md       # scope read-out, decisions, tools & alternatives, agent posture
@@ -226,9 +231,11 @@ project/
 | `fde samples <eng> --file pairs.jsonl` | input/output pairs → contract, metrics, golden set |
 | `fde ask <eng> --role admin` | role-scoped interview, ordered by what changes the design |
 | `fde ask <eng> --role admin --scope non_functional` | one scope axis at a time — the dedicated NFR pass |
-| `fde scan <eng>` | measure the hardware; only measurements earn DETECTED |
+| `fde scan <eng>` | measure the hardware, and get a local-model plan sized to it (runtime, judge, coder) |
 | `fde status <eng>` | gates, gaps, waivers, disagreements |
 | `fde baseline / data-access / security-review / waive / restate` | satisfy or knowingly waive a gate |
+| `fde cost --price-per-seat 25 --workflows-per-day 8` | unit economics: whether a seat earns more than it burns, with the levers priced |
+| `fde samples <eng> --file pairs.jsonl --sensitive <field>` | golden/edge/adversarial evals from the client's own pairs, sensitive fields marked |
 | `fde reuse <eng> <stack>` | record what the client already operates, so reuse can beat adoption |
 | `fde locale <eng> eu-gdpr` | jurisdiction pack: presets plus obligations emitted as COMPLIANCE.md |
 | `fde architect <eng>` | the design, rationale and rejections |
@@ -316,12 +323,21 @@ against it is a deliberate, evidenced act.
 
 ## Privacy
 
-Everything runs from plain files on your machine. The framework makes **no
+Everything runs from plain files on your machine. The default path makes **no
 network calls, has no telemetry, and never transmits engagement content
 anywhere** — it works on a plane and inside an air gap, and a text editor is
-always a legal way into its state. The framework itself never calls an LLM;
-models appear only in the systems it *generates*, where the profile justifies
-one, behind swappable interfaces.
+always a legal way into its state. Discovery, decisions, and builds never call
+an LLM.
+
+Three commands are the deliberate exceptions, each opt-in and each governed by
+the framework's own boundary doctrine: `fde frame --reader llm` (a model
+proposes facts, at the weakest provenance — refused to hosted models unless the
+engagement states data may leave; local endpoints always allowed), `fde
+implement` (drives a coding agent you name), and the judge-based eval harness
+in *generated* projects whose evaluation decided `judged` (configured by
+`LLM_ENDPOINT`, hosted path refused inside a boundary). Nothing calls a model
+silently, and `fde scan` recommends a local model sized to your hardware so
+none of it needs to leave the machine.
 
 Engagement directories (client facts, baselines, gate state) are excluded
 from version control by construction and enforced in CI — along with
@@ -351,15 +367,16 @@ The registry is the shared asset; engagements are private working state.
 - **PyPI release** — after the first tagged version.
 - **More locale packs and stacks** — both are data; contributions enter
   against [CONTRIBUTING.md](CONTRIBUTING.md)'s contract.
-- **Access-control scoping** — who may use the system, under what roles;
-  today the posture section covers what acts on the world, not who acts on
-  it. Needs a dimension a decision genuinely depends on, not a checkbox.
-- **Field-level data sensitivity** — data_residency asks whether data can
-  leave, not which fields are PII; redaction/masking components would hang
-  off the answer.
-- **Multi-opportunity triage** — choosing *which* problem to build sits
-  upstream of `fde start` and stays out of scope on purpose; the framework
-  begins where a problem has been chosen.
+- **Language, channel, and device axes** — six of twenty industry test
+  statements named regional languages, low bandwidth, or basic devices;
+  the honest wiring (per-language evaluation, SMS/IVR serving approaches,
+  safeguarding governance) is a corpus milestone, not a checkbox.
+- **Scale words** — "millions of applications", "tens of millions of
+  players": refusing to guess a number from "millions" is doctrine, and a
+  better answer than refusal is still owed.
+- **Capability-verb extraction** — "update the claims system of record"
+  implies an integration no regex can count; the LLM reader proposes facts
+  today, and component hints are its natural next job.
 - **The honest gaps list lives in the tool**: `fde kb gaps` and
   `fde kb sweep` report what the corpus is missing and which profile shapes
   no approach can serve yet.

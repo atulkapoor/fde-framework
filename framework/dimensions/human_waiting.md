@@ -18,6 +18,7 @@ recognises:
     - offline process
   "yes":
     - user is waiting
+    - person is waiting
     - is waiting on
     - someone is waiting
     - waiting for the answer

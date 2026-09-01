@@ -6,7 +6,7 @@ kind: requirement
 weight: 1.0
 asks: "Do the fields themselves contain personal or otherwise sensitive data?"
 recognises:
-  "true": [contains pii, personally identifiable, personal data in the fields, patient names, customer names and addresses]
+  "true": [contains pii, contain pii, fields contain pii, personally identifiable, personal data in the fields, personal health information, phi, patient names, customer names and addresses]
   "false": [no pii, fully anonymised, already pseudonymised, synthetic data only]
 ask_role: ['admin', 'eval_owner']
 ---

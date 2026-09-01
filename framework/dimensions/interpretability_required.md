@@ -8,6 +8,8 @@ asks: "Must a decision be explainable to someone outside the team?"
 recognises:
   "true":
     - explainable to the regulator
+    - explainability is required
+    - explainability required
     - must be explainable
     - must be interpretable
     - needs to be auditable by

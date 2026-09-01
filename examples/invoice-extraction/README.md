@@ -22,6 +22,15 @@ fde frame engagements/acme --file examples/invoice-extraction/brief.md
 #   - How many are verified or labelled: 10,000
 #   - How many systems does this have to touch: 3
 #   - Is a person waiting for the result: yes
+#
+# Correct anything wrong before we go further.
+#
+# worth asking next (fde ask <eng> --role <who>):
+#   - What accelerator does the machine this runs on have?   [admin]
+#   - Who may use this -- one operating team, distinct roles with different
+#     permissions, or anyone internal?   [admin/sponsor]
+#   - What availability does this need -- always on, business hours, or best
+#     effort?   [sponsor/admin]
 
 fde samples engagements/acme --file examples/invoice-extraction/pairs.jsonl
 # 3 pairs, 2 fields — the pairs settle the output shape and seed the golden set
