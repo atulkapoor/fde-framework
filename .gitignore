@@ -1,37 +1,31 @@
-# Raw, unsanitized material. Nothing here is ever committed.
-inbox/
 
-# Working notes and research. Not part of the product.
-docs/
-
+!.env.example
 # Client engagement workspaces. Never committed.
-engagements/
-
-# Python
-__pycache__/
-*.py[cod]
-.venv/
-venv/
-*.egg-info/
-.pytest_cache/
-.ruff_cache/
-dist/
-build/
-
 # Env / secrets
+# OS / editor
+# Python
+# Raw, unsanitized material. Nothing here is ever committed.
+# Sanitisation denylist. Contains the names it exists to keep out.
+# Supplied material and derived seed. Re-expressed as framework/ templates; never committed raw.
+# Working notes and research. Not part of the product.
+*.egg-info/
+*.py[cod]
+*.swp
+.DS_Store
+.coverage
 .env
 .env.*
-!.env.example
-
-# OS / editor
-.DS_Store
-*.swp
 .idea/
-
-# Supplied material and derived seed. Re-expressed as framework/ templates; never committed raw.
-seed/
-
-# Sanitisation denylist. Contains the names it exists to keep out.
+.pytest_cache/
+.ruff_cache/
 .sanitisation-denylist
-.coverage
+.venv/
+__pycache__/
+build/
 coverage.xml
+dist/
+docs/
+engagements/
+inbox/
+seed/
+venv/
