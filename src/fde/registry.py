@@ -71,6 +71,28 @@ class Registry(BaseModel):
     files: dict[tuple[str, str], str] = Field(default_factory=dict)
 
 
+def default_root() -> Path:
+    """Where the registry lives: a checkout's ./framework when present, else
+    the copy shipped inside the installed package.
+
+    Local first, always -- a contributor editing the corpus must see their
+    edits, not the packaged snapshot. Public because library callers need
+    the same resolution the CLI uses.
+    """
+    local = Path("framework")
+    if local.is_dir():
+        return local
+    try:
+        from importlib.resources import files
+
+        packaged = Path(str(files("fde") / "framework"))
+        if packaged.is_dir():
+            return packaged
+    except (ImportError, TypeError):
+        pass
+    return local
+
+
 def load_registry(root: str | Path) -> Registry:
     root = Path(root)
     if not root.is_dir():

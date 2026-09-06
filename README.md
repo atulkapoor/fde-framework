@@ -1,6 +1,6 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/atulkapoor/fde-framework/main/assets/banner-dark.svg">
-  <img src="https://raw.githubusercontent.com/atulkapoor/fde-framework/main/assets/banner-light.svg" alt="fde — a framework for Forward Deployed Engineers" width="760">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/atulkapoor/fde-framework/main/assets/banner-dark.png">
+  <img src="https://raw.githubusercontent.com/atulkapoor/fde-framework/main/assets/banner-light.png" alt="fde — a framework for Forward Deployed Engineers" width="760">
 </picture>
 
 # fde — a framework for Forward Deployed Engineers
@@ -11,6 +11,15 @@
 [![Downloads](https://img.shields.io/pypi/dm/fde-framework?color=blueviolet)](https://pypistats.org/packages/fde-framework)
 ![Status](https://img.shields.io/badge/status-alpha-orange)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
+
+<p>
+  <a href="#install">Install</a> ·
+  <a href="#try-it-in-two-minutes">Quickstart</a> ·
+  <a href="ARCHITECTURE.md">Architecture</a> ·
+  <a href="examples/invoice-extraction/">Worked example</a> ·
+  <a href="CONTRIBUTING.md">Contributing</a> ·
+  <a href="https://pypi.org/project/fde-framework/">PyPI</a>
+</p>
 
 **fde** is an open-source framework for Forward Deployed Engineers: it takes a
 client engagement from a problem statement to a runnable, deployable AI
@@ -31,7 +40,7 @@ fde architect acme               # the design, with cited rationale
 fde build acme --out project     # code + evals + deploy assets + runbook
 ```
 
-<img src="https://raw.githubusercontent.com/atulkapoor/fde-framework/main/assets/demo.svg" alt="fde in a terminal: a paragraph becomes typed facts, an architecture with a fingerprint, and a build that refuses until the hard gate passes" width="780">
+<img src="https://raw.githubusercontent.com/atulkapoor/fde-framework/main/assets/demo.png" alt="fde in a terminal: a paragraph becomes typed facts, an architecture with a fingerprint, and a build that refuses until the hard gate passes" width="780">
 
 *That refusal at the end is the product working: no baseline, no verified data
 access — no build. The remedies ship with every gate.*
@@ -238,6 +247,34 @@ project/
 ├── RISKS.md              # every waived gate and overridden recommendation
 └── COMPLIANCE.md         # jurisdiction obligations, when a locale pack was applied
 ```
+
+## Python API
+
+The CLI is a thin layer; everything is importable. The registry loads from the
+installed wheel, so this runs anywhere:
+
+```python
+from fde.architect import architect
+from fde.intake.prose import parse_prose
+from fde.models.profile import Profile
+from fde.registry import default_root, load_registry
+
+registry = load_registry(default_root())
+
+profile = Profile()
+profile.ingest(parse_prose(
+    "500,000 scanned invoices; data cannot leave; 10,000 verified; "
+    "a person is waiting; structured records out.", registry))
+
+design = architect(profile, registry)
+print(design.topology)                    # customer-vpc
+for component, decision in sorted(design.decisions.items()):
+    if decision.approach:
+        print(component, decision.approach, decision.rationale)
+```
+
+Every decision object carries its rationale and its rejected alternatives —
+the same receipts the emitted `ARCHITECTURE.md` prints.
 
 ## Common commands
 

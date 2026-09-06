@@ -47,7 +47,7 @@ from fde.models.fact import Fact
 from fde.models.profile import Profile
 from fde.models.respondent import Respondent, Role
 from fde.predicate import PredicateError, holds
-from fde.registry import KINDS, RegistryError, is_empty, load_registry
+from fde.registry import KINDS, RegistryError, default_root, is_empty, load_registry
 from fde.scan import (
     GPU,
     Hardware,
@@ -63,29 +63,7 @@ app = typer.Typer(help="Take an engagement from problem statement to a runnable 
 kb = typer.Typer(help="Inspect the knowledge base in framework/.")
 app.add_typer(kb, name="kb")
 
-def _default_registry_root() -> Path:
-    """A checkout's ./framework when present, else the copy in the wheel.
-
-    Local first, always: a contributor editing the corpus must see their
-    edits, not the packaged snapshot. The packaged copy is what makes
-    `pip install fde-framework` a working tool rather than a tool with no
-    knowledge base.
-    """
-    local = Path("framework")
-    if local.is_dir():
-        return local
-    try:
-        from importlib.resources import files
-
-        packaged = Path(str(files("fde") / "framework"))
-        if packaged.is_dir():
-            return packaged
-    except (ImportError, TypeError):
-        pass
-    return local
-
-
-DEFAULT_ROOT = _default_registry_root()
+DEFAULT_ROOT = default_root()
 
 # What `fde retro` writes, and the only shape ingest will treat as a filename.
 CASE_ID = re.compile(r"case-[0-9a-f]{6,32}")

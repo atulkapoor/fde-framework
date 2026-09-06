@@ -44,8 +44,8 @@ ALLOWED = (
     # Synthetic worked engagements only -- the same no-client-material rules
     # apply, and the PII/credential scans below run on these too.
     "examples/",
-    # Hand-authored SVG wordmarks. Vector text only -- a binary image could
-    # smuggle anything, and the binary-file check below refuses those anyway.
+    # Generated brand images. Binaries are refused by the check below unless
+    # individually reviewed and listed.
     "assets/",
 )
 
@@ -80,7 +80,13 @@ def tracked_files() -> list[str]:
 # unless a person has reviewed it and listed it here. Each entry is a
 # reviewed decision, not an exemption category.
 REVIEWED_BINARIES = {
-    "assets/social-preview.png",  # generated banner card, no embedded data
+    # All generated from code in this repository (Pillow scripts), reviewed
+    # visually, no embedded data. PNG rather than SVG because SVG does not
+    # render in the GitHub mobile app or through PyPI's image proxy.
+    "assets/social-preview.png",
+    "assets/banner-dark.png",
+    "assets/banner-light.png",
+    "assets/demo.png",
 }
 
 
