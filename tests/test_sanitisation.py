@@ -76,6 +76,14 @@ def tracked_files() -> list[str]:
     return [line for line in out.stdout.splitlines() if line]
 
 
+# Binaries cannot be text-scanned, so a tracked binary fails the sweep
+# unless a person has reviewed it and listed it here. Each entry is a
+# reviewed decision, not an exemption category.
+REVIEWED_BINARIES = {
+    "assets/social-preview.png",  # generated banner card, no embedded data
+}
+
+
 def tracked_text() -> dict[str, str]:
     text = {}
     for name in tracked_files():
@@ -85,6 +93,8 @@ def tracked_text() -> dict[str, str]:
         try:
             text[name] = path.read_text(encoding="utf-8")
         except UnicodeDecodeError:
+            if name in REVIEWED_BINARIES:
+                continue
             pytest.fail(f"{name}: binary file tracked; review before publishing")
     return text
 
