@@ -5,6 +5,15 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-09-06
+
+- README images render everywhere: absolute URLs, because PyPI does not
+  serve a repository's relative paths — and each release's page is frozen,
+  so the fix required this patch.
+- A terminal demo card on the front page, rendered from real output,
+  refusal included on purpose.
+- Social-preview image shipped in assets/.
+
 ## [0.1.0] — 2026-09-06
 
 First public release on PyPI: `pip install fde-framework`. The registry

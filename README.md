@@ -1,6 +1,6 @@
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.svg">
-  <img src="assets/banner-light.svg" alt="fde — a framework for Forward Deployed Engineers" width="760">
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/atulkapoor/fde-framework/main/assets/banner-dark.svg">
+  <img src="https://raw.githubusercontent.com/atulkapoor/fde-framework/main/assets/banner-light.svg" alt="fde — a framework for Forward Deployed Engineers" width="760">
 </picture>
 
 # fde — a framework for Forward Deployed Engineers
@@ -31,7 +31,7 @@ fde architect acme               # the design, with cited rationale
 fde build acme --out project     # code + evals + deploy assets + runbook
 ```
 
-<img src="assets/demo.svg" alt="fde in a terminal: a paragraph becomes typed facts, an architecture with a fingerprint, and a build that refuses until the hard gate passes" width="780">
+<img src="https://raw.githubusercontent.com/atulkapoor/fde-framework/main/assets/demo.svg" alt="fde in a terminal: a paragraph becomes typed facts, an architecture with a fingerprint, and a build that refuses until the hard gate passes" width="780">
 
 *That refusal at the end is the product working: no baseline, no verified data
 access — no build. The remedies ship with every gate.*
