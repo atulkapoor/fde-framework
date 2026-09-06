@@ -1,0 +1,18 @@
+name: Corpus gap
+description: A phrasing the reader missed, a dimension nothing asks, an approach the registry lacks
+labels: [corpus]
+body:
+  - type: textarea
+    id: evidence
+    attributes:
+      label: The sentence or situation the corpus missed
+      description: Real phrasing (anonymised) beats a description of it. If `fde kb suggest` proposed something, paste its output.
+    validations:
+      required: true
+  - type: textarea
+    id: expectation
+    attributes:
+      label: What should have been recognised or decided
+  - type: markdown
+    attributes:
+      value: Corpus rules — every approach states avoid_when, every claim cites a case, no client material. See CONTRIBUTING.md.

@@ -1,0 +1,26 @@
+name: Bug report
+description: Something behaved differently than documented
+labels: [bug]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: pip show fde-framework | head -2
+      placeholder: fde-framework 0.1.1, Python 3.12, macOS
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: What you ran, and what happened
+      description: The exact commands and the exact output. The framework's own doctrine applies — a claim needs its evidence.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected instead
+    validations:
+      required: true

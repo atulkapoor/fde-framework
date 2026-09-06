@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+title: fde-framework
+message: If you use this framework, a citation is appreciated.
+type: software
+authors:
+  - family-names: Kapoor
+    given-names: Atul
+repository-code: https://github.com/atulkapoor/fde-framework
+url: https://pypi.org/project/fde-framework/
+license: Apache-2.0
