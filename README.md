@@ -5,8 +5,10 @@
 
 # fde — a framework for Forward Deployed Engineers
 
+[![PyPI](https://img.shields.io/pypi/v/fde-framework?color=3775A9&logo=pypi&logoColor=white)](https://pypi.org/project/fde-framework/)
 [![CI](https://github.com/atulkapoor/fde-framework/actions/workflows/ci.yml/badge.svg)](https://github.com/atulkapoor/fde-framework/actions/workflows/ci.yml)
-![Python](https://img.shields.io/badge/python-3.11%20%7C%203.12-blue)
+![Python](https://img.shields.io/pypi/pyversions/fde-framework?logo=python&logoColor=white)
+[![Downloads](https://img.shields.io/pypi/dm/fde-framework?color=blueviolet)](https://pypistats.org/packages/fde-framework)
 ![Status](https://img.shields.io/badge/status-alpha-orange)
 [![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
 
@@ -22,11 +24,17 @@ evidence, and code generation that ends in something you can actually deploy —
 including on-premise, inside a customer VPC, or fully air-gapped.
 
 ```bash
+pip install fde-framework
 fde start acme --statement "Extract fields from supplier invoices."
 fde ask acme --role admin        # role-scoped discovery interview
 fde architect acme               # the design, with cited rationale
 fde build acme --out project     # code + evals + deploy assets + runbook
 ```
+
+<img src="assets/demo.svg" alt="fde in a terminal: a paragraph becomes typed facts, an architecture with a fingerprint, and a build that refuses until the hard gate passes" width="780">
+
+*That refusal at the end is the product working: no baseline, no verified data
+access — no build. The remedies ship with every gate.*
 
 ## What it does
 
