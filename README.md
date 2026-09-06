@@ -142,13 +142,23 @@ modules that raise with the reason attached, never as silent gaps.
 
 ## Install
 
-Prerequisites: Python 3.11+ and git. Not yet on PyPI — install from source:
+Prerequisites: Python 3.11+.
+
+```bash
+pip install fde-framework          # the registry ships inside the wheel
+fde start acme --statement "..."   # works from any directory
+```
+
+Extras: `pip install "fde-framework[documents]"` for PDF/docx intake, `[llm]`
+for the hosted-model reader path.
+
+Or from source (contributors — a local ./framework outranks the packaged copy):
 
 ```bash
 git clone https://github.com/atulkapoor/fde-framework.git
 cd fde-framework
 python3 --version   # must say 3.11+; an older python3 makes pip backtrack for ages instead of failing fast
-python3 -m venv .venv && .venv/bin/pip install -e ".[dev,documents]"  # add ,llm for the hosted-model reader path
+python3 -m venv .venv && .venv/bin/pip install -e ".[dev,documents]"
 ```
 
 Or with [uv](https://docs.astral.sh/uv/): `uv venv && uv pip install -e ".[dev,documents]"`
@@ -373,7 +383,6 @@ The registry is the shared asset; engagements are private working state.
 - **Rule revision from outcomes** — capture is wired end to end; revision
   deliberately waits for a corpus of measured retrospectives rather than
   pretending a handful is evidence.
-- **PyPI release** — after the first tagged version.
 - **More locale packs and stacks** — both are data; contributions enter
   against [CONTRIBUTING.md](CONTRIBUTING.md)'s contract.
 - **Language, channel, and device axes** — six of twenty industry test

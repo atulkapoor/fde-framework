@@ -5,6 +5,11 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.0] — 2026-09-06
+
+First public release on PyPI: `pip install fde-framework`. The registry
+rides inside the wheel; a bare install knows everything the corpus knows.
+
 ### Added
 - End-to-end pipeline: prose/document/sample/interview/hardware-scan intake →
   append-only fact log with dimension-dependent provenance → permutation
