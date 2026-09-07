@@ -139,6 +139,10 @@ def _prompt(project: Path, check_tail: str) -> str:
     )
 
 
+class AgentMissing(RuntimeError):
+    """The coding agent's command is not on this machine."""
+
+
 def _run_agent(project: Path, agent_cmd: str, prompt: str) -> bool:
     """Run the agent with the brief on stdin, or via {prompt_file}.
 
@@ -156,10 +160,17 @@ def _run_agent(project: Path, agent_cmd: str, prompt: str) -> bool:
         # from inside the project, and the agent died reading its own brief.
         agent_cmd = agent_cmd.replace("{prompt_file}", str(brief.resolve()))
         stdin = ""
-    result = subprocess.run(  # noqa: S603 - the agent is the caller's own command
-        shlex.split(agent_cmd),
-        cwd=project, input=stdin, capture_output=True, text=True, timeout=3600,
-    )
+    try:
+        result = subprocess.run(  # noqa: S603 - the agent is the caller's own command
+            shlex.split(agent_cmd),
+            cwd=project, input=stdin, capture_output=True, text=True, timeout=3600,
+        )
+    except FileNotFoundError as exc:
+        raise AgentMissing(
+            f"the coding agent {shlex.split(agent_cmd)[0]!r} is not on this "
+            f"machine. Install it, or name another with --agent-cmd -- "
+            f'e.g. --agent-cmd "aider --yes --message-file {{prompt_file}}".'
+        ) from exc
     return result.returncode == 0
 
 

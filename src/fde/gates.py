@@ -205,8 +205,9 @@ def validate_baseline(baseline: dict[str, Any] | None) -> Result:
     if not baseline.get("sampled"):
         return Result(
             False,
-            "cycle time must come from a representative sample, not the best case; "
-            "the difference between what is possible and what happens is the project",
+            "cycle time must come from a representative sample, not the best "
+            "case -- add `sampled: {n: 40, method: ...}` once it does; the "
+            "difference between what is possible and what happens is the project",
         )
     definitions_inline = all(
         isinstance(baseline.get(f), dict) and baseline[f].get("definition")
@@ -215,8 +216,10 @@ def validate_baseline(baseline: dict[str, Any] | None) -> Result:
     if not (baseline.get("definitions_recorded") or definitions_inline):
         return Result(
             False,
-            "the definitions are not recorded, so this is not re-measurable in "
-            "sixty days and nothing can be compared against it later",
+            "the definitions are not recorded -- give each field a "
+            "`definition:` (or add `definitions_recorded: true`); without "
+            "them this is not re-measurable in sixty days and nothing can "
+            "be compared against it later",
         )
     return Result(True)
 
@@ -290,8 +293,9 @@ def _data_access(data_access: bool | None) -> Gate:
         "data_access",
         False,
         reason="Credentials have not been shown to work against real data.",
-        remedy="Get a connection that returns real rows, even a handful. "
-               "Promised access is not access.",
+        remedy="Get a connection that returns real rows, even a handful, "
+               "then record it: `fde data-access <eng> --note \"what "
+               "returned rows\"`. Promised access is not access.",
         hard=True,
     )
 
@@ -307,8 +311,9 @@ def _baseline(baseline: dict[str, Any] | None) -> Gate:
         remedy=(
             "Measure volume, cycle time per unit, labour hours, rework rate, "
             "exception rate, error rate and the business metric, over 30 to 60 "
-            "days, recording the definitions. Where history is unreliable, "
-            "measure forward rather than accept an estimate."
+            "days, recording the definitions, then `fde baseline <eng> --file "
+            "baseline.yaml`. Where history is unreliable, measure forward "
+            "rather than accept an estimate."
         ),
     )
 
@@ -358,8 +363,10 @@ def _client_readiness(profile: Profile) -> Gate:
         False,
         reason="Nobody has been named who can say what separates acceptable "
                "from excellent.",
-        remedy="Find the person whose judgement the client would accept about a "
-               "borderline output. Without them nothing downstream is measurable.",
+        remedy="Find the person whose judgement the client would accept about "
+               "a borderline output, then interview them: `fde ask <eng> "
+               "--role eval_owner`. Without them nothing downstream is "
+               "measurable.",
     )
 
 

@@ -60,6 +60,26 @@ from fde.scan import (
 from fde.space import Contradiction, Space
 
 app = typer.Typer(help="Take an engagement from problem statement to a runnable project.")
+
+
+@app.callback(invoke_without_command=True)
+def _main(
+    ctx: typer.Context,
+    version: Annotated[bool, typer.Option(
+        "--version", help="Print the version and exit."
+    )] = False,
+) -> None:
+    if version:
+        from importlib.metadata import version as pkg_version
+
+        try:
+            typer.echo(f"fde-framework {pkg_version('fde-framework')}")
+        except Exception:  # noqa: BLE001 - source checkout without install metadata
+            typer.echo("fde-framework (source checkout)")
+        raise typer.Exit(0)
+    if ctx.invoked_subcommand is None:
+        typer.echo(ctx.get_help())
+        raise typer.Exit(0)
 kb = typer.Typer(help="Inspect the knowledge base in framework/.")
 app.add_typer(kb, name="kb")
 
@@ -71,7 +91,10 @@ CASE_ID = re.compile(r"case-[0-9a-f]{6,32}")
 
 @kb.command("validate")
 def kb_validate(
-    root: Annotated[Path, typer.Option(help="Registry directory.")] = DEFAULT_ROOT,
+    root: Annotated[Path, typer.Option(
+        "--registry", "--root",
+        help="Registry directory (--root kept as an alias).",
+    )] = DEFAULT_ROOT,
     lenient: Annotated[
         bool, typer.Option(help="Report dangling links without failing.")
     ] = False,
@@ -123,6 +146,30 @@ def start(
     typer.echo("  artifacts/  drop specs, schemas and sample pairs here")
     if not statement:
         typer.echo("\nNo statement yet. Add prose later, or start answering questions.")
+        return
+
+    # The statement is prose; read it like prose. Handing the tool a
+    # sentence and being told "no facts recorded yet" one command later
+    # made the first minute feel broken -- the reader was just never asked.
+    try:
+        registry = load_registry(DEFAULT_ROOT)
+    except RegistryError:
+        return
+    facts = parse_prose(statement, registry, source="statement")
+    if facts:
+        typer.echo("")
+        typer.echo(restate(facts, registry))
+        session_id = _next_session_id(engagement, "frame")
+        briefs = engagement.artifacts_dir / "briefs"
+        briefs.mkdir(parents=True, exist_ok=True)
+        (briefs / f"{session_id}.txt").write_text(statement)
+        engagement.append(
+            Session(
+                session_id=session_id,
+                respondent=Respondent(role=Role.SYSTEM),
+                facts=facts,
+            )
+        )
 
 
 @app.command("status")
@@ -620,9 +667,13 @@ def _put(dimension, question):
     End of input ends the interview rather than aborting it: whatever was
     gathered up to that point is still worth recording.
     """
+    hint = ""
+    if getattr(dimension, "values", None):
+        hint = f"  [{' / '.join(dimension.values)}]"
     while True:
         try:
-            reply = typer.prompt(f"\n{question.asks}", default="", show_default=False)
+            reply = typer.prompt(f"\n{question.asks}{hint}", default="",
+                                 show_default=False)
         except (EOFError, typer.Abort):
             return None
         answer = parse_answer(dimension, reply)
@@ -693,6 +744,12 @@ def _engagement(root: Path):
     file is a one-line explanation, never a traceback -- a stack trace at a
     client site reads as the tool being broken rather than the input.
     """
+    root = Path(root)
+    # `fde ask acme` after `fde start acme` should just work: start put it
+    # in engagements/acme, and making every later command spell that out
+    # cost every new user their first two minutes.
+    if not (root / "facts").is_dir() and (Path("engagements") / root).is_dir():
+        root = Path("engagements") / root
     try:
         engagement = load_engagement(root)
         # Read once here so a hand-edited gates.yaml fails as a sentence
@@ -1648,7 +1705,7 @@ def implement_cmd(
     reported if the agent touches them. Every round lands in
     ops/implement-log.md.
     """
-    from fde.implement import run_loop
+    from fde.implement import AgentMissing, run_loop
 
     project = Path(project)
     if not (project / "evals").is_dir() or not (project / "app").is_dir():
@@ -1658,8 +1715,12 @@ def implement_cmd(
         )
         raise typer.Exit(1)
 
-    report = run_loop(project, agent_cmd=agent_cmd, max_rounds=max_rounds,
-                      check=check, holdout=holdout)
+    try:
+        report = run_loop(project, agent_cmd=agent_cmd, max_rounds=max_rounds,
+                          check=check, holdout=holdout)
+    except AgentMissing as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
     (project / "ops").mkdir(exist_ok=True)
     (project / "ops" / "implement-log.md").write_text(report.log())
 
@@ -1789,6 +1850,13 @@ def cost_cmd(
             typer.echo(f"arrival_rate from the engagement: {requests_per_day:,}/day")
         if human_waiting is None and values.get("human_waiting") is not None:
             human_waiting = values["human_waiting"] != "no"
+    if requests_per_day is None and price_per_seat is not None:
+        # Seat economics needs workflows, not fleet volume: the README's own
+        # one-liner failed for demanding a number the check never uses.
+        requests_per_day = int(workflows_per_day)
+        skip_fleet = True
+    else:
+        skip_fleet = False
     if requests_per_day is None:
         typer.echo(
             "no volume to size for -- pass --requests-per-day, or --root an "
@@ -1798,31 +1866,35 @@ def cost_cmd(
     if human_waiting is None:
         human_waiting = True
 
-    plan = size_for(requests_per_day, params_b, today=stamp)
-    comparison = compare_hosting(
-        requests_per_day, params_b, human_waiting=human_waiting, today=stamp
-    )
+    if skip_fleet:
+        plan = None
+    else:
+        plan = size_for(requests_per_day, params_b, today=stamp)
+    if plan is not None:
+        comparison = compare_hosting(
+            requests_per_day, params_b, human_waiting=human_waiting, today=stamp
+        )
 
-    typer.echo(
-        f"{params_b:g}B at {requests_per_day:,}/day"
-        f"{' (interactive)' if human_waiting else ' (batch, nobody waiting)'}\n"
-    )
-    typer.echo(f"  naive:  {plan['naive_replicas']} replica(s)")
-    typer.echo(
-        f"  real:   {plan['replicas']} replica(s) x {plan['gpus_per_replica']} "
-        f"card(s) = {plan['gpus']} cards"
-    )
-    for name, why in plan["factors"].items():
-        typer.echo(f"      {name}: {why}")
+        typer.echo(
+            f"{params_b:g}B at {requests_per_day:,}/day"
+            f"{' (interactive)' if human_waiting else ' (batch, nobody waiting)'}\n"
+        )
+        typer.echo(f"  naive:  {plan['naive_replicas']} replica(s)")
+        typer.echo(
+            f"  real:   {plan['replicas']} replica(s) x {plan['gpus_per_replica']} "
+            f"card(s) = {plan['gpus']} cards"
+        )
+        for name, why in plan["factors"].items():
+            typer.echo(f"      {name}: {why}")
 
-    typer.echo(
-        f"\n  self-hosted  ${comparison['self_hosted_monthly']:,.0f}/mo\n"
-        f"  managed      ${comparison['managed_monthly']:,.0f}/mo\n"
-        f"  -> {comparison['recommendation']}: {comparison['why']}"
-    )
-    typer.echo(
-        f"\n  as of {plan['as_of']} -- {plan['rederive']}"
-    )
+        typer.echo(
+            f"\n  self-hosted  ${comparison['self_hosted_monthly']:,.0f}/mo\n"
+            f"  managed      ${comparison['managed_monthly']:,.0f}/mo\n"
+            f"  -> {comparison['recommendation']}: {comparison['why']}"
+        )
+        typer.echo(
+            f"\n  as of {plan['as_of']} -- {plan['rederive']}"
+        )
 
     if price_per_seat is not None:
         from fde.costing import unit_economics
@@ -1850,7 +1922,10 @@ def cost_cmd(
 @kb.command("ingest-case")
 def kb_ingest_case(
     case_file: Annotated[Path, typer.Argument(help="A case.json from `fde retro`.")],
-    root: Annotated[Path, typer.Option(help="Registry directory.")] = DEFAULT_ROOT,
+    root: Annotated[Path, typer.Option(
+        "--registry", "--root",
+        help="Registry directory (--root kept as an alias).",
+    )] = DEFAULT_ROOT,
 ) -> None:
     """Bring a captured case into the corpus -- as pending, never as reviewed.
 
@@ -2026,7 +2101,10 @@ def kb_suggest(
 
 @kb.command("sweep")
 def kb_sweep(
-    root: Annotated[Path, typer.Option(help="Registry directory.")] = DEFAULT_ROOT,
+    root: Annotated[Path, typer.Option(
+        "--registry", "--root",
+        help="Registry directory (--root kept as an alias).",
+    )] = DEFAULT_ROOT,
     samples: Annotated[int, typer.Option(help="Fully specified profiles to try.")] = 300,
     seed: Annotated[int, typer.Option(help="Deterministic sampling seed.")] = 0,
 ) -> None:
@@ -2064,7 +2142,10 @@ def kb_sweep(
 
 @kb.command("gaps")
 def kb_gaps(
-    root: Annotated[Path, typer.Option(help="Registry directory.")] = DEFAULT_ROOT,
+    root: Annotated[Path, typer.Option(
+        "--registry", "--root",
+        help="Registry directory (--root kept as an alias).",
+    )] = DEFAULT_ROOT,
 ) -> None:
     """Report what the corpus is missing. Work items, not errors -- always exits 0."""
     try:

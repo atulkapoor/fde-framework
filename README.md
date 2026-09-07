@@ -204,18 +204,18 @@ refuses by name and says exactly what to install.
 ## Try it
 
 ```bash
-.venv/bin/fde start acme --statement "Extract fields from supplier invoices."
-.venv/bin/fde ask engagements/acme --role admin      # role-scoped interview
-.venv/bin/fde status engagements/acme                # gates, gaps, disagreements
-.venv/bin/fde architect engagements/acme             # the design, with rationale
-.venv/bin/fde build engagements/acme --out project   # refuses until gates clear
+fde start acme --statement "Extract fields from supplier invoices."
+fde ask engagements/acme --role admin      # role-scoped interview
+fde status engagements/acme                # gates, gaps, disagreements
+fde architect engagements/acme             # the design, with rationale
+fde build engagements/acme --out project   # refuses until gates clear
 
-.venv/bin/fde scan engagements/acme                  # what this hardware runs
-.venv/bin/fde cost --requests-per-day 500000 --model-b 70   # dated fleet sizing
+fde scan engagements/acme                  # what this hardware runs
+fde cost --requests-per-day 500000 --model-b 70   # dated fleet sizing
 
-.venv/bin/fde kb validate --root framework   # parse and cross-link the registry
-.venv/bin/fde kb gaps     --root framework   # what the corpus is missing
-.venv/bin/fde kb sweep    --root framework   # profiles no approach can serve
+fde kb validate   # parse and cross-link the registry
+fde kb gaps     --root framework   # what the corpus is missing
+fde kb sweep    --root framework   # profiles no approach can serve
 .venv/bin/pytest -q
 ```
 
@@ -246,6 +246,38 @@ project/
 ├── ARCHITECTURE.md       # scope read-out, decisions, tools & alternatives, agent posture
 ├── RISKS.md              # every waived gate and overridden recommendation
 └── COMPLIANCE.md         # jurisdiction obligations, when a locale pack was applied
+```
+
+## The full lifecycle, copy-paste
+
+Everything below runs from an empty directory after `pip install fde-framework`:
+
+```bash
+fde start acme --statement "Extract fields from scanned supplier invoices; \
+data cannot leave; 200,000 documents, 8,000 verified; a person is waiting."
+# plays back the typed facts it read, and the three questions worth asking next
+
+fde ask acme --role eval_owner       # answer what discovery still needs
+fde status acme                      # facts by scope, gates, % settled
+
+cat > baseline.yaml <<'YAML'
+volume: {value: 20000, unit: docs/month, definition: invoices received by AP}
+cycle_time_per_unit_seconds: {value: 300, unit: s, definition: arrival to posted}
+labour_hours_per_week: {value: 35, unit: h/week, definition: AP team keying time}
+rework_rate: {value: 0.1, unit: ratio, definition: entries corrected after post}
+exception_rate: {value: 0.07, unit: ratio, definition: routed to a human queue}
+error_rate: {value: 0.04, unit: ratio, definition: wrong amount or vendor posted}
+business_metric: {value: 9, unit: days, definition: mean days payable outstanding}
+sampled: {n: 40, method: random invoices across two months}
+YAML
+fde baseline acme --file baseline.yaml
+fde data-access acme --note "read replica returned 14 real rows"
+fde security-review acme --note "client infosec walked the data paths"
+fde ask acme --role eval_owner       # or: fde waive acme client_readiness --reason "..."
+
+fde build acme --out project         # refuses until the gates truly pass
+python project/evals/harness.py      # red until implemented -- that's the exam
+fde implement project                # drive a coding agent until it's green
 ```
 
 ## Python API
@@ -429,7 +461,7 @@ The registry is the shared asset; engagements are private working state.
   deliberately waits for a corpus of measured retrospectives rather than
   pretending a handful is evidence.
 - **More locale packs and stacks** — both are data; contributions enter
-  against [CONTRIBUTING.md](CONTRIBUTING.md)'s contract.
+  against [CONTRIBUTING.md](CONTRIBUTING.md)'s contract (and the [code of conduct](CODE_OF_CONDUCT.md)).
 - **Language, channel, and device axes** — six of twenty industry test
   statements named regional languages, low bandwidth, or basic devices;
   the honest wiring (per-language evaluation, SMS/IVR serving approaches,

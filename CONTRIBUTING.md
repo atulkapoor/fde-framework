@@ -116,3 +116,24 @@ realizations is a pattern with a blind spot.
 Commits are authored by the person who wrote them. Do not add co-author trailers
 for tools, and do not attribute work to an AI assistant — CI checks this across
 author, committer and message.
+
+
+## Authoring a template
+
+A realization points at a Jinja2 template (`framework/templates/<component>/
+<approach>.<stack>.py.j2`). Templates render with these variables:
+
+| Variable | What it holds |
+|---|---|
+| `component`, `approach`, `stack`, `interface` | The identity of this realization |
+| `rationale` | The decision's rationale, verbatim |
+| `class_name` | A valid Python class name derived from the component |
+| `rejected` | The rejected alternatives, with reasons |
+| `values` | Everything discovery settled -- use it so emitted code carries the engagement's own numbers (guard with `values | default({})`) |
+| `sensitive_fields` | The declared sensitive fields, as a Python tuple body |
+
+Three rules the shipped-registry tests enforce: the module must declare
+`interface = "..."`, `approach = "..."`, `stack = "..."`; it must be valid
+Python after rendering; and forbidden input raises `RefusedInput` from
+`app.contract` rather than guessing. Write real logic where the approach has
+any -- a scaffold is the honest fallback, not the ambition.

@@ -776,3 +776,12 @@ def test_an_unconfigured_judge_is_a_clear_red(reg, tmp_path):
     )
     assert result.returncode == 1
     assert "judge-based" in result.stderr and "no model is configured" in result.stderr
+
+
+def test_the_delivery_has_a_front_door(built):
+    """A handover-obsessed framework was shipping deliveries with no
+    README: the handover artifact had no front door."""
+    front = (built / "README.md").read_text()
+    assert "evals/harness.py" in front
+    assert "fde implement" in front
+    assert "ARCHITECTURE.md" in front

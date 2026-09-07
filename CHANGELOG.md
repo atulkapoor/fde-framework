@@ -5,6 +5,26 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-09-07
+
+A fresh-eyes usability round, every finding verified in a clean venv:
+
+- The hero quickstart runs verbatim: bare engagement names resolve
+  (`fde ask acme` finds `engagements/acme`), and `fde start` reads its
+  own statement through the prose reader, so the first minute shows
+  typed facts instead of "no facts recorded yet".
+- `fde --version`; interview questions show their legal values with the
+  question; gate remedies name their clearing commands; the baseline
+  refusal names the exact keys that satisfy it.
+- `fde implement` without an agent on PATH is a sentence with the fix,
+  never a traceback; `fde cost --price-per-seat` works without fleet
+  flags.
+- kb subcommands take `--registry` (with `--root` kept as an alias).
+- Every emitted project gets a front-door README; images are PNG so
+  they render on PyPI and mobile; the README gains a copy-paste full
+  lifecycle with the baseline YAML inline, and a Python API section
+  backed by the public `fde.registry.default_root()`.
+
 ## [0.1.1] — 2026-09-06
 
 - README images render everywhere: absolute URLs, because PyPI does not
