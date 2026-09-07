@@ -3,21 +3,33 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>fde-framework — a framework for Forward Deployed Engineers</title>
-<meta name="description" content="Open-source framework for Forward Deployed Engineers (FDE): from client problem statement to a deployable AI project. Typed-fact discovery, seven pre-build gates, evidence-cited architecture, generated evals and runbooks. pip install fde-framework.">
+<title>fde-framework — from problem statement to deployed AI project</title>
+<meta name="description" content="Open-source framework for Forward Deployed Engineers: typed-fact discovery, seven pre-build gates, evidence-cited architecture. pip install fde-framework">
 <link rel="canonical" href="https://atulkapoor.github.io/fde-framework/">
+<link rel="icon" type="image/png" href="favicon.png">
 <meta property="og:title" content="fde-framework — for Forward Deployed Engineers">
 <meta property="og:description" content="From problem statement to deployable AI project, every decision traced to a fact. pip install fde-framework">
-<meta property="og:image" content="https://raw.githubusercontent.com/atulkapoor/fde-framework/main/assets/social-preview.png">
+<meta property="og:image" content="https://atulkapoor.github.io/fde-framework/social-preview.png">
+<meta property="og:image:width" content="1280">
+<meta property="og:image:height" content="640">
+<meta property="og:image:alt" content="fde-framework: statement to typed facts to seven gates to deployable project">
+<meta property="og:url" content="https://atulkapoor.github.io/fde-framework/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="fde-framework — for Forward Deployed Engineers">
+<meta name="twitter:description" content="From problem statement to deployable AI project, every decision traced to a fact.">
+<meta name="twitter:image" content="https://atulkapoor.github.io/fde-framework/social-preview.png">
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"SoftwareApplication","name":"fde-framework",
-"applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux, Windows",
+"softwareVersion":"0.1.2","applicationCategory":"DeveloperApplication",
+"operatingSystem":"macOS, Linux, Windows",
 "description":"Open-source framework for Forward Deployed Engineers: from client problem statement to a deployable AI project, every decision traced to a fact.",
 "url":"https://atulkapoor.github.io/fde-framework/",
 "downloadUrl":"https://pypi.org/project/fde-framework/",
 "codeRepository":"https://github.com/atulkapoor/fde-framework",
 "license":"https://www.apache.org/licenses/LICENSE-2.0",
 "author":{"@type":"Person","name":"Atul Kapoor","url":"https://github.com/atulkapoor"},
+"sameAs":["https://pypi.org/project/fde-framework/","https://github.com/atulkapoor/fde-framework"],
 "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
 </script>
 <style>
@@ -30,18 +42,20 @@
   img { max-width:100%; border-radius:10px; display:block; }
   code, pre { font-family:"SF Mono",Menlo,Consolas,monospace; }
   code { background:#161b22; border:1px solid #30363d; border-radius:6px; padding:2px 7px; font-size:.92em; }
-  pre { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:16px 20px; overflow-x:auto; font-size:.86rem; line-height:1.55; }
+  pre { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:16px 20px; overflow-x:auto; font-size:.85rem; line-height:1.55; margin:0; }
   a { color:#79c0ff; text-decoration:none; } a:hover { text-decoration:underline; }
-  .row { margin:18px 0 26px; } .row a { display:inline-block; margin:0 16px 8px 0; font-weight:600; }
+  .row { margin:18px 0 26px; } .row a { display:inline-block; margin:0 14px 10px 0; font-weight:600; }
   .btn { background:#1f6feb; color:#fff !important; padding:9px 18px; border-radius:8px; }
-  .btn:hover { text-decoration:none; filter:brightness(1.1); }
+  .btn2 { background:#21262d; border:1px solid #30363d; color:#e6edf3 !important; padding:8px 17px; border-radius:8px; }
+  .btn:hover, .btn2:hover { text-decoration:none; filter:brightness(1.15); }
   h2 { margin:52px 0 6px; font-size:1.5rem; } .sub { color:#8b949e; margin:0 0 18px; }
   .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:14px; margin-top:20px; }
   .card { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:16px 18px; }
-  .card h3 { margin:0 0 6px; font-size:1.02rem; color:#e6edf3; }
+  .card h3 { margin:0 0 6px; font-size:1.02rem; }
   .card p { margin:0; color:#9ea7b3; font-size:.92rem; }
   .g { color:#7ee787; } .b { color:#79c0ff; } .o { color:#ffa657; } .r { color:#ff7b72; } .d { color:#8b949e; }
   .ex-label { color:#8b949e; font-size:.85rem; text-transform:uppercase; letter-spacing:.08em; margin:26px 0 8px; }
+  .cap { color:#8b949e; font-size:.9rem; margin:8px 0 0; }
   .quiet { color:#8b949e; font-size:.9rem; margin-top:56px; border-top:1px solid #21262d; padding-top:22px; }
 </style>
 </head>
@@ -51,44 +65,52 @@
   <p class="tag">An open-source framework for <strong>Forward Deployed Engineers</strong> — from a client problem statement to a runnable, deployable AI project, with every decision traced to a fact.</p>
   <p class="row">
     <a class="btn" href="https://github.com/atulkapoor/fde-framework">View on GitHub</a>
+    <a class="btn2" href="https://github.com/atulkapoor/fde-framework/tree/main/examples/invoice-extraction">Worked example</a>
     <a href="https://pypi.org/project/fde-framework/">PyPI</a>
     <a href="https://github.com/atulkapoor/fde-framework/releases">Releases</a>
-    <a href="https://github.com/atulkapoor/fde-framework/tree/main/examples/invoice-extraction">Worked example</a>
   </p>
-  <pre><span class="d">$</span> pip install fde-framework</pre>
+  <pre><span class="d">$</span> pip install fde-framework
+<span class="d">$</span> fde start acme --statement <span class="o">"Extract fields from supplier invoices."</span>
+<span class="d">$</span> fde build acme --out project</pre>
 
   <h2>Watch it work</h2>
-  <p class="sub">Real transcripts — these reproduce on your machine, byte for byte.</p>
+  <p class="sub">Captured verbatim from a v0.1.2 session — trims are marked with <code>…</code>. The <a href="https://github.com/atulkapoor/fde-framework/tree/main/examples/invoice-extraction">worked example</a> in the repo reproduces its full transcript exactly.</p>
 
-  <p class="ex-label">1 · A paragraph becomes typed facts (plus the questions worth asking next)</p>
+  <p class="ex-label">1 · A paragraph becomes typed facts</p>
   <pre><span class="d">$</span> fde start acme --statement <span class="o">"Extract fields from scanned supplier invoices; data
   cannot leave; 200,000 documents, 8,000 verified; a person is waiting."</span>
+started engagements/acme
+<span class="d">  …</span>
 Here is what I took from that:
-<span class="g">  - What arrives, and in what form: scanned documents
+<span class="g">  - What does the system produce: structured
+  - What arrives, and in what form: scanned documents
   - Can client data leave their environment: cannot leave
   - How many items in total: 200,000
   - How many are verified or labelled: 8,000
   - Is a person waiting for the result: yes</span>
-worth asking next (fde ask acme --role &lt;who&gt;):
-<span class="b">  - Who may use this -- one operating team, distinct roles, or anyone internal?  [admin/sponsor]
-  - What availability does this need -- always on, business hours, best effort?   [sponsor/admin]</span></pre>
+
+Correct anything wrong before we go further.</pre>
+  <p class="cap">Every fact carries the span of the sentence that stated it, and provenance decides conflicts — never arrival order.</p>
 
   <p class="ex-label">2 · The build refuses until the engagement is real</p>
   <pre><span class="d">$</span> fde build acme --out project
-<span class="r">refused: gates unsatisfied
-  [hard] data_access -- credentials have not been shown to work against real data.
-      -&gt; Get a connection that returns real rows, then record it:
-         `fde data-access acme --note "what returned rows"`. Promised access is not access.</span>
-<span class="d">Every gate names its remedy and its clearing command. Waivers ship in RISKS.md, with reasons.</span></pre>
+<span class="r">  [hard] data_access: Credentials have not been shown to work against real data.
+      -&gt; Get a connection that returns real rows, even a handful, then record it:
+         `fde data-access &lt;eng&gt; --note "what returned rows"`. Promised access is not access.</span>
+<span class="d">  … two more gates follow, each naming its remedy and its clearing command …</span>
+<span class="r">refused: gates above are unsatisfied. Soft gates take `fde waive &lt;gate&gt; --reason`;
+data access has no workaround, only credentials that return real rows.</span></pre>
+  <p class="cap">Exit code 1, so CI can gate on it. Waived gates ship in the delivered project's RISKS.md, with reasons.</p>
 
-  <p class="ex-label">3 · Seat economics, before your seed round subsidizes the discovery</p>
+  <p class="ex-label">3 · Seat economics, before adoption sends the bill</p>
   <pre><span class="d">$</span> fde cost --price-per-seat 25 --workflows-per-day 8
 unit economics at $25.00/seat, 8 workflows/day, 5 step(s):
   $0.0225/workflow -&gt; $3.96/seat-month in model spend
   margin: <span class="g">$21.04/seat</span>
-  lever: route the measurable share to rules first (cascade at 50%%)  -&gt; margin <span class="g">$23.02</span>
-  lever: cache the shared prompt prefix (70%% at the cached rate)     -&gt; margin <span class="g">$23.53</span>
-  lever: bound the loop at 3 steps                                   -&gt; margin <span class="g">$22.62</span></pre>
+  lever: route the measurable share to rules first (cascade at 50% coverage) -&gt; margin <span class="g">$23.02</span>
+  lever: cache the shared prefix (70% of tokens at the cached rate) -&gt; margin <span class="g">$23.53</span>
+  lever: bound the loop at 3 steps (the cap the posture section documents) -&gt; margin <span class="g">$22.62</span></pre>
+  <p class="cap">Every figure is dated in the output, and a negative margin prints UNDERWATER — before new users cost money.</p>
 
   <p class="ex-label">4 · A coding agent finishes the build — against an exam it cannot edit</p>
   <pre><span class="d">$</span> fde implement project --holdout acme/artifacts/holdout.jsonl
@@ -97,26 +119,26 @@ round 2: <span class="g">green</span>
   golden         33 cases  <span class="g">100.0%</span>
   edge_case       8 cases  <span class="g">100.0%</span>
   adversarial     3 cases  <span class="g">100.0%</span>
-holdout: <span class="g">green</span> (cases the implementer never saw)
-<span class="d">The evals, boundary and decision documents are hashed; an agent that edits them is caught and reverted.</span></pre>
+holdout: <span class="g">green</span> (cases the implementer never saw)</pre>
+  <p class="cap">From the framework's own factory-inspection test engagement. The evals, boundary and decision documents are hashed before every round; an agent that edits them is caught and reverted, and a memorized answer key fails the holdout.</p>
 
   <h2>How it fits together</h2>
-  <img src="https://raw.githubusercontent.com/atulkapoor/fde-framework/main/assets/how-it-fits.png" alt="statement to typed facts to answer space to seven gates, then decide, architect, emit, implement" width="800">
+  <img src="how-it-fits.png" alt="statement to typed facts to answer space to seven gates, then decide, architect, emit, implement" width="800" height="300" loading="lazy">
 
   <h2>What a Forward Deployed Engineer gets</h2>
   <div class="grid">
-    <div class="card"><h3>🔍 Discovery that compounds</h3><p>Prose, PDFs, sample pairs, role-scoped interviews and hardware scans feed one profile. Provenance decides conflicts; disagreement between people is a finding, not an error.</p></div>
-    <div class="card"><h3>🚧 Seven gates before building</h3><p>Verified data access can never be waived. Every waiver ships in the delivered RISKS.md with its reason and your name.</p></div>
-    <div class="card"><h3>🧾 Decisions with receipts</h3><p>Simplest applicable approach per component, cited evidence, named rejected alternatives. Deterministic to the fingerprint.</p></div>
-    <div class="card"><h3>📦 A real project out</h3><p>Pipeline with approval gates and critics, three-layer evals, runbooks, SLOs, compliance docs. On-prem, hybrid, customer-VPC, air-gapped.</p></div>
-    <div class="card"><h3>🎛️ Multi-modal by design</h3><p>Photos AND documents AND telemetry — or voice, or video — fan one perception path per modality, each decided by its own rules.</p></div>
-    <div class="card"><h3>🤖 LLMs propose, never decide</h3><p>Reading briefs, mining vocabulary, implementing against the fenced harness, judging output after human calibration. The decision path stays deterministic.</p></div>
+    <div class="card"><h3><span aria-hidden="true">🔍</span> Discovery that compounds</h3><p>Prose, PDFs, sample pairs, role-scoped interviews and hardware scans feed one profile. Provenance decides conflicts; disagreement between people is a finding, not an error.</p></div>
+    <div class="card"><h3><span aria-hidden="true">🚧</span> Seven gates before building</h3><p>Verified data access can never be waived. Every waiver ships in the delivered RISKS.md with its reason and your name.</p></div>
+    <div class="card"><h3><span aria-hidden="true">🧾</span> Decisions with receipts</h3><p>Simplest applicable approach per component, cited evidence, named rejected alternatives — and rebuilding from the same facts yields the identical project.</p></div>
+    <div class="card"><h3><span aria-hidden="true">📦</span> A real project out</h3><p>Pipeline with approval gates and critics, three-layer evals, runbooks, SLOs, compliance docs. On-prem, hybrid, customer-VPC, air-gapped.</p></div>
+    <div class="card"><h3><span aria-hidden="true">🎛️</span> Multi-modal by design</h3><p>A system that takes photos and documents and telemetry — or voice, or video — gets one perception path per modality, each decided by its own rules.</p></div>
+    <div class="card"><h3><span aria-hidden="true">🤖</span> LLMs propose, never decide</h3><p>Reading briefs, mining vocabulary, implementing against the fenced harness, judging output after human calibration. The decision path stays deterministic.</p></div>
   </div>
 
   <h2>Who it is for</h2>
   <p>Forward Deployed Engineers, AI consultants and solutions engineers delivering LLM systems into enterprise environments — especially where data residency, air-gapped deployment, unit economics and evaluation ownership decide whether the engagement survives contact with production.</p>
 
-  <p class="quiet">Apache-2.0 · Python 3.11+ · ~850 tests · built by <a href="https://github.com/atulkapoor">Atul Kapoor</a> · <a href="https://www.linkedin.com/in/atulkapoor">LinkedIn</a> · <code>pip install fde-framework</code></p>
+  <p class="quiet">Apache-2.0 · Python 3.11+ · 847 tests green at v0.1.2 · built by <a href="https://github.com/atulkapoor">Atul Kapoor</a> · <a href="https://www.linkedin.com/in/atulkapoor">LinkedIn</a> · <code>pip install fde-framework</code></p>
 </main>
 </body>
 </html>

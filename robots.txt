@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://atulkapoor.github.io/fde-framework/sitemap.xml
