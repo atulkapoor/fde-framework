@@ -367,7 +367,7 @@ def frame(
     space_now = Space.from_registry(registry).apply(with_new)
     follow_ups = remaining_questions(space_now, with_new, registry)[:3]
     if follow_ups:
-        typer.echo("\nworth asking next (fde ask <eng> --role <who>):")
+        typer.echo(f"\nworth asking next (fde ask {root} --role <who>):")
         for question in follow_ups:
             roles = "/".join(question.roles) if question.roles else "anyone"
             typer.echo(f"  - {question.asks}   [{roles}]")
