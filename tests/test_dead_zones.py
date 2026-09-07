@@ -245,3 +245,33 @@ def test_voice_input_reaches_a_transcriber(reg):
 def test_video_input_reaches_a_sampler(reg):
     decision = decide_component("perception", {"input_format": "video"}, reg)
     assert decision.approach == "video-ingestion"
+
+
+def test_the_reranker_is_reached_by_measurement_not_by_default(reg):
+    """Like finetune: the simplest retriever wins the opening move, and the
+    reranker stands in the rejected list waiting for the golden queries to
+    prove the precision gap -- adopted by override, on evidence."""
+    decision = decide_component("retrieval", {
+        "query_pattern": "lookup", "corpus_size": 500_000,
+        "human_waiting": "no",
+    }, reg)
+    assert decision.approach == "keyword-search"
+    assert any(r.id == "reranked-retrieval" for r in decision.rejected)
+
+
+def test_an_interactive_tight_budget_keeps_the_single_pass(reg):
+    """A cross-encoder over fifty candidates is real milliseconds, and no
+    fusion trick refunds them while a person waits on 300ms."""
+    decision = decide_component("retrieval", {
+        "query_pattern": "lookup", "corpus_size": 500_000,
+        "human_waiting": "yes", "latency_budget_ms": 300,
+    }, reg)
+    assert decision.approach == "keyword-search"
+
+
+def test_hybrid_stands_as_the_weighed_alternative_on_big_comparative_corpora(reg):
+    decision = decide_component("retrieval", {
+        "query_pattern": "comparative", "corpus_size": 500_000,
+    }, reg)
+    assert decision.approach == "vector-search"
+    assert any(r.id == "hybrid-search" for r in decision.rejected)

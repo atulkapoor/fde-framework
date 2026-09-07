@@ -1,0 +1,41 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Wide first pass, careful second pass. The first-stage contract is recall --
+do not miss -- and the cross-encoder buys precision on the shortlist.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+
+from app.contract import RefusedInput
+
+interface = "{{ interface }}"
+approach = "{{ approach }}"
+stack = "{{ stack }}"
+
+TOP_K = 8
+CANDIDATES = 50  # recall-at-fifty is the first stage's whole job
+
+# Injected at wiring time: retrieve(query, k) -> candidates;
+# rerank(query, text) -> relevance score, higher is better.
+retrieve: Callable | None = None
+rerank: Callable | None = None
+
+
+class {{ class_name }}:
+    def run(self, query: str, top_k: int = TOP_K) -> list[dict]:
+        if retrieve is None or rerank is None:
+            raise RefusedInput(
+                "wire retrieve(query, k) and rerank(query, text) -- an "
+                "unreranked shortlist returned from here would wear a "
+                "precision it does not have"
+            )
+        candidates = retrieve(query, CANDIDATES)
+        scored = [
+            {**c, "rerank_score": rerank(query, c.get("text", ""))}
+            for c in candidates
+        ]
+        return sorted(scored, key=lambda c: -c["rerank_score"])[:top_k]
