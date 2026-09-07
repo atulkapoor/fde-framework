@@ -57,6 +57,16 @@ access — no build. The remedies ship with every gate.*
 | **Jurisdiction as data** | Locale packs preset answers at the weakest provenance and attach dated compliance obligations to the build; they can never change how decisions are made |
 | **Self-evolution, honestly** | Overrides, trigger calibration and anonymised cases are captured per engagement; the corpus grows only through human-reviewed ingestion |
 
+
+## How it fits together
+
+<img src="https://raw.githubusercontent.com/atulkapoor/fde-framework/main/assets/how-it-fits.png" alt="statement to typed facts to answer space to seven gates, then decide, architect, emit, implement — registry as data, deterministic builds" width="800">
+
+Discovery narrows an answer space; gates decide whether building is honest
+yet; the decision engine picks the simplest applicable approach per component
+and cites why; emit writes a project whose exam fails until it is truly
+implemented. The full design is in [ARCHITECTURE.md](ARCHITECTURE.md).
+
 ---
 
 ## Who this is for
@@ -476,13 +486,38 @@ The registry is the shared asset; engagements are private working state.
   `fde kb sweep` report what the corpus is missing and which profile shapes
   no approach can serve yet.
 
-## Learn more
+## Documentation
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) — module map, the data/mechanism boundary, how to extend the registry
-- [CHANGELOG.md](CHANGELOG.md) — what exists and how it was hardened
-- [examples/invoice-extraction](examples/invoice-extraction/) — a full engagement transcript
-- [SECURITY.md](SECURITY.md) — reporting, and what counts as security-grade here
-- [llms.txt](llms.txt) — the project summarised for AI assistants
+| I want to… | Read |
+|---|---|
+| Run the whole lifecycle once | [The full lifecycle, copy-paste](#the-full-lifecycle-copy-paste) |
+| See a real transcript with expected output | [Worked example](examples/invoice-extraction/) |
+| Understand the moving parts | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| Understand a gate that just refused me | `fde status <eng>` — every gate names its remedy and its clearing command |
+| Add a dimension / approach / template | [CONTRIBUTING.md](CONTRIBUTING.md) — incl. the template context table |
+| Use it as a library | [Python API](#python-api) |
+| Report a vulnerability | [SECURITY.md](SECURITY.md) |
+| See what changed | [CHANGELOG.md](CHANGELOG.md) · [Releases](https://github.com/atulkapoor/fde-framework/releases) |
+
+
+## Development
+
+```bash
+git clone https://github.com/atulkapoor/fde-framework.git && cd fde-framework
+python3 -m venv .venv && .venv/bin/pip install -e ".[dev,documents]"
+.venv/bin/pytest -q          # ~850 tests, < 30s
+.venv/bin/ruff check src tests
+```
+
+The registry is data: most contributions are a markdown file in `framework/`
+plus a test that pins the behaviour. CI additionally runs a sanitisation sweep
+over the tree and history.
+
+## Community
+
+Questions and engagement war stories → [Discussions](https://github.com/atulkapoor/fde-framework/discussions).
+Bugs and corpus gaps → [issues](https://github.com/atulkapoor/fde-framework/issues/new/choose) (the forms ask for evidence, the way the framework does).
+Conduct → [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
 
 ## License
 

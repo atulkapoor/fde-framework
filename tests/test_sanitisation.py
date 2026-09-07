@@ -89,6 +89,7 @@ REVIEWED_BINARIES = {
     "assets/banner-dark.png",
     "assets/banner-light.png",
     "assets/demo.png",
+    "assets/how-it-fits.png",
 }
 
 
