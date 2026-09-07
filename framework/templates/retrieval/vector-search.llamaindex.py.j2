@@ -1,0 +1,44 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+LlamaIndex as the retrieval surface -- the right realization where the
+client already operates it, or where many sources feed one index and its
+connectors beat hand-rolled ingestion.
+
+**The same contract as the in-process implementation.** Swapping between
+realizations changes this file and nothing about the architecture -- which
+is the seam the registry exists to preserve, and the reason the index is
+injected rather than constructed here.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from app.contract import RefusedInput
+
+interface = "{{ interface }}"
+approach = "{{ approach }}"
+stack = "{{ stack }}"
+
+TOP_K = 8
+
+# Injected at wiring time: a llama_index VectorStoreIndex (or anything with
+# .as_retriever). Kept injectable so tests run without an index and the
+# boundary decides where the store lives.
+index: Any = None
+
+
+class {{ class_name }}:
+    def run(self, query: str, top_k: int = TOP_K) -> list[dict]:
+        if index is None:
+            raise RefusedInput(
+                "no index is wired -- an empty result from an unwired store "
+                "would read as 'no evidence'"
+            )
+        nodes = index.as_retriever(similarity_top_k=top_k).retrieve(query)
+        return [
+            {"id": n.node_id, "score": n.score, "text": n.get_content()}
+            for n in nodes
+        ]
