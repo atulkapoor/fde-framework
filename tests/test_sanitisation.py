@@ -40,6 +40,7 @@ ALLOWED = (
     # crawlers. Authored framework material, same rules as the README.
     "llms.txt",
     "CITATION.cff",
+    ".editorconfig",
     "ARCHITECTURE.md",
     "CHANGELOG.md",
     # Synthetic worked engagements only -- the same no-client-material rules
