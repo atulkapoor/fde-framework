@@ -18,7 +18,8 @@
   <a href="ARCHITECTURE.md">Architecture</a> ·
   <a href="examples/invoice-extraction/">Worked example</a> ·
   <a href="CONTRIBUTING.md">Contributing</a> ·
-  <a href="https://pypi.org/project/fde-framework/">PyPI</a>
+  <a href="https://pypi.org/project/fde-framework/">PyPI</a> ·
+  <a href="https://atulkapoor.github.io/fde-framework/">Website</a>
 </p>
 
 **fde** is an open-source framework for Forward Deployed Engineers: it takes a
