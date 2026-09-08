@@ -21,7 +21,7 @@
 <meta name="twitter:image" content="https://atulkapoor.github.io/fde-framework/social-preview.png">
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"SoftwareApplication","name":"fde-framework",
-"softwareVersion":"0.1.2","applicationCategory":"DeveloperApplication",
+"softwareVersion":"0.1.3","applicationCategory":"DeveloperApplication",
 "operatingSystem":"macOS, Linux, Windows",
 "description":"Open-source framework for Forward Deployed Engineers: from client problem statement to a deployable AI project, every decision traced to a fact.",
 "url":"https://atulkapoor.github.io/fde-framework/",
@@ -33,31 +33,41 @@
 "offers":{"@type":"Offer","price":"0","priceCurrency":"USD"}}
 </script>
 <style>
-  :root { color-scheme: dark; }
+  :root { color-scheme: light dark;
+    --bg:#ffffff; --fg:#1f2328; --muted:#57606a; --card:#f6f8fa; --line:#d0d7de; --accent:#0969da; }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg:#0d1117; --fg:#e6edf3; --muted:#9ea7b3; --card:#161b22; --line:#30363d; --accent:#79c0ff; } }
   * { box-sizing: border-box; }
-  body { margin:0; background:#0d1117; color:#e6edf3; font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif; }
   main { max-width:880px; margin:0 auto; padding:56px 24px 80px; }
-  h1 { font-size:2.6rem; margin:0 0 4px; letter-spacing:-.5px; } h1 span { color:#79c0ff; }
-  .tag { color:#9ea7b3; font-size:1.12rem; margin:0 0 22px; max-width:660px; }
+  h1 { font-size:2.6rem; margin:0 0 4px; letter-spacing:-.5px; } h1 span { color:var(--accent); }
+  .tag { color:var(--muted); font-size:1.12rem; margin:0 0 22px; max-width:660px; }
   img { max-width:100%; border-radius:10px; display:block; }
   code, pre { font-family:"SF Mono",Menlo,Consolas,monospace; }
-  code { background:#161b22; border:1px solid #30363d; border-radius:6px; padding:2px 7px; font-size:.92em; }
-  pre { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:16px 20px; overflow-x:auto; font-size:.85rem; line-height:1.55; margin:0; }
-  a { color:#79c0ff; text-decoration:none; } a:hover { text-decoration:underline; }
+  code { background:var(--card); border:1px solid var(--line); border-radius:6px; padding:2px 7px; font-size:.92em; }
+  pre { background:#161b22; border:1px solid #30363d; color:#e6edf3; border-radius:10px; padding:16px 20px; overflow-x:auto; font-size:.85rem; line-height:1.55; margin:0; }
+  a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; }
   .row { margin:18px 0 26px; } .row a { display:inline-block; margin:0 14px 10px 0; font-weight:600; }
   .btn { background:#1f6feb; color:#fff !important; padding:9px 18px; border-radius:8px; }
-  .btn2 { background:#21262d; border:1px solid #30363d; color:#e6edf3 !important; padding:8px 17px; border-radius:8px; }
+  .btn2 { background:var(--card); border:1px solid var(--line); color:var(--fg) !important; padding:8px 17px; border-radius:8px; }
   .btn:hover, .btn2:hover { text-decoration:none; filter:brightness(1.15); }
-  h2 { margin:52px 0 6px; font-size:1.5rem; } .sub { color:#8b949e; margin:0 0 18px; }
+  h2 { margin:52px 0 6px; font-size:1.5rem; } .sub { color:var(--muted); margin:0 0 18px; }
   .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:14px; margin-top:20px; }
-  .card { background:#161b22; border:1px solid #30363d; border-radius:10px; padding:16px 18px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px; }
   .card h3 { margin:0 0 6px; font-size:1.02rem; }
-  .card p { margin:0; color:#9ea7b3; font-size:.92rem; }
+  .card p { margin:0; color:var(--muted); font-size:.92rem; }
   .g { color:#7ee787; } .b { color:#79c0ff; } .o { color:#ffa657; } .r { color:#ff7b72; } .d { color:#8b949e; }
-  .ex-label { color:#8b949e; font-size:.85rem; text-transform:uppercase; letter-spacing:.08em; margin:26px 0 8px; }
-  .cap { color:#8b949e; font-size:.9rem; margin:8px 0 0; }
-  .quiet { color:#8b949e; font-size:.9rem; margin-top:56px; border-top:1px solid #21262d; padding-top:22px; }
+  .ex-label { color:var(--muted); font-size:.85rem; text-transform:uppercase; letter-spacing:.08em; margin:26px 0 8px; }
+  .cap { color:var(--muted); font-size:.9rem; margin:8px 0 0; }
+  .quiet { color:var(--muted); font-size:.9rem; margin-top:56px; border-top:1px solid var(--line); padding-top:22px; }
 </style>
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"Does fde-framework need an LLM to run?","acceptedAnswer":{"@type":"Answer","text":"No. Discovery, decisions and builds are fully offline. Model assistance is opt-in per command, and hosted models are refused wherever the engagement says data may not leave."}},
+{"@type":"Question","name":"What does deterministic mean in fde-framework?","acceptedAnswer":{"@type":"Answer","text":"Same facts in, byte-identical project out. Rebuilds diff empty and the architecture carries a fingerprint; if two builds differ, a decision changed."}},
+{"@type":"Question","name":"Does fde-framework work air-gapped?","acceptedAnswer":{"@type":"Answer","text":"Yes. The registry ships inside the wheel, evaluation can run on a local model, and the emitted boundary refuses at import if sensitive work is placed outside."}},
+{"@type":"Question","name":"How does fde-framework improve over time?","acceptedAnswer":{"@type":"Answer","text":"Overrides are honoured and recorded, trigger predictions are calibrated against outcomes, and anonymised cases enter the corpus only through human review."}}]}
+</script>
 </head>
 <body>
 <main>
@@ -66,30 +76,41 @@
   <p class="row">
     <a class="btn" href="https://github.com/atulkapoor/fde-framework">View on GitHub</a>
     <a class="btn2" href="https://github.com/atulkapoor/fde-framework/tree/main/examples/invoice-extraction">Worked example</a>
+    <a class="btn2" href="https://github.com/atulkapoor/fde-framework/stargazers">★ Star</a>
     <a href="https://pypi.org/project/fde-framework/">PyPI</a>
     <a href="https://github.com/atulkapoor/fde-framework/releases">Releases</a>
   </p>
-  <pre><span class="d">$</span> pip install fde-framework
+  <div style="position:relative">
+  <pre id="quick"><span class="d">$</span> pip install fde-framework
 <span class="d">$</span> fde start acme --statement <span class="o">"Extract fields from supplier invoices."</span>
 <span class="d">$</span> fde build acme --out project</pre>
+  <button onclick="navigator.clipboard.writeText('pip install fde-framework').then(()=>{this.textContent='copied'; setTimeout(()=>this.textContent='copy',1200)})"
+    style="position:absolute;top:10px;right:10px;background:#21262d;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:4px 10px;font:12px SF Mono,Menlo,monospace;cursor:pointer">copy</button>
+</div>
 
   <h2>Watch it work</h2>
-  <p class="sub">Captured verbatim from a v0.1.2 session — trims are marked with <code>…</code>. The <a href="https://github.com/atulkapoor/fde-framework/tree/main/examples/invoice-extraction">worked example</a> in the repo reproduces its full transcript exactly.</p>
+  <p class="sub">Captured verbatim from a v0.1.3 session — trims are marked with <code>…</code>. The <a href="https://github.com/atulkapoor/fde-framework/tree/main/examples/invoice-extraction">worked example</a> in the repo reproduces its full transcript exactly.</p>
 
-  <p class="ex-label">1 · A paragraph becomes typed facts</p>
-  <pre><span class="d">$</span> fde start acme --statement <span class="o">"Extract fields from scanned supplier invoices; data
-  cannot leave; 200,000 documents, 8,000 verified; a person is waiting."</span>
+  <p class="ex-label">1 · A paragraph becomes typed facts — and the next questions</p>
+  <pre><span class="d">$</span> fde start acme --statement <span class="o">"Extract fields from 500,000 scanned supplier
+  invoices; runs on-prem; data cannot leave; 10,000 verified; a person is waiting."</span>
 started engagements/acme
 <span class="d">  …</span>
 Here is what I took from that:
 <span class="g">  - What does the system produce: structured
+  - How many items in total: 500,000
   - What arrives, and in what form: scanned documents
+  - Where does this run: on prem
   - Can client data leave their environment: cannot leave
-  - How many items in total: 200,000
-  - How many are verified or labelled: 8,000
+  - How many are verified or labelled: 10,000
   - Is a person waiting for the result: yes</span>
 
-Correct anything wrong before we go further.</pre>
+Correct anything wrong before we go further.
+
+worth asking next (fde ask acme --role &lt;who&gt;):
+<span class="b">  - What accelerator does the machine this runs on have?   [admin]
+  - Who may use this -- one operating team, distinct roles with different permissions, or anyone internal?   [admin/sponsor]
+  - What availability does this need -- always on, business hours, or best effort?   [sponsor/admin]</span></pre>
   <p class="cap">Every fact carries the span of the sentence that stated it, and provenance decides conflicts — never arrival order.</p>
 
   <p class="ex-label">2 · The build refuses until the engagement is real</p>
@@ -104,7 +125,7 @@ data access has no workaround, only credentials that return real rows.</span></p
 
   <p class="ex-label">3 · Seat economics, before adoption sends the bill</p>
   <pre><span class="d">$</span> fde cost --price-per-seat 25 --workflows-per-day 8
-unit economics at $25.00/seat, 8 workflows/day, 5 step(s):
+unit economics at $25.00/seat, 8 workflows/day, 5 step(s) -- token pricing as of 2026-08:
   $0.0225/workflow -&gt; $3.96/seat-month in model spend
   margin: <span class="g">$21.04/seat</span>
   lever: route the measurable share to rules first (cascade at 50% coverage) -&gt; margin <span class="g">$23.02</span>
@@ -113,7 +134,7 @@ unit economics at $25.00/seat, 8 workflows/day, 5 step(s):
   <p class="cap">Every figure is dated in the output, and a negative margin prints UNDERWATER — before new users cost money.</p>
 
   <p class="ex-label">4 · A coding agent finishes the build — against an exam it cannot edit</p>
-  <pre><span class="d">$</span> fde implement project --holdout acme/artifacts/holdout.jsonl
+  <pre><span class="d">$</span> fde implement project --holdout engagements/acme/artifacts/holdout.jsonl
 round 1: <span class="r">red</span> (6 file(s) changed)
 round 2: <span class="g">green</span>
   golden         33 cases  <span class="g">100.0%</span>
@@ -138,7 +159,15 @@ holdout: <span class="g">green</span> (cases the implementer never saw)</pre>
   <h2>Who it is for</h2>
   <p>Forward Deployed Engineers, AI consultants and solutions engineers delivering LLM systems into enterprise environments — especially where data residency, air-gapped deployment, unit economics and evaluation ownership decide whether the engagement survives contact with production.</p>
 
-  <p class="quiet">Apache-2.0 · Python 3.11+ · 847 tests green at v0.1.2 · built by <a href="https://github.com/atulkapoor">Atul Kapoor</a> · <a href="https://www.linkedin.com/in/atulkapoor">LinkedIn</a> · <code>pip install fde-framework</code></p>
+  <h2>Questions a skeptic asks</h2>
+  <div class="grid">
+    <div class="card"><h3>Does it need an LLM to run?</h3><p>No. Discovery, decisions and builds are fully offline — it works on a plane and inside an air gap. Model assistance is opt-in per command, and hosted models are refused wherever the engagement says data may not leave.</p></div>
+    <div class="card"><h3>What does "deterministic" mean here?</h3><p>Same facts in, byte-identical project out — rebuilds diff empty, and the architecture carries a fingerprint. If two builds differ, a decision changed, and the documents say which.</p></div>
+    <div class="card"><h3>Air-gapped, really?</h3><p>Yes: the registry ships inside the wheel, the eval judge can run on a local model, and the emitted boundary refuses at import if anything sensitive is placed outside.</p></div>
+    <div class="card"><h3>How does it improve?</h3><p>Per engagement: overrides are honoured and recorded, trigger predictions are calibrated against what actually fired, and anonymised cases enter the corpus only through human review.</p></div>
+  </div>
+
+  <p class="quiet">Apache-2.0 · Python 3.11+ · 851 tests green at v0.1.3 · built by <a href="https://github.com/atulkapoor">Atul Kapoor</a> · <a href="https://www.linkedin.com/in/atulkapoor">LinkedIn</a> · <code>pip install fde-framework</code></p>
 </main>
 </body>
 </html>
