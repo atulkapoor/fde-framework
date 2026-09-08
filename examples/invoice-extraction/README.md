@@ -25,7 +25,7 @@ fde frame engagements/acme --file examples/invoice-extraction/brief.md
 #
 # Correct anything wrong before we go further.
 #
-# worth asking next (fde ask <eng> --role <who>):
+# worth asking next (fde ask engagements/acme --role <who>):
 #   - What accelerator does the machine this runs on have?   [admin]
 #   - Who may use this -- one operating team, distinct roles with different
 #     permissions, or anyone internal?   [admin/sponsor]

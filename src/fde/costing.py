@@ -30,6 +30,7 @@ STALE_AFTER_DAYS = 270
 
 # Indicative. Re-derive against current pricing rather than quoting these.
 GPU_COST_PER_HOUR = 4.50
+COSTING_AS_OF = "2026-08"
 MANAGED_COST_PER_MILLION_TOKENS = 3.00
 TOKENS_PER_REQUEST = 1_500
 

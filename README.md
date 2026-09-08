@@ -10,11 +10,11 @@
 ![Python](https://img.shields.io/pypi/pyversions/fde-framework?logo=python&logoColor=white)
 [![Downloads](https://img.shields.io/pypi/dm/fde-framework?color=blueviolet)](https://pypistats.org/packages/fde-framework)
 ![Status](https://img.shields.io/badge/status-alpha-orange)
-[![License](https://img.shields.io/badge/license-Apache--2.0-green)](LICENSE)
+[![License](https://img.shields.io/badge/license-Apache--2.0-green)](https://github.com/atulkapoor/fde-framework/blob/main/LICENSE)
 
 <p>
   <a href="#install">Install</a> ·
-  <a href="#try-it-in-two-minutes">Quickstart</a> ·
+  <a href="#try-it">Quickstart</a> ·
   <a href="ARCHITECTURE.md">Architecture</a> ·
   <a href="examples/invoice-extraction/">Worked example</a> ·
   <a href="CONTRIBUTING.md">Contributing</a> ·
@@ -66,7 +66,7 @@ access — no build. The remedies ship with every gate.*
 Discovery narrows an answer space; gates decide whether building is honest
 yet; the decision engine picks the simplest applicable approach per component
 and cites why; emit writes a project whose exam fails until it is truly
-implemented. The full design is in [ARCHITECTURE.md](ARCHITECTURE.md).
+implemented. The full design is in [ARCHITECTURE.md](https://github.com/atulkapoor/fde-framework/blob/main/ARCHITECTURE.md).
 
 ---
 
@@ -235,7 +235,7 @@ check. `--lenient` exists for the hour when you are mid-way through authoring
 content and the links do not resolve yet.
 
 A complete worked engagement — real transcript, synthetic client — lives in
-[examples/invoice-extraction](examples/invoice-extraction/).
+[examples/invoice-extraction](https://github.com/atulkapoor/fde-framework/tree/main/examples/invoice-extraction).
 
 ## What a build emits
 
@@ -244,10 +244,10 @@ project/
 ├── app/                  # components, pipeline, controls, boundary check
 │   ├── components/       #   implementations or honest scaffolds — never silent gaps
 │   ├── pipeline.py       #   topological order; approval gates before anything mutative
-│   ├── controls.py       #   fail-closed: an unwired gate refuses, loudly
+│   ├── controls.py       #   fail-closed gates & critics — when anything mutative was decided
 │   ├── boundary.py       #   imported at startup when data may not leave
 │   ├── contract.py       #   RefusedInput: forbidden input is refused, never guessed at
-│   └── llm.py            #   the one model touchpoint, when a decision needs one (boundary-gated)
+│   └── llm.py            #   the one model touchpoint — when a decision needs a model (boundary-gated)
 ├── evals/                # golden / edge / adversarial sets from the client's own pairs
 │   ├── harness.py        #   fails CI until implemented; judge-based when the evaluation decided judged
 │   ├── acceptance.md     #   blind UAT protocol for the client's own judges
@@ -472,7 +472,7 @@ The registry is the shared asset; engagements are private working state.
   deliberately waits for a corpus of measured retrospectives rather than
   pretending a handful is evidence.
 - **More locale packs and stacks** — both are data; contributions enter
-  against [CONTRIBUTING.md](CONTRIBUTING.md)'s contract (and the [code of conduct](CODE_OF_CONDUCT.md)).
+  against [CONTRIBUTING.md](https://github.com/atulkapoor/fde-framework/blob/main/CONTRIBUTING.md)'s contract (and the [code of conduct](https://github.com/atulkapoor/fde-framework/blob/main/CODE_OF_CONDUCT.md)).
 - **Language, channel, and device axes** — six of twenty industry test
   statements named regional languages, low bandwidth, or basic devices;
   the honest wiring (per-language evaluation, SMS/IVR serving approaches,
@@ -492,13 +492,13 @@ The registry is the shared asset; engagements are private working state.
 | I want to… | Read |
 |---|---|
 | Run the whole lifecycle once | [The full lifecycle, copy-paste](#the-full-lifecycle-copy-paste) |
-| See a real transcript with expected output | [Worked example](examples/invoice-extraction/) |
-| Understand the moving parts | [ARCHITECTURE.md](ARCHITECTURE.md) |
+| See a real transcript with expected output | [Worked example](https://github.com/atulkapoor/fde-framework/tree/main/examples/invoice-extraction) |
+| Understand the moving parts | [ARCHITECTURE.md](https://github.com/atulkapoor/fde-framework/blob/main/ARCHITECTURE.md) |
 | Understand a gate that just refused me | `fde status <eng>` — every gate names its remedy and its clearing command |
-| Add a dimension / approach / template | [CONTRIBUTING.md](CONTRIBUTING.md) — incl. the template context table |
+| Add a dimension / approach / template | [CONTRIBUTING.md](https://github.com/atulkapoor/fde-framework/blob/main/CONTRIBUTING.md) — incl. the template context table |
 | Use it as a library | [Python API](#python-api) |
-| Report a vulnerability | [SECURITY.md](SECURITY.md) |
-| See what changed | [CHANGELOG.md](CHANGELOG.md) · [Releases](https://github.com/atulkapoor/fde-framework/releases) |
+| Report a vulnerability | [SECURITY.md](https://github.com/atulkapoor/fde-framework/blob/main/SECURITY.md) |
+| See what changed | [CHANGELOG.md](https://github.com/atulkapoor/fde-framework/blob/main/CHANGELOG.md) · [Releases](https://github.com/atulkapoor/fde-framework/releases) |
 
 
 ## Development
@@ -518,16 +518,16 @@ over the tree and history.
 
 Questions and engagement war stories → [Discussions](https://github.com/atulkapoor/fde-framework/discussions).
 Bugs and corpus gaps → [issues](https://github.com/atulkapoor/fde-framework/issues/new/choose) (the forms ask for evidence, the way the framework does).
-Conduct → [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+Conduct → [CODE_OF_CONDUCT.md](https://github.com/atulkapoor/fde-framework/blob/main/CODE_OF_CONDUCT.md).
 
 ## License
 
-[Apache 2.0](LICENSE) — chosen for the explicit patent grant, because
+[Apache 2.0](https://github.com/atulkapoor/fde-framework/blob/main/LICENSE) — chosen for the explicit patent grant, because
 enterprise legal review is a real gate for the audience this is for.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). The short version: contributions enter
+See [CONTRIBUTING.md](https://github.com/atulkapoor/fde-framework/blob/main/CONTRIBUTING.md). The short version: contributions enter
 against a contract, and **client material never enters this repository** — only
 patterns re-expressed in the framework's own words. Sanitisation is enforced in
 CI: allowed paths only, history checked, credential and personal-data patterns,

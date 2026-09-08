@@ -5,6 +5,22 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-09-08
+
+A post-launch funnel audit replayed every public transcript against the
+shipped package; everything it caught, in one release:
+
+- `fde start` with a statement now also offers the three questions worth
+  asking next (the follow-ups hint names the actual engagement path).
+- Seat economics dates its figures; `fde scan` on unified-memory machines
+  no longer prints a contradictory "0GB total".
+- Retrieval corpus: hybrid-search and reranked-retrieval (adopted by
+  measurement, like finetune); LlamaIndex stack with a realization;
+  invoices/complaints/claims join the corpus-size vocabulary.
+- The worked example's transcript is now a replay test: an output change
+  that would strand it fails in the same commit.
+- CI tests 3.11/3.12/3.13; doc links absolute so PyPI renders them.
+
 ## [0.1.2] — 2026-09-07
 
 A fresh-eyes usability round, every finding verified in a clean venv:

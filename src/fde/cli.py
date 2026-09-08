@@ -159,6 +159,15 @@ def start(
     if facts:
         typer.echo("")
         typer.echo(restate(facts, registry))
+        space_now = Space.from_registry(registry).apply(_with_all(Profile(), facts))
+        follow_ups = remaining_questions(
+            space_now, _with_all(Profile(), facts), registry
+        )[:3]
+        if follow_ups:
+            typer.echo(f"\nworth asking next (fde ask {name} --role <who>):")
+            for question in follow_ups:
+                roles = "/".join(question.roles) if question.roles else "anyone"
+                typer.echo(f"  - {question.asks}   [{roles}]")
         session_id = _next_session_id(engagement, "frame")
         briefs = engagement.artifacts_dir / "briefs"
         briefs.mkdir(parents=True, exist_ok=True)
@@ -1597,8 +1606,13 @@ def scan_cmd(
             typer.echo(f"  {gpu.model}  {gpu.vram_gb:.0f}GB  sm {gpu.sm}")
     elif measured:
         typer.echo("  no accelerator")
-    typer.echo(f"  {hardware.total_vram_gb:.0f}GB total"
-               f"{'' if vram is None else '  (stated, not measured)'}")
+    if hardware.gpus or hardware.total_vram_gb:
+        typer.echo(f"  {hardware.total_vram_gb:.0f}GB total"
+                   f"{'' if vram is None else '  (stated, not measured)'}")
+    elif hardware.ram_gb:
+        # Unified memory or CPU-only: "0GB total" beside "17GB of host
+        # memory" read as the tool contradicting itself.
+        typer.echo(f"  {hardware.ram_gb:.0f}GB host memory (shared)")
 
     fit = fits(hardware, params_b, precision=precision)
     if not hardware.gpus:
@@ -1897,7 +1911,7 @@ def cost_cmd(
         )
 
     if price_per_seat is not None:
-        from fde.costing import unit_economics
+        from fde.costing import COSTING_AS_OF, unit_economics
 
         coverage = None
         if root is not None:
@@ -1908,7 +1922,8 @@ def cost_cmd(
         )
         typer.echo(
             f"\nunit economics at ${price_per_seat:.2f}/seat, "
-            f"{workflows_per_day:g} workflows/day, {steps} step(s):"
+            f"{workflows_per_day:g} workflows/day, {steps} step(s) "
+            f"-- token pricing as of {COSTING_AS_OF}:"
         )
         typer.echo(f"  ${economics['cost_per_workflow']:.4f}/workflow -> "
                    f"${economics['cost_per_seat_month']:.2f}/seat-month in model spend")
