@@ -38,6 +38,8 @@ pip install fde-framework
 fde start acme --statement "Extract fields from supplier invoices."
 fde ask acme --role admin        # role-scoped discovery interview
 fde architect acme               # the design, with cited rationale
+fde build acme --out project     # refuses: seven gates guard the build
+# ...verify data access, capture the baseline (each gate prints its remedy), then:
 fde build acme --out project     # code + evals + deploy assets + runbook
 ```
 
