@@ -5,6 +5,11 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.4] — 2026-09-09
+
+The measurement release: claims the framework already made, turned into
+numbers and walks.
+
 - Projects with a retrieval component ship `evals/retrieval.py`: recall@10
   and recall@50 against golden queries in `retrieval_cases.jsonl`, gated in
   CI, refusing an empty case set. The embedding and index choices set a
