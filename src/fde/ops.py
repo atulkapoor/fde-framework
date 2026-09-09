@@ -70,6 +70,7 @@ def write_ops(architecture, out: Path, registry=None) -> None:
     ops.mkdir(parents=True, exist_ok=True)
 
     (ops / "runbook.md").write_text(_runbook(architecture, registry))
+    (ops / "diagnosis.md").write_text(_diagnosis(architecture))
     (ops / "slo.md").write_text(_slo(architecture))
     (ops / "rollback.md").write_text(_rollback(architecture))
     _ci(architecture, out)
@@ -96,6 +97,10 @@ def _runbook(architecture, registry) -> str:
         f"amount of work further along recovers what it lost.",
         "",
         f"Components in this system: {', '.join(f'`{c}`' for c in components)}.",
+        "",
+        "When nothing on this page fits, `diagnosis.md` beside it walks the "
+        "layers -- definitions, evidence, tools, loop, model -- cheapest to "
+        "check first, the model last.",
         "",
         "## By failure source",
         "",
@@ -147,6 +152,100 @@ def _first_place_to_look(architecture, registry) -> str:
         return earliest
     # Walk back down toward the decided part of the chain.
     return candidates[0]
+
+
+# --- diagnosis -----------------------------------------------------------
+
+
+def _diagnosis(architecture) -> str:
+    """The walk that finds which layer a failure actually lives in.
+
+    An unclear definition looks like a model error; missing evidence looks
+    like weak reasoning; a tool timeout looks like a capability limit. The
+    layers are ordered cheapest-to-check first, and the sections adapt to
+    the components actually in the system -- an instruction to inspect a
+    retrieval layer that does not exist helps nobody at three in the
+    morning.
+    """
+    decided = set(architecture.decisions.decided())
+    lines = [
+        "# Where the failure lives",
+        "",
+        "An unclear definition can look like a model error. Missing evidence "
+        "can look like weak reasoning. A tool timeout can look like a "
+        "capability limit. The expensive habit is re-prompting or switching "
+        "models before finding which layer actually failed -- so this walks "
+        "the layers in order, cheapest to check first, the model last.",
+        "",
+        "## 1. Definitions",
+        "",
+        "**Check** — take the failing case to whoever owns evaluation and ask "
+        "what the right output is. If two people who should know disagree, "
+        "stop here: no layer below this one can settle a question the client "
+        "has not.",
+        "",
+        "**If it is this** — the fix is a decision, recorded in the golden "
+        "cases, not a change to any code. Disagreement here is a discovery "
+        "finding, and surfacing it is this system working.",
+        "",
+    ]
+    step = 2
+    if "retrieval" in decided or "memory" in decided:
+        lines += [
+            f"## {step}. Evidence",
+            "",
+            "**Check** — for the failing case, look at what retrieval "
+            "returned before the model ever saw it. If the right answer is "
+            "not in the evidence, this is recall, not reasoning.",
+            "",
+            "**If it is this** — the fix lives in retrieval: the corpus, the "
+            "index or the query. A better prompt cannot cite what never "
+            "arrived.",
+            "",
+        ]
+        step += 1
+    if "integration" in decided:
+        lines += [
+            f"## {step}. Tools",
+            "",
+            "**Check** — the audit trail around the failing request, for "
+            "timeouts, error returns and empty results from outward calls. A "
+            "tool that failed quietly upstream reads as a reasoning failure "
+            "downstream.",
+            "",
+            "**If it is this** — fix the call or its timeout, and make the "
+            "failure loud: a tool error the model narrates around is worse "
+            "than one that stops the run.",
+            "",
+        ]
+        step += 1
+    if "planning" in decided:
+        lines += [
+            f"## {step}. The loop",
+            "",
+            "**Check** — step and retry counts for the failing run against a "
+            "normal one. A useful retry and an expensive loop are the same "
+            "mechanism, with and without a stop condition.",
+            "",
+            "**If it is this** — the fix is a bound or an escalation path, "
+            "decided and written down -- not a model asked to please stop "
+            "sooner.",
+            "",
+        ]
+        step += 1
+    lines += [
+        f"## {step}. The model -- only now",
+        "",
+        "**Check** — the evaluation's error breakdown, with everything above "
+        "ruled out. One field dominating usually means a mapping to fix; "
+        "failures spread across fields mean a capability limit.",
+        "",
+        "**If it is this** — change the prompt before changing the model, one "
+        "change at a time, re-running the evaluation after each. An "
+        "improvement nobody measured is a mood.",
+        "",
+    ]
+    return "\n".join(lines)
 
 
 # --- objectives ----------------------------------------------------------

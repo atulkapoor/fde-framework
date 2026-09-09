@@ -77,6 +77,30 @@ def test_it_says_where_to_look_first(project):
     assert "perception" in body and "first" in body.lower()
 
 
+# --- diagnosis: where the failure lives -----------------------------------
+
+
+def test_diagnosis_checks_definitions_first_and_the_model_last(project):
+    """An unclear definition looks like a model error, and re-prompting is
+    the expensive way to find that out. The walk order is the discipline."""
+    body = (project / "ops" / "diagnosis.md").read_text()
+    assert body.index("Definitions") < body.index("The model")
+    assert "only now" in body
+
+
+def test_diagnosis_covers_the_evidence_seam_when_retrieval_exists(project):
+    """'The right answer is not in the evidence' is recall, not reasoning --
+    and the instruction only appears where a retrieval layer exists to
+    inspect."""
+    body = (project / "ops" / "diagnosis.md").read_text()
+    assert "recall, not reasoning" in body
+
+
+def test_the_runbook_points_at_the_diagnosis_walk(project):
+    body = (project / "ops" / "runbook.md").read_text()
+    assert "diagnosis.md" in body
+
+
 # --- service objectives --------------------------------------------------
 
 

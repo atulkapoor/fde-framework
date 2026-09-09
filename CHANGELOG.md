@@ -5,6 +5,11 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+- Emitted projects ship `ops/diagnosis.md`: the walk that finds which layer
+  a failure lives in -- definitions, evidence, tools, loop, model -- ordered
+  cheapest-to-check first, sections adapted to the components actually in
+  the system. An unclear definition can look like a model error; the
+  expensive habit is re-prompting before finding out.
 - Retrieval corpus: `corpus_churn` dimension (static/periodic/continuous —
   how fast the document stock turns over, distinct from corpus size and
   query arrival) and a graph-expanded-retrieval approach: vector entry,
