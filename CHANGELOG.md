@@ -5,6 +5,16 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+- Retrieval corpus: `corpus_churn` dimension (static/periodic/continuous —
+  how fast the document stock turns over, distinct from corpus size and
+  query arrival) and a graph-expanded-retrieval approach: vector entry,
+  entity expansion, rerank exit, for multi-hop questions on a corpus that
+  keeps changing. Full graph-retrieval now steps aside on continuous churn,
+  by name, with the reason on the record. Realizations for plain-python,
+  pgvector and qdrant.
+- README quickstart shows the gate refusal before the passing build, so the
+  first run's refusal is announced rather than a surprise.
+
 ## [0.1.3] — 2026-09-08
 
 A post-launch funnel audit replayed every public transcript against the

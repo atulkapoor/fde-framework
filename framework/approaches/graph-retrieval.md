@@ -4,8 +4,8 @@ name: Graph retrieval
 complexity: 3
 components: [retrieval]
 applies_when: [query_pattern == multi_hop]
-avoid_when: [query_pattern == lookup, query_pattern == comparative]
-evidence: {case_ids: [structured-extraction], confidence: medium, last_verified: 2026-08-21}
+avoid_when: [query_pattern == lookup, query_pattern == comparative, corpus_churn == continuous]
+evidence: {case_ids: [structured-extraction], confidence: medium, last_verified: 2026-09-09}
 ---
 Explicit entities and edges, traversed at query time.
 
@@ -16,7 +16,10 @@ rather than an upgrade.
 
 The costs are real: multi-pass extraction to build it, two to three times the
 end-to-end latency to use it, and an index that grows super-linearly, which is
-what makes incremental updates painful on a corpus that changes.
+what makes incremental updates painful on a corpus that changes. Where the
+corpus changes continuously, that maintenance is the deciding cost --
+graph-expanded retrieval keeps the multi-hop benefit by letting vector search
+carry recall, so the graph can stay small enough to rebuild.
 
 Published gains also warrant scepticism -- judge position bias has been shown to
 swing reported win rates by tens of points. Measure on your own traffic.

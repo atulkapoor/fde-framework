@@ -1,0 +1,117 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Vector entry, entity expansion, rerank exit -- with both halves in the one
+database already being operated. Chunks and their embeddings in one table,
+entity mentions in another, and the expansion is a self-join on mentions
+rather than a graph engine: for co-mention edges at bounded depth, Postgres
+does this well enough that a separate system has to be argued for.
+
+The mentions table is the whole graph, which is the point. Rebuilding it for
+a changed document is a delete and an insert, not a multi-pass re-extraction
+-- the property that lets this survive a corpus that keeps changing.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any
+
+interface = "{{ interface }}"
+approach = "{{ approach }}"
+stack = "{{ stack }}"
+
+SCHEMA_SQL = """
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE TABLE IF NOT EXISTS {table} (
+    id        text PRIMARY KEY,
+    body      text NOT NULL,
+    embedding vector({dimensions})
+);
+CREATE TABLE IF NOT EXISTS {table}_mentions (
+    entity   text NOT NULL,
+    chunk_id text REFERENCES {table}(id) ON DELETE CASCADE,
+    PRIMARY KEY (entity, chunk_id)
+);
+CREATE INDEX IF NOT EXISTS {table}_mentions_entity_idx
+    ON {table}_mentions (entity);
+"""
+
+SEED_SQL = """
+SELECT id, body FROM {table}
+ORDER BY embedding <=> %(query)s::vector
+LIMIT %(k)s;
+"""
+
+# One hop per query, looped in the application: co-mentioned chunks of the
+# frontier, minus everything already found. Bounded by construction.
+EXPAND_SQL = """
+SELECT DISTINCT m2.chunk_id, c.body
+FROM {table}_mentions m1
+JOIN {table}_mentions m2 ON m2.entity = m1.entity
+JOIN {table} c ON c.id = m2.chunk_id
+WHERE m1.chunk_id = ANY(%(frontier)s)
+  AND NOT m2.chunk_id = ANY(%(found)s);
+"""
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(
+        self,
+        connection: Any = None,
+        embed: Callable[[str], list[float]] | None = None,
+        rerank: Callable[[str, str], float] | None = None,
+        table: str = "documents",
+        dimensions: int = 768,
+        max_hops: int = 2,
+        seeds: int = 20,
+    ) -> None:
+        self.connection = connection
+        self.embed = embed
+        self.rerank = rerank
+        self.table = table
+        self.dimensions = dimensions
+        self.max_hops = max_hops
+        self.seeds = seeds
+
+    def schema(self) -> str:
+        return SCHEMA_SQL.format(table=self.table, dimensions=self.dimensions)
+
+    def retrieve(self, query: str, top_k: int = 8) -> list[dict[str, Any]]:
+        found: dict[str, dict[str, Any]] = {}
+        with self.connection.cursor() as cursor:
+            cursor.execute(
+                SEED_SQL.format(table=self.table),
+                {"query": self.embed(query), "k": self.seeds},
+            )
+            for row in cursor.fetchall():
+                found[row[0]] = {"id": row[0], "text": row[1], "hop": 0}
+            frontier = list(found)
+            for hop in range(1, self.max_hops + 1):
+                if not frontier:
+                    break
+                cursor.execute(
+                    EXPAND_SQL.format(table=self.table),
+                    {"frontier": frontier, "found": list(found)},
+                )
+                fresh = cursor.fetchall()
+                if not fresh:
+                    break
+                for row in fresh:
+                    found[row[0]] = {"id": row[0], "text": row[1], "hop": hop}
+                frontier = [row[0] for row in fresh]
+        scored = [
+            {**c, "rerank_score": self.rerank(query, c["text"])}
+            for c in found.values()
+        ]
+        return sorted(scored, key=lambda c: -c["rerank_score"])[:top_k]
+
+    def run(self, payload: dict[str, Any]) -> Any:
+        return self.retrieve(payload["query"], top_k=payload.get("k", 8))

@@ -1,0 +1,65 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+Vector entry, entity expansion, rerank exit. Vector search carries recall,
+the adjacency map contributes connections, and the reranker earns the final
+order. The graph stays a junior partner on purpose -- entities and co-mention
+edges only, cheap to rebuild incrementally -- because on a corpus that keeps
+changing, the exhaustive graph is the part that rots first.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+
+from app.contract import RefusedInput
+
+interface = "{{ interface }}"
+approach = "{{ approach }}"
+stack = "{{ stack }}"
+
+TOP_K = 8
+SEEDS = 20     # vector recall opens the graph; it does not need to finish the job
+MAX_HOPS = 2   # each hop multiplies the pool, and two answers most questions
+
+# Injected at wiring time: retrieve(query, k) -> seed chunks (each a dict with
+# at least id, text, entities); rerank(query, text) -> relevance, higher is
+# better.
+retrieve: Callable | None = None
+rerank: Callable | None = None
+
+# entity -> chunk records that mention it, rebuilt incrementally at index
+# time. Co-mention edges only: the point of this variant is a graph small
+# enough to rebuild as the corpus moves.
+adjacency: dict[str, list[dict]] = {}
+
+
+class {{ class_name }}:
+    def run(self, query: str, top_k: int = TOP_K) -> list[dict]:
+        if retrieve is None or rerank is None:
+            raise RefusedInput(
+                "wire retrieve(query, k) and rerank(query, text) -- an "
+                "expansion over unranked seeds would wear a precision it "
+                "does not have"
+            )
+        pool = {c["id"]: {**c, "hop": 0} for c in retrieve(query, SEEDS)}
+        frontier = list(pool)
+        for hop in range(1, MAX_HOPS + 1):
+            connected = [
+                chunk
+                for chunk_id in frontier
+                for entity in pool[chunk_id].get("entities", [])
+                for chunk in adjacency.get(entity, [])
+            ]
+            fresh = {c["id"]: {**c, "hop": hop}
+                     for c in connected if c["id"] not in pool}
+            if not fresh:
+                break
+            pool.update(fresh)
+            frontier = list(fresh)
+        scored = [
+            {**c, "rerank_score": rerank(query, c.get("text", ""))}
+            for c in pool.values()
+        ]
+        return sorted(scored, key=lambda c: -c["rerank_score"])[:top_k]

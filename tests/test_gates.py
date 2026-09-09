@@ -253,7 +253,9 @@ def test_status_reports_completeness_by_decision_weight(tmp_path):
     )
     result = runner.invoke(app, ["status", str(tmp_path / "acme")])
     assert "settled" in result.output
-    assert "0%" in result.output or "2%" in result.output
+    # One low-weight fact against the whole corpus: a small single-digit
+    # share, whose exact value moves as dimensions join the registry.
+    assert "1%" in result.output or "2%" in result.output or "0%" in result.output
 
 
 # --- the registry is the source of truth ------------------------------------

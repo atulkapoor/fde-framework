@@ -51,6 +51,35 @@ def test_multi_hop_questions_earn_the_graph(reg):
     assert decision.approach == "graph-retrieval"
 
 
+def test_a_moving_corpus_keeps_multi_hop_but_loses_the_full_graph(reg):
+    """Multi-hop earns a graph; continuous churn is what the full graph
+    cannot survive. The expanded variant keeps vector search on recall so
+    the graph stays small enough to rebuild -- and the full graph is
+    rejected on the record, by name, with the churn as the reason."""
+    decision = decide_component(
+        "retrieval",
+        dict(output_shape="freeform", query_pattern="multi_hop",
+             corpus_churn="continuous"),
+        reg,
+    )
+    assert decision.approach == "graph-expanded-retrieval"
+    assert any(r.id == "graph-retrieval" and "corpus_churn" in r.reason
+               for r in decision.rejected)
+
+
+def test_a_corpus_that_holds_still_keeps_the_full_graph(reg):
+    """Richer edges and deeper traversal win where maintenance is not the
+    deciding cost. The expanded variant must not displace the full graph
+    by default -- it exists for churn, and churn must be on the record."""
+    decision = decide_component(
+        "retrieval",
+        dict(output_shape="freeform", query_pattern="multi_hop",
+             corpus_churn="static"),
+        reg,
+    )
+    assert decision.approach == "graph-retrieval"
+
+
 def test_the_cheapest_retrieval_that_answers_the_question_wins(reg):
     decision = decide_component(
         "retrieval", dict(output_shape="freeform", query_pattern="lookup"), reg

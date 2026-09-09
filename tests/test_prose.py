@@ -377,6 +377,22 @@ def test_correlating_events_into_incidents_is_multi_hop(reg):
                for f in facts)
 
 
+def test_a_corpus_updated_continuously_reads_as_churn(reg):
+    """The sentence that decides whether a knowledge graph is maintainable
+    at all, spoken the way clients actually say it."""
+    facts = parse_prose(
+        "The knowledge base is updated continuously as new rulings land.", reg)
+    assert any(f.dimension == "corpus_churn" and f.value == "continuous"
+               for f in facts)
+
+
+def test_a_historical_archive_reads_as_static(reg):
+    facts = parse_prose(
+        "The corpus is a historical archive of closed cases.", reg)
+    assert any(f.dimension == "corpus_churn" and f.value == "static"
+               for f in facts)
+
+
 def test_a_multi_modal_statement_records_every_modality(reg):
     """Three input forms in one sentence is a property of the system, not an
     ambiguity of phrasing. It declined once; now input_format is
