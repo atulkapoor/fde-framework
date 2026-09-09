@@ -24,7 +24,8 @@ stack = "{{ stack }}"
 COLLECTION = "{{ component }}_chunks"
 TOP_K = 8
 SEEDS = 20
-MAX_HOPS = 2  # bounded: each hop multiplies latency, and two answers most questions
+MAX_HOPS = 2   # bounded: each hop multiplies latency, and two answers most questions
+MAX_POOL = 200  # depth alone is not a bound: one hub entity can pull the corpus in
 
 
 class QdrantUnwired(RuntimeError):
@@ -62,6 +63,7 @@ def run(query: str, top_k: int = TOP_K) -> list[dict]:
             for chunk_id in adjacency.get(entity, [])
         ]
         fresh = [c for c in dict.fromkeys(connected) if c not in found]
+        fresh = fresh[: max(0, MAX_POOL - len(found))]
         if not fresh:
             break
         records = client.retrieve(collection_name=COLLECTION, ids=fresh,
@@ -69,7 +71,11 @@ def run(query: str, top_k: int = TOP_K) -> list[dict]:
         for record in records:
             found[str(record.id)] = {"id": str(record.id), "hop": hop,
                                      **(record.payload or {})}
-        frontier = fresh
+        # Only ids the store actually returned: on a corpus that keeps
+        # changing, the adjacency map can name a chunk deleted since the
+        # last rebuild, and walking from a ghost is a KeyError in the exact
+        # scenario this variant exists for.
+        frontier = [str(record.id) for record in records]
     scored = [
         {**c, "rerank_score": rerank(query, c.get("text", ""))}
         for c in found.values()

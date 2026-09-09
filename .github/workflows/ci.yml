@@ -8,6 +8,11 @@ jobs:
         python: ['3.11', '3.12', '3.13']
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The sanitisation suite scans history (git log --all); a
+          # shallow clone would reduce that scan to one commit and
+          # quietly hollow out the guarantee the README states.
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "${{ matrix.python }}"

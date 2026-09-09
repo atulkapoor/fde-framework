@@ -54,10 +54,10 @@ def run(query: str, top_k: int = TOP_K) -> list[dict]:
     frontier = list(found)
     for hop in range(1, MAX_HOPS + 1):
         connected = [
-            chunk_id
+            neighbour
             for chunk_id in frontier
             for entity in found[chunk_id].get("entities", [])
-            for chunk_id2 in adjacency.get(entity, [])
+            for neighbour in adjacency.get(entity, [])
         ]
         fresh = [c for c in dict.fromkeys(connected) if c not in found]
         if not fresh:

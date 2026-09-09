@@ -592,6 +592,12 @@ def ask(
             continue
 
         dimension_entry = registry.dimensions[question.resolves]
+        # A multi-valued dimension never enters the answer space (a second
+        # value is a peer, not a contradiction), so the space alone would
+        # offer this question again immediately -- asked and answered is
+        # asked and answered for this session; a later session can add more.
+        if dimension_entry.multi_valued or isinstance(answer.value, tuple):
+            passed_on.add(question.resolves)
         answered_values = (
             list(answer.value) if isinstance(answer.value, tuple) else [answer.value]
         )
@@ -1519,7 +1525,8 @@ def build_cmd(
                       templates=Path(registry_root) / "templates",
                       pairs_path=Path(root) / "artifacts" / "pairs.jsonl",
                       waivers=waivers,
-                      overrides=applied_overrides)
+                      overrides=applied_overrides,
+                      baseline=engagement.baseline())
     except BuildRefused as exc:
         typer.echo(f"refused: {exc}", err=True)
         raise typer.Exit(1) from exc

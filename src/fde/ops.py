@@ -65,13 +65,24 @@ SYMPTOMS = {
 }
 
 
-def write_ops(architecture, out: Path, registry=None) -> None:
+def measurable_retrieval(architecture) -> bool:
+    """Whether the retrieval layer answers ranked-list queries a recall eval
+    can grade. graph-retrieval answers path queries (from/to) and returns a
+    path, not a ranking -- grading it on recall@K would ship a CI gate that
+    can never pass, however well the system works."""
+    decision = architecture.decisions.get("retrieval")
+    return bool(
+        decision and decision.approach and decision.approach != "graph-retrieval"
+    )
+
+
+def write_ops(architecture, out: Path, registry=None, baseline=None) -> None:
     ops = out / "ops"
     ops.mkdir(parents=True, exist_ok=True)
 
     (ops / "runbook.md").write_text(_runbook(architecture, registry))
     (ops / "diagnosis.md").write_text(_diagnosis(architecture))
-    (ops / "slo.md").write_text(_slo(architecture))
+    (ops / "slo.md").write_text(_slo(architecture, baseline))
     (ops / "rollback.md").write_text(_rollback(architecture))
     _ci(architecture, out)
 
@@ -99,8 +110,8 @@ def _runbook(architecture, registry) -> str:
         f"Components in this system: {', '.join(f'`{c}`' for c in components)}.",
         "",
         "When nothing on this page fits, `diagnosis.md` beside it walks the "
-        "layers -- definitions, evidence, tools, loop, model -- cheapest to "
-        "check first, the model last.",
+        "layers of this system in the order they are cheap to check -- "
+        "definitions first, the model last.",
         "",
         "## By failure source",
         "",
@@ -203,7 +214,7 @@ def _diagnosis(architecture) -> str:
             "arrived.",
             "",
         ]
-        if "retrieval" in decided:
+        if measurable_retrieval(architecture):
             lines += [
                 "**Measure** — `python evals/retrieval.py` scores this layer "
                 "alone, no model in the loop: recall against the cases in "
@@ -271,7 +282,60 @@ AVAILABILITY_MEANS = {
 }
 
 
-def _slo(architecture) -> str:
+def _baseline_lines(baseline) -> list[str]:
+    """The measured baseline as the number to beat -- or the honest gap.
+
+    The gate validated this data at capture; here it only has to be shown.
+    An emitted project that says "not captured" over a captured baseline
+    contradicts its own acceptance protocol, which names the baseline's
+    error rate as the bar."""
+    if not baseline:
+        return [
+            "**Not captured.** Without one there is nothing to compare "
+            "against, and any improvement claimed after launch is an "
+            "assertion.",
+            "",
+            "Seven fields make a baseline usable: volume, cycle time per "
+            "unit, labour hours, rework rate, exception rate, error rate, "
+            "and the business metric itself. Two qualifiers do the real "
+            "work — cycle time from a representative sample rather than "
+            "the best case, and the whole thing **re-measurable by "
+            "identical definitions in 60 days**. That last one is the test "
+            "of whether you have a baseline or a number somebody said in a "
+            "meeting.",
+            "",
+            "Where historical data is unreliable, measure prospectively for "
+            "30 to 60 days before deployment rather than accepting an "
+            "estimate.",
+            "",
+        ]
+    lines = ["**Captured.** The numbers to beat, by their recorded "
+             "definitions:", ""]
+    for key, entry in baseline.items():
+        if key == "sampled" or not isinstance(entry, dict):
+            continue
+        value, unit = entry.get("value"), entry.get("unit", "")
+        definition = entry.get("definition", "")
+        line = f"- **{key}** — {value} {unit}".rstrip()
+        if definition:
+            line += f" ({definition})"
+        lines.append(line)
+    sampled = baseline.get("sampled")
+    if isinstance(sampled, dict):
+        lines.append(
+            f"- sampled: n={sampled.get('n')}, {sampled.get('method', '')}".rstrip()
+        )
+    lines += [
+        "",
+        "Re-measure by identical definitions in 60 days. A comparison that "
+        "quietly changes a definition is a comparison with its thumb on the "
+        "scale.",
+        "",
+    ]
+    return lines
+
+
+def _slo(architecture, baseline=None) -> str:
     latency = _value(architecture, "latency_budget_ms")
     availability = _value(architecture, "availability_target")
 
@@ -304,19 +368,7 @@ def _slo(architecture) -> str:
         "",
         "## Baseline",
         "",
-        "**Not captured.** Without one there is nothing to compare against, and "
-        "any improvement claimed after launch is an assertion.",
-        "",
-        "Seven fields make a baseline usable: volume, cycle time per unit, labour "
-        "hours, rework rate, exception rate, error rate, and the business metric "
-        "itself. Two qualifiers do the real work — cycle time from a representative "
-        "sample rather than the best case, and the whole thing **re-measurable by "
-        "identical definitions in 60 days**. That last one is the test of whether "
-        "you have a baseline or a number somebody said in a meeting.",
-        "",
-        "Where historical data is unreliable, measure prospectively for 30 to 60 "
-        "days before deployment rather than accepting an estimate.",
-        "",
+        *_baseline_lines(baseline),
     ])
 
 
@@ -413,7 +465,7 @@ def _ci(architecture, out: Path) -> None:
     workflows.mkdir(parents=True, exist_ok=True)
 
     retrieval_step = ""
-    if "retrieval" in architecture.decisions.decided():
+    if measurable_retrieval(architecture):
         retrieval_step = (
             "      # The embedding and index set a ceiling on everything\n"
             "      # downstream -- no reranking or prompting recovers a\n"

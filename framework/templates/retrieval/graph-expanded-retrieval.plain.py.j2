@@ -20,8 +20,9 @@ approach = "{{ approach }}"
 stack = "{{ stack }}"
 
 TOP_K = 8
-SEEDS = 20     # vector recall opens the graph; it does not need to finish the job
-MAX_HOPS = 2   # each hop multiplies the pool, and two answers most questions
+SEEDS = 20      # vector recall opens the graph; it does not need to finish the job
+MAX_HOPS = 2    # each hop multiplies the pool, and two answers most questions
+MAX_POOL = 200  # depth alone is not a bound: one hub entity can pull the corpus in
 
 # Injected at wiring time: retrieve(query, k) -> seed chunks (each a dict with
 # at least id, text, entities); rerank(query, text) -> relevance, higher is
@@ -54,6 +55,8 @@ class {{ class_name }}:
             ]
             fresh = {c["id"]: {**c, "hop": hop}
                      for c in connected if c["id"] not in pool}
+            room = max(0, MAX_POOL - len(pool))
+            fresh = dict(list(fresh.items())[:room])
             if not fresh:
                 break
             pool.update(fresh)

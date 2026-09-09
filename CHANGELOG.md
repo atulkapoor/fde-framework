@@ -5,6 +5,44 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.5] — 2026-09-10
+
+Three independent fresh-eyes auditors ran against 0.1.4 the day it shipped
+— an adversarial code review, a stranger following only the public docs,
+and a claims audit. Everything they caught, in one release:
+
+- The retrieval eval now grades every realization shape the registry can
+  emit: a wired module-level instance wins over a fresh construction (a
+  working deployment no longer scores 0% with the index blamed), class
+  `run(query, top_k=…)` shapes are called correctly, and path-contract
+  graph-retrieval is excluded from the recall gate it could never pass.
+  Recall math hardened: duplicate relevant ids no longer inflate, wrong-
+  shaped results are errors rather than silent zeros diluting a green CI.
+- `graph-retrieval.qdrant`'s expansion loop yielded the wrong variable
+  since v0.1.3 — the graph walk was dead code and the approach silently
+  degraded to vector search. Fixed and pinned by executing the template.
+  The graph-expanded variant survives adjacency entries for deleted
+  documents (the continuous-churn case it exists for) and all three
+  variants cap expansion breadth, not just depth.
+- The emitted `ops/slo.md` now shows the captured baseline as the numbers
+  to beat — it said "Not captured" over a recorded baseline, contradicting
+  its own acceptance protocol. `evals/acceptance.md` stops citing a named
+  eval owner when the client_readiness gate was waived, and stops citing
+  "those 0" cases over an empty golden set.
+- The architecture fingerprint now includes the topology: two engagements
+  building byte-different projects (different boundaries) no longer share
+  a fingerprint.
+- The interview no longer re-asks a multi-valued question it just
+  accepted; the offline_evaluability remedy names its clearing command;
+  a rejection whose applies-condition references an unanswered dimension
+  now names the question that could reverse it.
+- Docs truth pass: the quickstart names all three gate steps before the
+  passing build; the emitted-project tree shows `ops/diagnosis.md` and
+  `evals/retrieval.py`; kb commands documented registry-free as they ship;
+  README nav links absolute so they resolve on PyPI; ARCHITECTURE.md
+  diagram says seven gates; CITATION.cff current; CI checks out full
+  history so the sanitisation scan covers what the README says it covers.
+
 ## [0.1.4] — 2026-09-09
 
 The measurement release: claims the framework already made, turned into

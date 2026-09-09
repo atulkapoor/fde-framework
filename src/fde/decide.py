@@ -111,9 +111,22 @@ def decide_component(
             )
             continue
         if not any(holds(c, profile, registry) for c in approach.applies_when):
-            rejected.append(
-                Rejected(approach.id, f"nothing here matches {' or '.join(approach.applies_when)}")
-            )
+            reason = f"nothing here matches {' or '.join(approach.applies_when)}"
+            # An unanswered dimension is a different situation from a
+            # mismatched one: the reader should know one question could
+            # change this rejection, not go looking for a design flaw.
+            open_dimensions = sorted({
+                dimension
+                for condition in approach.applies_when
+                for dimension in _referenced(condition)
+                if profile.get(dimension) is None
+            })
+            if open_dimensions:
+                reason += (
+                    f" -- unanswered: {', '.join(open_dimensions)} "
+                    f"(an answer could admit it)"
+                )
+            rejected.append(Rejected(approach.id, reason))
             # Not ruled out -- just not ruled in. If its applies conditions
             # reference something unanswered, an answer could still admit it.
             still_askable.append(approach)

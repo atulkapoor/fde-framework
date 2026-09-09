@@ -1,4 +1,4 @@
-cff-version: 1.2.0
+cff-version: 0.1.5
 title: fde-framework
 message: If you use this framework, a citation is appreciated.
 type: software
@@ -8,5 +8,5 @@ authors:
 repository-code: https://github.com/atulkapoor/fde-framework
 url: https://pypi.org/project/fde-framework/
 license: Apache-2.0
-version: 0.1.2
-date-released: 2026-09-07
+version: 0.1.5
+date-released: '2026-09-10'

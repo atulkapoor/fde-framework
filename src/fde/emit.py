@@ -24,7 +24,7 @@ from fde.decide import base_component as _base
 from fde.deploy import write_deploy
 from fde.intake.samples import build_eval_set, infer_contract, infer_metrics, load_pairs
 from fde.moves import BoundaryViolation, assert_boundary
-from fde.ops import write_ops
+from fde.ops import measurable_retrieval, write_ops
 from fde.registry import Registry
 
 
@@ -62,6 +62,7 @@ def emit(
     pairs_path: Path | None = None,
     waivers: list[dict] | None = None,
     overrides: list[dict] | None = None,
+    baseline: dict | None = None,
 ) -> EmitReport:
     out = Path(out)
     _refuse_if_unsound(architecture, out, pairs_path)
@@ -87,9 +88,10 @@ def emit(
     _write_pipeline(architecture, out, registry)
     if architecture.graph.sensitive_nodes():
         _write_boundary(architecture, out)
-    _write_evals(architecture, out, pairs_path)
+    _write_evals(architecture, out, pairs_path,
+                 waived={w.get("gate") for w in (waivers or [])})
     write_deploy(architecture, out)
-    write_ops(architecture, out, registry)
+    write_ops(architecture, out, registry, baseline=baseline)
     _write_project_file(out)
     (out / "ARCHITECTURE.md").write_text(render_architecture(architecture, registry))
     _write_risks(out, waivers or [], overrides or [], architecture)
@@ -698,7 +700,10 @@ def _needs_model(architecture: Architecture) -> bool:
                               "cascade", "model-planner"})
 
 
-def _write_evals(architecture: Architecture, out: Path, pairs_path: Path | None) -> None:
+def _write_evals(
+    architecture: Architecture, out: Path, pairs_path: Path | None,
+    waived: set[str] | None = None,
+) -> None:
     """The measurement the project ships with.
 
     Seeded from the client's own examples, so the evaluation is about their
@@ -734,17 +739,22 @@ def _write_evals(architecture: Architecture, out: Path, pairs_path: Path | None)
         _HARNESS.format(metrics=json.dumps(metrics), judged=judged)
     )
 
-    if "retrieval" in architecture.decisions.decided():
+    if measurable_retrieval(architecture):
         # The retrieval layer measured alone: the embedding and index set a
         # ceiling nothing downstream recovers, and an empty case file is a
         # gap somebody can see rather than a measurement nobody took.
+        # graph-retrieval is excluded: it answers path queries (from/to),
+        # and grading a path contract on recall@K would ship a CI gate
+        # that can never pass.
         (evals / "retrieval.py").write_text(_RETRIEVAL_EVAL)
         cases_path = evals / "retrieval_cases.jsonl"
         if not cases_path.exists():
             cases_path.write_text("")
 
     golden_count = len(suite.golden) if suite else 0
-    (evals / "acceptance.md").write_text(_acceptance(architecture, golden_count))
+    (evals / "acceptance.md").write_text(
+        _acceptance(architecture, golden_count, waived or set())
+    )
 
     latency = (architecture.values or {}).get("latency_budget_ms")
     if latency:
@@ -756,7 +766,9 @@ def _write_evals(architecture: Architecture, out: Path, pairs_path: Path | None)
         )
 
 
-def _acceptance(architecture: Architecture, golden_count: int) -> str:
+def _acceptance(
+    architecture: Architecture, golden_count: int, waived: set[str] | None = None,
+) -> str:
     """The user-acceptance protocol, written down before anyone is asked to
     accept anything.
 
@@ -765,9 +777,23 @@ def _acceptance(architecture: Architecture, golden_count: int) -> str:
     output will take it -- and an engagement that never schedules it discovers
     the answer in production.
     """
-    judge_note = (
-        "the named evaluation owner (the client_readiness gate holds their "
-        "name)"
+    if "client_readiness" in (waived or set()):
+        # The gate was waived, so no name is on record -- saying one is
+        # would be this document lying about its own engagement.
+        judge_note = (
+            "the evaluation owner -- NOT yet named (the client_readiness "
+            "gate was waived), so finding this person is an open action "
+            "this protocol cannot run without"
+        )
+    else:
+        judge_note = (
+            "the named evaluation owner (the client_readiness gate holds "
+            "their name)"
+        )
+    seen_note = (
+        f"(the system has seen those {golden_count} in CI)" if golden_count
+        else "(the golden set is empty -- seed it, or this protocol is the "
+             "only evaluation there is)"
     )
     return "\n".join([
         "# Acceptance",
@@ -781,7 +807,7 @@ def _acceptance(architecture: Architecture, golden_count: int) -> str:
         f"1. **Who judges**: {judge_note}, plus at least one person who does "
         "the work today. Not the builder.",
         f"2. **Sample**: fresh items from live data -- never the golden set "
-        f"(the system has seen those {golden_count} in CI). Size to match "
+        f"{seen_note}. Size to match "
         "the golden set or 30, whichever is larger.",
         "3. **Blind pass**: the judges label the sample before seeing the "
         "system's output; disagreement between judges is recorded, not "
@@ -897,6 +923,7 @@ queries -- the ones the eval owner would grade -- never from a benchmark.
 import argparse
 import json
 import sys
+import types
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -915,13 +942,26 @@ def load_cases():
 def resolve_retriever():
     """The deployed retriever, whatever shape its realization took.
 
-    Returns a callable (query, k) -> ranked results. Wiring problems surface
-    as the retriever's own refusal, which is the correct failure: an eval
-    that silently skipped an unwired store would grade a system that cannot
-    retrieve as though it could.
+    A module-level *instance* wins over everything: deployments wire state
+    (an index, a connection) into an instance once, and constructing a fresh
+    one here would measure an empty retriever and blame the index. Then a
+    module-level run(query, top_k=...), then a class constructed once as the
+    last resort. Wiring problems surface as the retriever's own refusal,
+    which is the correct failure: an eval that silently skipped an unwired
+    store would grade a system that cannot retrieve as though it could.
     """
     from app.components import retrieval as mod
 
+    for name in sorted(vars(mod)):
+        if name.startswith("_"):
+            continue
+        obj = getattr(mod, name)
+        if isinstance(obj, (type, types.ModuleType, types.FunctionType)):
+            continue
+        if callable(getattr(obj, "retrieve", None)):
+            return lambda query, k, _r=obj: _r.retrieve(query, k)
+        if callable(getattr(obj, "run", None)):
+            return lambda query, k, _r=obj: _r.run(query, top_k=k)
     run = getattr(mod, "run", None)
     if callable(run) and not isinstance(run, type):
         return lambda query, k: run(query, top_k=k)
@@ -929,19 +969,31 @@ def resolve_retriever():
         obj = getattr(mod, name)
         if isinstance(obj, type):
             if callable(getattr(obj, "retrieve", None)):
-                return lambda query, k, _cls=obj: _cls().retrieve(query, k)
+                instance = obj()
+                return lambda query, k, _r=instance: _r.retrieve(query, k)
             if callable(getattr(obj, "run", None)):
-                return lambda query, k, _cls=obj: _cls().run({"query": query, "k": k})
+                instance = obj()
+                return lambda query, k, _r=instance: _r.run(query, top_k=k)
     raise SystemExit(
         "no retriever found in app/components/retrieval.py -- expected a "
-        "module-level run(query, top_k=...) or a class with retrieve() or run()"
+        "wired module-level instance, a run(query, top_k=...) function, or "
+        "a class with retrieve() or run()"
     )
 
 
 def surfaced_ids(result):
+    """Ids from a ranked result list, or None when the shape is not one.
+
+    None is an error, not a zero: a retriever returning a dict, or a list
+    with no id-bearing entries, is mis-wired -- scoring it 0 would dilute
+    the mean and keep CI green over a measurement that never happened.
+    """
     if not isinstance(result, list):
-        return []
-    return [str(r.get("id")) for r in result if isinstance(r, dict) and "id" in r]
+        return None
+    ids = [str(r.get("id")) for r in result if isinstance(r, dict) and "id" in r]
+    if result and not ids:
+        return None
+    return ids
 
 
 def main():
@@ -962,16 +1014,25 @@ def main():
     recalls = {k: [] for k in KS}
     misses = []
     for case in cases:
-        relevant = [str(r) for r in case.get("relevant", [])]
-        if not relevant:
+        raw = case.get("relevant")
+        if not isinstance(raw, list) or not raw:
             errors += 1
-            misses.append({"id": case.get("id"), "note": "case lists no relevant ids"})
+            misses.append({"id": case.get("id"),
+                           "note": "relevant must be a non-empty list of ids"})
             continue
+        # Deduplicated: a repeated id is one document, and counting it twice
+        # inflates recall for the cases that need scrutiny most.
+        relevant = sorted({str(r) for r in raw})
         try:
             got = surfaced_ids(retrieve(case["query"], max(KS)))
         except Exception as exc:  # noqa: BLE001
             errors += 1
             misses.append({"id": case.get("id"), "note": f"retriever errored: {exc}"})
+            continue
+        if got is None:
+            errors += 1
+            misses.append({"id": case.get("id"),
+                           "note": "retriever returned no id-bearing result list"})
             continue
         for k in KS:
             top = set(got[:k])
@@ -994,8 +1055,9 @@ def main():
     gate = recalls[KS[0]]
     mean = sum(gate) / len(gate) if gate else 0.0
     if mean <= 0:
-        print("nothing relevant surfaced for any case. Look at the index and "
-              "the embedding model before anything downstream.",
+        print("nothing relevant surfaced for any case. Look at the retrieval "
+              "layer -- the index, the query handling, and the embedding "
+              "model where one exists -- before anything downstream.",
               file=sys.stderr)
         return 1
     if mean < args.min_recall:
@@ -1027,7 +1089,6 @@ import argparse
 import json
 import sys
 from collections import Counter
-import json
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -1166,7 +1227,11 @@ def main():
             return 1
         raise
 
-    print(f"metrics: {{', '.join(METRICS)}}")
+    if JUDGED:
+        print("metrics: judged comparison against the reference "
+              "(calibration protocol in evals/acceptance.md)")
+    else:
+        print(f"metrics: {{', '.join(METRICS)}}")
     for layer in report:
         score = "--" if layer["score"] is None else f"{{layer['score']:.1%}}"
         print(f"  {{layer['layer']:12}} {{layer['cases']:4}} cases  {{score}}")

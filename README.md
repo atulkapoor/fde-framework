@@ -15,9 +15,9 @@
 <p>
   <a href="#install">Install</a> ·
   <a href="#try-it">Quickstart</a> ·
-  <a href="ARCHITECTURE.md">Architecture</a> ·
-  <a href="examples/invoice-extraction/">Worked example</a> ·
-  <a href="CONTRIBUTING.md">Contributing</a> ·
+  <a href="https://github.com/atulkapoor/fde-framework/blob/main/ARCHITECTURE.md">Architecture</a> ·
+  <a href="https://github.com/atulkapoor/fde-framework/tree/main/examples/invoice-extraction">Worked example</a> ·
+  <a href="https://github.com/atulkapoor/fde-framework/blob/main/CONTRIBUTING.md">Contributing</a> ·
   <a href="https://pypi.org/project/fde-framework/">PyPI</a> ·
   <a href="https://atulkapoor.github.io/fde-framework/">Website</a>
 </p>
@@ -37,9 +37,9 @@ including on-premise, inside a customer VPC, or fully air-gapped.
 pip install fde-framework
 fde start acme --statement "Extract fields from supplier invoices."
 fde ask acme --role admin        # role-scoped discovery interview
-fde architect acme               # the design, with cited rationale
+fde architect acme               # topology + chosen approaches (rationale lands in ARCHITECTURE.md)
 fde build acme --out project     # refuses: seven gates guard the build
-# ...verify data access, capture the baseline (each gate prints its remedy), then:
+# ...verify data access, capture the baseline, name the eval owner (each gate prints its remedy), then:
 fde build acme --out project     # code + evals + deploy assets + runbook
 ```
 
@@ -93,9 +93,9 @@ pairs, role-scoped interview, hardware scan) → fact log with provenance →
 permutation space → seven gates → decide → architect → build (code, evals,
 deploy and ops assets, `RISKS.md`, `COMPLIANCE.md`) → retro and case
 capture. Overrides are honoured on the next run, trigger observations feed
-calibration, and a reviewed case can enter the corpus. over 800 tests; three
-adversarial review rounds (108 findings, each fixed and pinned as a
-regression test); CI gates on the suite, lint, and a sanitisation scan of
+calibration, and a reviewed case can enter the corpus. over 870 tests; four
+fresh-eyes review rounds (142 findings, each resolved and the fixes pinned
+as regression tests); CI gates on the suite, lint, and a sanitisation scan of
 the tree *and its history*; the evidence corpus is anchored to publicly
 documented production deployments; every decision is reproducible from its
 inputs.
@@ -227,8 +227,8 @@ fde scan engagements/acme                  # what this hardware runs
 fde cost --requests-per-day 500000 --model-b 70   # dated fleet sizing
 
 fde kb validate   # parse and cross-link the registry
-fde kb gaps     --root framework   # what the corpus is missing
-fde kb sweep    --root framework   # profiles no approach can serve
+fde kb gaps                        # what the corpus is missing
+fde kb sweep                       # profiles no approach can serve
 .venv/bin/pytest -q
 ```
 
@@ -252,10 +252,11 @@ project/
 │   └── llm.py            #   the one model touchpoint — when a decision needs a model (boundary-gated)
 ├── evals/                # golden / edge / adversarial sets from the client's own pairs
 │   ├── harness.py        #   fails CI until implemented; judge-based when the evaluation decided judged
+│   ├── retrieval.py      #   recall@10/50 of the retrieval layer alone — when retrieval answers ranked queries
 │   ├── acceptance.md     #   blind UAT protocol for the client's own judges
 │   └── load.py           #   p95 against the stated budget (when one was stated)
 ├── deploy/               # the substrate that was earned + TEARDOWN.md for all of it
-├── ops/                  # runbook keyed to the failure taxonomy, SLOs, rollback
+├── ops/                  # runbook keyed to the failure taxonomy, diagnosis walk, SLOs, rollback
 ├── ARCHITECTURE.md       # scope read-out, decisions, tools & alternatives, agent posture
 ├── RISKS.md              # every waived gate and overridden recommendation
 └── COMPLIANCE.md         # jurisdiction obligations, when a locale pack was applied
@@ -289,7 +290,7 @@ fde security-review acme --note "client infosec walked the data paths"
 fde ask acme --role eval_owner       # or: fde waive acme client_readiness --reason "..."
 
 fde build acme --out project         # refuses until the gates truly pass
-python project/evals/harness.py      # red until implemented -- that's the exam
+python project/evals/harness.py      # red: empty until pairs are seeded, then red until implemented -- that's the exam
 fde implement project                # drive a coding agent until it's green
 ```
 
@@ -351,8 +352,9 @@ the same receipts the emitted `ARCHITECTURE.md` prints.
 
 ## Troubleshooting
 
-**`no registry here`** — the default `--registry framework` is relative; run
-from the repository root or pass the path.
+**`no registry here`** — you passed `--registry`/`--root` at a directory that
+holds no registry. Drop the flag (the corpus ships inside the package) or
+point it at the `framework/` of a source checkout.
 
 **`build` refuses with gates listed** — that is the point. `fde status`
 names each gate and its remedy; soft gates take `fde waive <gate> --reason`,
@@ -508,7 +510,7 @@ The registry is the shared asset; engagements are private working state.
 ```bash
 git clone https://github.com/atulkapoor/fde-framework.git && cd fde-framework
 python3 -m venv .venv && .venv/bin/pip install -e ".[dev,documents]"
-.venv/bin/pytest -q          # ~850 tests, < 30s
+.venv/bin/pytest -q          # ~880 tests, < 60s
 .venv/bin/ruff check src tests
 ```
 

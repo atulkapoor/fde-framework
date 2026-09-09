@@ -53,7 +53,16 @@ class Architecture:
         return {s: v for s, v in self.licences.items() if copyleft(v)}
 
     def fingerprint(self) -> str:
-        return self.decisions.decided_fingerprint()
+        """Topology and decisions together.
+
+        Two engagements with the same approach set but different topologies
+        build byte-different projects (the boundary code differs), and a
+        fingerprint that called them identical was answering a narrower
+        question than the one it prints beside."""
+        import hashlib
+
+        payload = f"{self.topology}:{self.decisions.decided_fingerprint()}"
+        return hashlib.sha256(payload.encode()).hexdigest()[:16]
 
 
 def architect(

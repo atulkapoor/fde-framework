@@ -414,7 +414,10 @@ def _offline_evaluability(profile: Profile, registry=None) -> Gate:
         False,
         reason="Freeform output needs a judge, and nothing may leave here.",
         remedy="Plan a judge that runs inside the boundary, and calibrate it "
-               "against human agreement before quoting a number from it.",
+               "against human agreement before quoting a number from it. "
+               "Record the plan: `fde waive <engagement> offline_evaluability "
+               "--reason \"local judge: <model>, calibrated against <owner>\"` "
+               "-- the plan ships in RISKS.md under your name.",
     )
 
 

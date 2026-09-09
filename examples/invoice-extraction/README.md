@@ -45,7 +45,7 @@ fde security-review engagements/acme --note "client infosec reviewed data paths 
 fde waive engagements/acme client_readiness --reason "eval owner named, starts Monday"
 
 fde architect engagements/acme
-# topology on-prem   [82d56c303de52199]
+# topology on-prem   [de84a4cea7cc42b9]
 #   deployment       systemd-unit via plain-python
 #   evaluation       field-match via plain-python
 #   governance       boundary-and-audit via plain-python
@@ -57,6 +57,7 @@ fde architect engagements/acme
 
 fde build engagements/acme --out project
 # wrote project
+# next: fde implement project --holdout engagements/acme/artifacts/holdout.jsonl
 ```
 
 The emitted `project/` holds `app/` (pipeline in topological order, boundary
@@ -64,7 +65,7 @@ check imported at startup because data cannot leave), `evals/` (golden set
 from the three pairs, a harness that fails CI until the pipeline is
 implemented, and `acceptance.md` — a blind-judging protocol for the client's
 own people), `deploy/` (a systemd unit — rung zero, because nothing in the
-profile earned a container), `ops/` (runbook, SLOs, rollback),
+profile earned a container), `ops/` (runbook, diagnosis walk, SLOs, rollback),
 `ARCHITECTURE.md` with the scope read-out, the tools table with
 in-topology alternatives, the agent posture, and every rejected
 alternative, and `RISKS.md` recording the one waived gate and its reason.
@@ -82,7 +83,7 @@ fde retro engagements/acme --outcome "delivered" --days 18
 Notice what the decisions did *not* do: no vector database for a lookup
 workload, no Kubernetes for a single service, no LLM in the extraction path
 while the deterministic mapper's coverage is unmeasured. The fingerprint
-`82d56c303de52199` is stable — rebuild from the same facts and the diff is
+`de84a4cea7cc42b9` is stable — rebuild from the same facts and the diff is
 empty. (The corpus evolves, and a corpus change that moves a decision moves
 this fingerprint with it; the transcript above is re-run against the corpus
 it ships with.)

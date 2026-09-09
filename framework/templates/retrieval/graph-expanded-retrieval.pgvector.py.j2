@@ -45,7 +45,9 @@ LIMIT %(k)s;
 """
 
 # One hop per query, looped in the application: co-mentioned chunks of the
-# frontier, minus everything already found. Bounded by construction.
+# frontier, minus everything already found. Depth is bounded by the loop and
+# breadth by the pool cap -- depth alone is not a bound, because one hub
+# entity can pull the whole corpus in on a single hop.
 EXPAND_SQL = """
 SELECT DISTINCT m2.chunk_id, c.body
 FROM {table}_mentions m1
@@ -72,6 +74,7 @@ class {{ class_name }}:
         dimensions: int = 768,
         max_hops: int = 2,
         seeds: int = 20,
+        max_pool: int = 200,
     ) -> None:
         self.connection = connection
         self.embed = embed
@@ -80,6 +83,7 @@ class {{ class_name }}:
         self.dimensions = dimensions
         self.max_hops = max_hops
         self.seeds = seeds
+        self.max_pool = max_pool
 
     def schema(self) -> str:
         return SCHEMA_SQL.format(table=self.table, dimensions=self.dimensions)
@@ -102,6 +106,7 @@ class {{ class_name }}:
                     {"frontier": frontier, "found": list(found)},
                 )
                 fresh = cursor.fetchall()
+                fresh = fresh[: max(0, self.max_pool - len(found))]
                 if not fresh:
                     break
                 for row in fresh:
