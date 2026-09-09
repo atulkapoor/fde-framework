@@ -19,6 +19,11 @@ Ruled out where nobody is named to operate it. A model with no owner is a
 liability handed over with a bow on it, and an embedding model whose host dies
 takes the index with it.
 
+Whichever model, it sets the ceiling on retrieval: nothing downstream
+recovers a document that was never encoded well enough to surface. The
+choice is made by measured recall on the engagement's own golden queries --
+the emitted `evals/retrieval.py` is that measurement -- not by leaderboard.
+
 The handover concern is stated precisely rather than broadly: with nobody
 named to operate and data free to leave, the managed alternative is
 strictly simpler and wins. But where data cannot leave, the plain

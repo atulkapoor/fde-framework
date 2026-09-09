@@ -203,6 +203,14 @@ def _diagnosis(architecture) -> str:
             "arrived.",
             "",
         ]
+        if "retrieval" in decided:
+            lines += [
+                "**Measure** — `python evals/retrieval.py` scores this layer "
+                "alone, no model in the loop: recall against the cases in "
+                "`evals/retrieval_cases.jsonl`. The suspicion becomes a "
+                "number before anything downstream gets blamed.",
+                "",
+            ]
         step += 1
     if "integration" in decided:
         lines += [
@@ -404,6 +412,17 @@ def _ci(architecture, out: Path) -> None:
     workflows = out / ".github" / "workflows"
     workflows.mkdir(parents=True, exist_ok=True)
 
+    retrieval_step = ""
+    if "retrieval" in architecture.decisions.decided():
+        retrieval_step = (
+            "      # The embedding and index set a ceiling on everything\n"
+            "      # downstream -- no reranking or prompting recovers a\n"
+            "      # document that was never retrieved. This measures the\n"
+            "      # ceiling by itself, no model in the loop.\n"
+            "      - name: Evaluate retrieval\n"
+            "        run: python evals/retrieval.py --min-recall 0.0\n"
+        )
+
     boundary_step = ""
     if architecture.graph.sensitive_nodes():
         boundary_step = (
@@ -426,6 +445,7 @@ def _ci(architecture, out: Path) -> None:
         '        with: {python-version: "3.11"}\n'
         "      - run: pip install -e .\n\n"
         f"{boundary_step}"
+        f"{retrieval_step}"
         "      # Gating on tests alone measures whether the code runs, not\n"
         "      # whether it is right. The evaluation is the one that says so --\n"
         "      # and it prints every layer, adversarial included, so scoring\n"

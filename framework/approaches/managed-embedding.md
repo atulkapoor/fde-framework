@@ -19,4 +19,7 @@ to their source, so this is not a way of anonymising anything on the way out.
 
 One-way, like any vendor call. And expensive to reverse for a second reason --
 changing embedding model means reindexing everything, so leaving is a
-reindexing project rather than a configuration change.
+reindexing project rather than a configuration change. Which is exactly why
+the model is chosen by measured recall on the engagement's own golden
+queries (the emitted `evals/retrieval.py`) rather than by leaderboard: the
+reindexing bill for a wrong guess arrives after the index is full.

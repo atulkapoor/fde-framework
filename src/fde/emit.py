@@ -734,6 +734,15 @@ def _write_evals(architecture: Architecture, out: Path, pairs_path: Path | None)
         _HARNESS.format(metrics=json.dumps(metrics), judged=judged)
     )
 
+    if "retrieval" in architecture.decisions.decided():
+        # The retrieval layer measured alone: the embedding and index set a
+        # ceiling nothing downstream recovers, and an empty case file is a
+        # gap somebody can see rather than a measurement nobody took.
+        (evals / "retrieval.py").write_text(_RETRIEVAL_EVAL)
+        cases_path = evals / "retrieval_cases.jsonl"
+        if not cases_path.exists():
+            cases_path.write_text("")
+
     golden_count = len(suite.golden) if suite else 0
     (evals / "acceptance.md").write_text(_acceptance(architecture, golden_count))
 
@@ -861,6 +870,144 @@ def classify(expected, actual, context=None):
     if type(actual) is not type(expected):
         return OUTPUT
     return PREDICTION
+'''
+
+
+_RETRIEVAL_EVAL = '''#!/usr/bin/env python3
+"""Measure the retrieval layer alone. Exits non-zero on an empty case set,
+an erroring retriever, or recall below the threshold -- so CI can gate on it.
+
+The embedding and index choices set a ceiling on everything downstream: no
+reranking, prompting or model upgrade recovers a document that was never
+retrieved. End-to-end scores blur that ceiling into "quality"; this number is
+the ceiling by itself. When a failing case's answer is missing from the
+evidence, this -- not the prompt -- is the layer to fix (ops/diagnosis.md
+walks the order).
+
+Cases live in retrieval_cases.jsonl beside this file, one JSON object per
+line:
+
+    {"id": "case-1", "query": "...", "relevant": ["doc-7", "doc-12"]}
+
+`relevant` lists the document ids a correct top-K must surface; recall@K is
+the share of them that did. Seed cases from the engagement's own golden
+queries -- the ones the eval owner would grade -- never from a benchmark.
+"""
+
+import argparse
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+HERE = Path(__file__).parent
+KS = (10, 50)
+
+
+def load_cases():
+    path = HERE / "retrieval_cases.jsonl"
+    if not path.exists():
+        return []
+    return [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+def resolve_retriever():
+    """The deployed retriever, whatever shape its realization took.
+
+    Returns a callable (query, k) -> ranked results. Wiring problems surface
+    as the retriever's own refusal, which is the correct failure: an eval
+    that silently skipped an unwired store would grade a system that cannot
+    retrieve as though it could.
+    """
+    from app.components import retrieval as mod
+
+    run = getattr(mod, "run", None)
+    if callable(run) and not isinstance(run, type):
+        return lambda query, k: run(query, top_k=k)
+    for name in sorted(dir(mod)):
+        obj = getattr(mod, name)
+        if isinstance(obj, type):
+            if callable(getattr(obj, "retrieve", None)):
+                return lambda query, k, _cls=obj: _cls().retrieve(query, k)
+            if callable(getattr(obj, "run", None)):
+                return lambda query, k, _cls=obj: _cls().run({"query": query, "k": k})
+    raise SystemExit(
+        "no retriever found in app/components/retrieval.py -- expected a "
+        "module-level run(query, top_k=...) or a class with retrieve() or run()"
+    )
+
+
+def surfaced_ids(result):
+    if not isinstance(result, list):
+        return []
+    return [str(r.get("id")) for r in result if isinstance(r, dict) and "id" in r]
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--min-recall", type=float, default=0.0,
+                        help="fail below this mean recall@%d" % KS[0])
+    args = parser.parse_args()
+
+    cases = load_cases()
+    if not cases:
+        print("retrieval_cases.jsonl is empty -- nothing was measured, so "
+              "nothing passed. Seed it with golden queries and the document "
+              "ids a correct top-K must surface.", file=sys.stderr)
+        return 1
+
+    retrieve = resolve_retriever()
+    errors = 0
+    recalls = {k: [] for k in KS}
+    misses = []
+    for case in cases:
+        relevant = [str(r) for r in case.get("relevant", [])]
+        if not relevant:
+            errors += 1
+            misses.append({"id": case.get("id"), "note": "case lists no relevant ids"})
+            continue
+        try:
+            got = surfaced_ids(retrieve(case["query"], max(KS)))
+        except Exception as exc:  # noqa: BLE001
+            errors += 1
+            misses.append({"id": case.get("id"), "note": f"retriever errored: {exc}"})
+            continue
+        for k in KS:
+            top = set(got[:k])
+            recalls[k].append(sum(1 for r in relevant if r in top) / len(relevant))
+        absent = [r for r in relevant if r not in set(got[: max(KS)])]
+        if absent:
+            misses.append({"id": case.get("id"), "missing": absent})
+
+    for k in KS:
+        scored = recalls[k]
+        mean = sum(scored) / len(scored) if scored else 0.0
+        print(f"  recall@{k:<3} {len(scored):>4} cases  {mean:.1%}")
+    for miss in misses[:10]:
+        print(f"    {miss}", file=sys.stderr)
+
+    if errors:
+        print(f"{errors} case(s) errored -- the retriever is not wired end "
+              f"to end yet", file=sys.stderr)
+        return 1
+    gate = recalls[KS[0]]
+    mean = sum(gate) / len(gate) if gate else 0.0
+    if mean <= 0:
+        print("nothing relevant surfaced for any case. Look at the index and "
+              "the embedding model before anything downstream.",
+              file=sys.stderr)
+        return 1
+    if mean < args.min_recall:
+        print(f"recall@{KS[0]} below {args.min_recall:.1%} -- fix retrieval "
+              f"before touching prompts or models: nothing downstream "
+              f"recovers a document that never surfaced", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
 '''
 
 

@@ -5,6 +5,13 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+- Projects with a retrieval component ship `evals/retrieval.py`: recall@10
+  and recall@50 against golden queries in `retrieval_cases.jsonl`, gated in
+  CI, refusing an empty case set. The embedding and index choices set a
+  ceiling nothing downstream recovers; this measures the ceiling by itself,
+  no model in the loop. The diagnosis walk's evidence step now ends at this
+  number, and both embedding approaches record the doctrine: chosen by
+  measured recall on the engagement's own queries, never by leaderboard.
 - Emitted projects ship `ops/diagnosis.md`: the walk that finds which layer
   a failure lives in -- definitions, evidence, tools, loop, model -- ordered
   cheapest-to-check first, sections adapted to the components actually in
