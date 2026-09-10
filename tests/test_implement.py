@@ -234,6 +234,25 @@ def test_a_real_implementation_passes_the_holdout(tmp_path):
     assert "holdout: green" in report.rounds[-1].check_tail
 
 
+def test_the_interpreters_bytecode_cache_is_not_a_planted_file(tmp_path):
+    """Importing evals/taxonomy writes a __pycache__ beside it on the very
+    first harness run. The first full demonstration engagement stopped at
+    round 1 with 'the agent edited the exam' over a .pyc the agent never
+    touched -- the fence must guard against the agent, not the interpreter."""
+    project = toy_project(tmp_path)
+
+    def implementer(prompt):
+        cache = project / "evals" / "__pycache__"
+        cache.mkdir(exist_ok=True)
+        (cache / "taxonomy.cpython-312.pyc").write_bytes(b"\x00bytecode")
+        (project / "app" / "impl.py").write_text("DONE = True\n")
+        return True
+
+    report = run_loop(project, invoke_agent=implementer, max_rounds=3)
+    assert report.stopped_by != "guardrail", report.rounds[-1]
+    assert (project / "evals" / "__pycache__" / "taxonomy.cpython-312.pyc").exists()
+
+
 def test_a_file_planted_in_evals_is_removed_and_fatal(tmp_path):
     project = toy_project(tmp_path)
 

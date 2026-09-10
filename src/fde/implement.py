@@ -229,6 +229,12 @@ def run_loop(
             if not directory.is_dir():
                 continue
             for path in directory.rglob("*"):
+                # The interpreter is not the agent: importing evals/taxonomy
+                # writes a __pycache__ beside it on the very first harness
+                # run, and treating bytecode as a planted exam edit stopped
+                # every real loop at round 1.
+                if "__pycache__" in path.parts or path.suffix in (".pyc", ".pyo"):
+                    continue
                 if path.is_file() and path not in known_protected:
                     path.unlink()
                     violations.append(

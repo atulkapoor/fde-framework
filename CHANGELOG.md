@@ -5,6 +5,15 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.7] — 2026-09-10
+
+- The implement fence no longer mistakes the interpreter for the agent:
+  Python's own `__pycache__` bytecode, written beside `evals/taxonomy.py`
+  on the first harness run, tripped the planted-file guardrail and stopped
+  every real loop at round 1 with "the agent edited the exam". Found by
+  the demonstration engagement's first live implement run; bytecode caches
+  are now outside the fence, and the exam stays exactly as guarded.
+
 ## [0.1.6] — 2026-09-10
 
 Found by the first full demonstration engagement — 626 real scanned
