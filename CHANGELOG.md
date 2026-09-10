@@ -5,6 +5,19 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.6] — 2026-09-10
+
+Found by the first full demonstration engagement — 626 real scanned
+receipts (SROIE) run through the complete lifecycle on the published
+wheel:
+
+- `fde build <bare-name>` resolved the engagement but read the sample
+  pairs from the raw argument's path, silently emitting a project with an
+  empty golden set while sixty verified pairs sat on the engagement. The
+  harness's empty-exam refusal caught it at runtime; now the path is
+  resolved once, and the build receipt prints its own exam counts
+  ("evals: 42 golden, …") with a pointed warning when pairs exist but
+  none reached the golden set.
 - The local-engine choice is a concurrency decision, not only a hardware
   one: `fde scan <engagement>` now reads the recorded arrival rate, and
   past ~1000 requests/day (where the gap between requests drops under a

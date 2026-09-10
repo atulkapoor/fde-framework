@@ -1523,7 +1523,12 @@ def build_cmd(
         ]
         report = emit(architecture, out, registry=registry,
                       templates=Path(registry_root) / "templates",
-                      pairs_path=Path(root) / "artifacts" / "pairs.jsonl",
+                      # The engagement's own root, never the raw argument: a
+                      # bare name (`fde build receipts`) resolves through
+                      # _engagement, and building the pairs path from the raw
+                      # argument silently emitted a project with an empty
+                      # golden set while 42 verified pairs sat on disk.
+                      pairs_path=engagement.root / "artifacts" / "pairs.jsonl",
                       waivers=waivers,
                       overrides=applied_overrides,
                       baseline=engagement.baseline())
@@ -1561,6 +1566,22 @@ def build_cmd(
         _write_compliance(Path(out), locale)
 
     typer.echo(f"wrote {out}")
+    # The exam's size belongs in the build receipt: an empty golden set
+    # emitted next to sixty pairs on disk once read as a finished build.
+    counts = {}
+    for layer in ("golden", "edge_case", "adversarial"):
+        layer_path = Path(out) / "evals" / f"{layer}.jsonl"
+        counts[layer] = sum(
+            1 for line in layer_path.read_text().splitlines() if line.strip()
+        ) if layer_path.exists() else 0
+    typer.echo(f"evals: {counts['golden']} golden, {counts['edge_case']} edge, "
+               f"{counts['adversarial']} adversarial")
+    if not counts["golden"] and (engagement.root / "artifacts" / "pairs.jsonl").exists():
+        typer.echo(
+            "  pairs exist on the engagement but none reached the golden set -- "
+            "mark checked pairs `verified: true` and re-run `fde samples`",
+            err=True,
+        )
     # The delivery is finishable, and the finishing move is one command.
     holdout_path = engagement.root / "artifacts" / "holdout.jsonl"
     hint = f"fde implement {out}"
