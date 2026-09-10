@@ -5,6 +5,14 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+- The local-engine choice is a concurrency decision, not only a hardware
+  one: `fde scan <engagement>` now reads the recorded arrival rate, and
+  past ~1000 requests/day (where the gap between requests drops under a
+  generation's length) it names the sequential-queue ceiling and the
+  continuous-batching answer. The vllm and ollama stack entries carry the
+  doctrine: paged KV admits more concurrent sequences, the scheduler
+  retires requests mid-batch, and the crossover is measured, never guessed.
+
 ## [0.1.5] — 2026-09-10
 
 Three independent fresh-eyes auditors ran against 0.1.4 the day it shipped

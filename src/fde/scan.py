@@ -412,7 +412,7 @@ def _coder_model(budget_gb: float) -> str:
 
 def recommend_local_models(
     hardware: Hardware, platform_system: str | None = None,
-    is_arm_mac: bool | None = None,
+    is_arm_mac: bool | None = None, arrival_per_day: float | None = None,
 ) -> LocalModelPlan:
     """Runtime and models this box can actually serve, sized from what was
     measured -- never from what somebody remembered about the machine.
@@ -466,6 +466,28 @@ def recommend_local_models(
             f"the judge and reader fit, `fde implement` wants a hosted or "
             f"remote agent"
         )
+
+    # Continuous batching is what separates the engines under load: a
+    # sequential queue serves one generation at a time, and requests begin
+    # to overlap once the gap between them drops under a generation's
+    # length. At N/day across an 8-hour window the gap is 28800/N seconds;
+    # local generations run tens of seconds, so past ~1000/day overlap is
+    # the norm rather than the tail.
+    if arrival_per_day and arrival_per_day >= 1000 and runtime == "ollama":
+        if unified:
+            notes.append(
+                f"{arrival_per_day:,.0f} requests/day means overlapping "
+                f"requests, and Ollama serves a sequential queue -- "
+                f"latencies stack. vllm-metal (continuous batching) is the "
+                f"same box's answer when that shows"
+            )
+        else:
+            notes.append(
+                f"{arrival_per_day:,.0f} requests/day on CPU-only serving "
+                f"will not hold: generations take seconds each and overlap "
+                f"all day -- budget an accelerator before promising this "
+                f"rate"
+            )
 
     return LocalModelPlan(
         runtime=runtime,

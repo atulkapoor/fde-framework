@@ -402,3 +402,40 @@ def test_cpu_only_linux_still_gets_a_path():
     plan = recommend_local_models(Hardware(ram_gb=32.0), "Linux", is_arm_mac=False)
     assert plan.runtime == "ollama"
     assert "CPU" in plan.runtime_reason or "accelerator" in plan.runtime_reason
+
+
+# --- the engine choice is a concurrency decision too ----------------------
+
+
+def test_overlapping_arrivals_surface_the_concurrency_ceiling():
+    """Past ~1000/day the gap between requests drops under a generation's
+    length; a sequential queue stacks latencies, and the note names the
+    engine built for overlap."""
+    from fde.scan import Hardware, recommend_local_models
+
+    plan = recommend_local_models(
+        Hardware(ram_gb=36.0), "Darwin", is_arm_mac=True,
+        arrival_per_day=5000,
+    )
+    assert plan.runtime == "ollama"
+    assert any("vllm-metal" in note for note in plan.notes)
+
+
+def test_a_quiet_arrival_rate_adds_no_concurrency_note():
+    from fde.scan import Hardware, recommend_local_models
+
+    plan = recommend_local_models(
+        Hardware(ram_gb=36.0), "Darwin", is_arm_mac=True,
+        arrival_per_day=200,
+    )
+    assert not any("overlap" in note for note in plan.notes)
+
+
+def test_cpu_only_at_volume_warns_before_the_promise_is_made():
+    from fde.scan import Hardware, recommend_local_models
+
+    plan = recommend_local_models(
+        Hardware(ram_gb=32.0), "Linux", is_arm_mac=False,
+        arrival_per_day=5000,
+    )
+    assert any("will not hold" in note for note in plan.notes)

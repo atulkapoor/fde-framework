@@ -17,3 +17,9 @@ Not a fleet server: no continuous batching, no paged attention. The moment
 there are ten concurrent users, this is the wrong stack and vLLM (or SGLang,
 where requests share long prefixes) is the right one -- which is a swap of
 realization, not of architecture.
+
+The ceiling is concurrency: generations serve from a sequential queue, so
+overlapping requests stack their latencies. Right for a seat or a team;
+past roughly a thousand requests a day the queue is the system -- move to
+an engine with continuous batching before promising that rate, and
+`fde scan <engagement>` says so from the recorded arrival rate.

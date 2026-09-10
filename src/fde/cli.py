@@ -1655,7 +1655,15 @@ def scan_cmd(
     # costing figure, because model releases move monthly.
     from fde.scan import MODEL_GUIDANCE_AS_OF, recommend_local_models
 
-    plan = recommend_local_models(hardware)
+    # The engine choice is a concurrency decision as much as a hardware
+    # one: when the engagement recorded an arrival rate, it flows in.
+    arrival = None
+    if root is not None:
+        try:
+            arrival = _engagement(root).profile.get("arrival_rate")
+        except Exception:  # noqa: BLE001 -- a scan without an engagement still scans
+            arrival = None
+    plan = recommend_local_models(hardware, arrival_per_day=arrival)
     typer.echo(f"\nlocal models (guidance as of {MODEL_GUIDANCE_AS_OF} -- "
                f"releases move monthly, verify before install)")
     typer.echo(f"  runtime: {plan.runtime} -- {plan.runtime_reason}")
