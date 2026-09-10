@@ -31,3 +31,26 @@ jobs:
       - uses: actions/download-artifact@v4
         with: {name: dist, path: dist/}
       - uses: pypa/gh-action-pypi-publish@release/v1
+
+  # The Releases page is a public surface like PyPI's: tags without release
+  # notes read as a project that stopped at whatever the last note says.
+  github-release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create the GitHub release from the changelog section
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          # The body is this version's CHANGELOG section, verbatim.
+          awk -v ver="$VERSION" '
+            $0 ~ "^## \\["ver"\\]" {on=1; next}
+            on && /^## / {exit}
+            on {print}
+          ' CHANGELOG.md > body.md
+          gh release create "$TAG" --title "$VERSION" --notes-file body.md
