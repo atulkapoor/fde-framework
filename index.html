@@ -21,7 +21,7 @@
 <meta name="twitter:image" content="https://atulkapoor.github.io/fde-framework/social-preview.png">
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"SoftwareApplication","name":"fde-framework",
-"softwareVersion":"0.1.3","applicationCategory":"DeveloperApplication",
+"softwareVersion":"0.1.5","applicationCategory":"DeveloperApplication",
 "operatingSystem":"macOS, Linux, Windows",
 "description":"Open-source framework for Forward Deployed Engineers: from client problem statement to a deployable AI project, every decision traced to a fact.",
 "url":"https://atulkapoor.github.io/fde-framework/",
@@ -89,7 +89,7 @@
 </div>
 
   <h2>Watch it work</h2>
-  <p class="sub">Captured verbatim from a v0.1.3 session — trims are marked with <code>…</code>. The <a href="https://github.com/atulkapoor/fde-framework/tree/main/examples/invoice-extraction">worked example</a> in the repo reproduces its full transcript exactly.</p>
+  <p class="sub">Captured verbatim from a v0.1.5 session — trims are marked with <code>…</code>. The <a href="https://github.com/atulkapoor/fde-framework/tree/main/examples/invoice-extraction">worked example</a> in the repo reproduces its full transcript exactly.</p>
 
   <p class="ex-label">1 · A paragraph becomes typed facts — and the next questions</p>
   <pre><span class="d">$</span> fde start acme --statement <span class="o">"Extract fields from 500,000 scanned supplier
@@ -118,7 +118,7 @@ worth asking next (fde ask acme --role &lt;who&gt;):
 <span class="r">  [hard] data_access: Credentials have not been shown to work against real data.
       -&gt; Get a connection that returns real rows, even a handful, then record it:
          `fde data-access &lt;eng&gt; --note "what returned rows"`. Promised access is not access.</span>
-<span class="d">  … two more gates follow, each naming its remedy and its clearing command …</span>
+<span class="d">  … three more gates follow, each naming its remedy and its clearing command …</span>
 <span class="r">refused: gates above are unsatisfied. Soft gates take `fde waive &lt;gate&gt; --reason`;
 data access has no workaround, only credentials that return real rows.</span></pre>
   <p class="cap">Exit code 1, so CI can gate on it. Waived gates ship in the delivered project's RISKS.md, with reasons.</p>
@@ -167,7 +167,7 @@ holdout: <span class="g">green</span> (cases the implementer never saw)</pre>
     <div class="card"><h3>How does it improve?</h3><p>Per engagement: overrides are honoured and recorded, trigger predictions are calibrated against what actually fired, and anonymised cases enter the corpus only through human review.</p></div>
   </div>
 
-  <p class="quiet">Apache-2.0 · Python 3.11+ · 851 tests green at v0.1.3 · built by <a href="https://github.com/atulkapoor">Atul Kapoor</a> · <a href="https://www.linkedin.com/in/atulkapoor">LinkedIn</a> · <code>pip install fde-framework</code></p>
+  <p class="quiet">Apache-2.0 · Python 3.11+ · 881 tests green at v0.1.5 · built by <a href="https://github.com/atulkapoor">Atul Kapoor</a> · <a href="https://www.linkedin.com/in/atulkapoor">LinkedIn</a> · <code>pip install fde-framework</code></p>
 </main>
 </body>
 </html>
