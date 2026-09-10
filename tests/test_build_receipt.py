@@ -75,7 +75,7 @@ def test_a_bare_name_build_carries_the_verified_pairs(satisfied_engagement):
     result = runner.invoke(app, ["build", "acme", "--out", str(out), "--registry", FRAMEWORK])
     assert "wrote" in result.output, result.output
     golden = (out / "evals" / "golden.jsonl").read_text().splitlines()
-    assert len([l for l in golden if l.strip()]) > 0, (
+    assert len([line for line in golden if line.strip()]) > 0, (
         "bare-name build emitted an empty golden set beside verified pairs"
     )
 
@@ -91,7 +91,7 @@ def test_an_empty_exam_next_to_pairs_is_called_out(satisfied_engagement, tmp_pat
     the receipt says so instead of reading as a finished build."""
     root = satisfied_engagement / "engagements" / "acme"
     pairs_path = root / "artifacts" / "pairs.jsonl"
-    rows = [json.loads(l) for l in pairs_path.read_text().splitlines()]
+    rows = [json.loads(line) for line in pairs_path.read_text().splitlines()]
     for r in rows:
         r.pop("verified", None)
     pairs_path.write_text("".join(json.dumps(r) + "\n" for r in rows))
