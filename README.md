@@ -84,9 +84,19 @@ implemented. The full design is in [ARCHITECTURE.md](https://github.com/atulkapo
   air-gapped environments, where "call a hosted API" is not an option and the
   evaluation has to run where the system runs.
 
-## Status: built, unproven
+## Status: built, demonstrated, unproven
 
-Those are different claims, and the difference is the point.
+Three different claims, and the differences are the point.
+
+**Demonstrated**: a complete engagement has run end to end on real data —
+626 scanned receipts from the public SROIE corpus, through gates, build,
+and an agent-driven implement loop whose holdout refused an overfit
+implementation, whose measured plateau became a recorded fact, and whose
+rebuild flipped the design from rules to a model with the reason on the
+record. The full run, refusals included, is public:
+[fde-demo-receipts](https://github.com/atulkapoor/fde-demo-receipts).
+Two of this framework's releases (0.1.6, 0.1.7) shipped from what that
+run found.
 
 **Built**: the pipeline exists end to end — intake (prose, documents, sample
 pairs, role-scoped interview, hardware scan) → fact log with provenance →
