@@ -5,6 +5,29 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.8] — 2026-09-11
+
+The helping-hand release, shaped by walking the demonstration engagement
+as a user who only did what the tool said next:
+
+- `fde next <engagement>`: the single best next action, judged from
+  everything recorded — gates first (with the clearing command), then the
+  exam, the highest-value open question, the build, the implement loop.
+  The gates' remedy pattern, generalized to the whole lifecycle. Every
+  recording command (ask, samples, baseline, data-access,
+  security-review) now ends with the same one-line `next:` footer.
+- The implement loop drives to a finish-grade bar by default (0.85, not
+  CI's no-regression floor of 0.0) — a bar of zero once declared a 70%
+  implementation done and handed it to the holdout, whose verdict then
+  read a half-built system as a memorized exam. The holdout message now
+  names both readings. When the agent command fails, the round log
+  carries what the agent actually said, and the AgentMissing hint points
+  at IDE-extension installs that bundle the binary off PATH.
+- Prose recognisers from the demo's misses: "stays on this machine" /
+  "stays local" read as data residency, "waits on each" as a person
+  waiting, and receipts join the corpus-size vocabulary.
+- The build receipt's exam count joins the worked example's transcript.
+
 ## [0.1.7] — 2026-09-10
 
 - The implement fence no longer mistakes the interpreter for the agent:

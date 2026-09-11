@@ -529,6 +529,7 @@ def samples_cmd(
             facts=facts,
         )
     )
+    _echo_next(root, engagement)
 
 
 @app.command("ask")
@@ -646,6 +647,7 @@ def ask(
         )
     )
     typer.echo(f"\nRecorded {len(gathered)} answer(s) from {respondent}.")
+    _echo_next(root, engagement)
 
 
 def _with_all(profile, facts):
@@ -816,6 +818,87 @@ def _overrides(engagement) -> dict[str, dict]:
     return out
 
 
+# Gate name -> the command that clears it, for the one-line hint. The gate
+# remedies say the same in prose; the hint is the copy-pasteable form.
+GATE_COMMANDS = {
+    "data_access": 'fde data-access {name} --note "what returned rows"',
+    "baseline_capture": "fde baseline {name} --file baseline.yaml",
+    "client_readiness": "fde ask {name} --role eval_owner",
+    "security_review": 'fde security-review {name} --note "who looked, at what"',
+    "offline_evaluability": ('fde waive {name} offline_evaluability '
+                             '--reason "local judge: <model>, calibrated '
+                             'against <owner>"'),
+    "scope_drift": "fde status {name}",
+    "licence_compatibility": ('fde waive {name} licence_compatibility '
+                              '--reason "legal cleared the combination"'),
+}
+
+
+def _next_action(name, engagement, registry) -> tuple[str, str]:
+    """The single best next command, judged from everything recorded.
+
+    The gates taught the pattern: a refusal that names its remedy gets
+    followed, and a success that names nothing strands the user at the
+    exact moment they were moving. This walks the lifecycle in order --
+    gates, exam, open questions, build, implement -- and names one move."""
+    name = str(name)
+    status = _gate_status(engagement, registry)
+    waived = {o.gate for o in status.overridden}
+    failing = [g for g in status.gates if not g.passed and g.name not in waived]
+    if failing:
+        gate = failing[0]
+        command = GATE_COMMANDS.get(gate.name, f"fde status {name}").format(name=name)
+        return command, f"gate {gate.name}: {gate.reason}"
+    if not (engagement.artifacts_dir / "pairs.jsonl").exists():
+        return (f"fde samples {name} --file pairs.jsonl",
+                "no sample pairs yet -- the client's own examples become the exam")
+    profile = engagement.profile
+    space = Space.from_registry(registry).apply(profile)
+    questions = remaining_questions(space, profile, registry)
+    if questions and status.completeness < 0.9:
+        question = questions[0]
+        role = question.roles[0] if question.roles else "sponsor"
+        return (f"fde ask {name} --role {role}",
+                f"highest-value open question: {question.asks}")
+    if not (engagement.root / "predictions.jsonl").exists():
+        return (f"fde build {name} --out project",
+                "gates pass and the exam is seeded -- emit the project")
+    command = "fde implement project"
+    holdout = engagement.root / "artifacts" / "holdout.jsonl"
+    if holdout.exists():
+        command += f" --holdout {holdout}"
+    return (command,
+            "built -- drive it green, then run evals/acceptance.md with the "
+            "client, and fde retro after the measurement window")
+
+
+def _echo_next(name, engagement) -> None:
+    """One-line footer naming the next move. A hint must never break the
+    command it decorates, so every failure here is silence."""
+    try:
+        registry = _registry(DEFAULT_ROOT)
+        command, _ = _next_action(name, engagement, registry)
+        typer.echo(f"next: {command}")
+    except Exception:  # noqa: BLE001
+        return
+
+
+@app.command("next")
+def next_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    registry_root: Annotated[Path, typer.Option("--registry")] = DEFAULT_ROOT,
+) -> None:
+    """The single best next action, judged from everything recorded.
+
+    Ask it any time -- after a week away, mid-engagement, or when a
+    refusal was followed and the trail has gone quiet."""
+    registry = _registry(registry_root)
+    engagement = _engagement(root)
+    command, why = _next_action(root, engagement, registry)
+    typer.echo(f"next: {command}")
+    typer.echo(f"  {why}")
+
+
 def _gate_status(engagement, registry=None):
     """The gates, judged against everything the engagement has recorded.
 
@@ -934,6 +1017,7 @@ def baseline_cmd(
     result = validate_baseline(fields)
     if result.ok:
         typer.echo("baseline recorded -- re-measurable, sampled, complete")
+        _echo_next(root, engagement)
     else:
         typer.echo(f"recorded, but not yet a baseline: {result.reason}")
 
@@ -961,6 +1045,7 @@ def data_access_cmd(
     engagement = _engagement(root)
     engagement.record_data_access(note=note, at=date.today().isoformat())
     typer.echo("data access recorded")
+    _echo_next(root, engagement)
 
 
 @app.command("security-review")
@@ -986,6 +1071,7 @@ def security_review_cmd(
     engagement = _engagement(root)
     engagement.record_security_review(note=note, at=date.today().isoformat())
     typer.echo("security review recorded")
+    _echo_next(root, engagement)
 
 
 @app.command("waive")

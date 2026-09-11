@@ -17,6 +17,9 @@ recognises:
     - batch job
     - offline process
   "yes":
+    - waits on each
+    - waiting on each
+    - waits on the result
     - user is waiting
     - person is waiting
     - is waiting on

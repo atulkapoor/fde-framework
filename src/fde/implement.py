@@ -104,9 +104,13 @@ def _tracked_files(project: Path) -> dict[Path, str]:
 
 def _run_check(project: Path, check: str | None,
                extra: list[str] | None = None) -> tuple[bool, str]:
-    # The same command the emitted CI runs -- the loop's green is CI's green.
+    # CI's floor is 0.0 -- "no regression". The loop's job is different:
+    # finish. A default bar of zero once declared a 70% implementation done
+    # and handed it to the holdout, whose verdict then read a half-built
+    # system as a memorized exam. The loop drives to the acceptance-grade
+    # bar unless the caller sets another with --check.
     command = shlex.split(check) if check else [
-        sys.executable, "evals/harness.py", "--min-score", "0.0",
+        sys.executable, "evals/harness.py", "--min-score", "0.85",
     ]
     command = command + (extra or [])
     result = subprocess.run(  # noqa: S603 - the check is the caller's own command
@@ -169,8 +173,17 @@ def _run_agent(project: Path, agent_cmd: str, prompt: str) -> bool:
         raise AgentMissing(
             f"the coding agent {shlex.split(agent_cmd)[0]!r} is not on this "
             f"machine. Install it, or name another with --agent-cmd -- "
-            f'e.g. --agent-cmd "aider --yes --message-file {{prompt_file}}".'
+            f'e.g. --agent-cmd "aider --yes --message-file {{prompt_file}}". '
+            f"(An IDE-extension install of Claude Code bundles the binary "
+            f"without putting it on PATH -- point --agent-cmd at it.)"
         ) from exc
+    if result.returncode != 0:
+        # Why the agent failed belongs in the log, not in the void: a
+        # transient rate limit and a broken command read identically as
+        # "agent failed" without it.
+        error_file = project / ".implement" / "agent-last-error.txt"
+        error_file.parent.mkdir(exist_ok=True)
+        error_file.write_text((result.stdout + result.stderr)[-2000:])
     return result.returncode == 0
 
 
@@ -200,9 +213,11 @@ def run_loop(
             )
             if not held:
                 rounds.append(Round(number, False, held_tail,
-                                    violation="green golden, red holdout -- "
-                                              "the golden file may have been "
-                                              "memorized; not accepting this"))
+                                    violation="the check cleared its bar, and "
+                                              "cases the implementer never saw "
+                                              "failed -- a memorized golden "
+                                              "file, or a bar too low to mean "
+                                              "finished; not accepting this"))
                 return ImplementReport(rounds, done=False,
                                        stopped_by="holdout red")
             tail += "\nholdout: green (cases the implementer never saw)"
@@ -258,6 +273,10 @@ def run_loop(
 
         rounds.append(Round(number, False, tail, changed))
         if not agent_ok and not changed:
+            error_file = project / ".implement" / "agent-last-error.txt"
+            if error_file.exists():
+                said = " ".join(error_file.read_text().split())[-300:]
+                rounds[-1].violation = f"the agent command exited nonzero: {said}"
             return ImplementReport(rounds, done=False, stopped_by="agent failed")
 
     passed, tail = _run_check(project, check)

@@ -13,6 +13,10 @@ recognises:
     - data can't leave
     - data must not leave
     - data never leaves
+    - stays on this machine
+    - stays on the machine
+    - stays local
+    - never leaves the machine
     - cannot leave the client
     - cannot leave our
     - must stay on-premise

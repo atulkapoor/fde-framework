@@ -343,6 +343,7 @@ the same receipts the emitted `ARCHITECTURE.md` prints.
 | `fde ask <eng> --role admin` | role-scoped interview, ordered by what changes the design |
 | `fde ask <eng> --role admin --scope non_functional` | one scope axis at a time — the dedicated NFR pass |
 | `fde scan <eng>` | measure the hardware, and get a local-model plan sized to it (runtime, judge, coder) |
+| `fde next <eng>` | The single best next action, judged from everything recorded — ask it any time |
 | `fde status <eng>` | gates, gaps, waivers, disagreements |
 | `fde baseline / data-access / security-review / waive / restate` | satisfy or knowingly waive a gate |
 | `fde cost --price-per-seat 25 --workflows-per-day 8` | unit economics: whether a seat earns more than it burns, with the levers priced |
