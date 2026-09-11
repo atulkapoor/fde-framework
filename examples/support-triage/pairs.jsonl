@@ -1,0 +1,3 @@
+{"id": "t1", "input": "Charged twice for the same order this month, statement attached.", "output": {"decision": "refund"}, "verified": true}
+{"id": "t2", "input": "Third time reporting this bug and support keeps closing the ticket.", "output": {"decision": "escalate"}, "verified": true}
+{"id": "t3", "input": "Why did my subscription price change from last year?", "output": {"decision": "reply_with_explanation"}, "verified": true}

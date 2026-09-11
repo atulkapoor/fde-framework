@@ -5,6 +5,19 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+- Two new worked examples, each a replay-tested real transcript:
+  `examples/policy-qa` (freeform answers over 40k documents — the retrieval
+  recall eval, the judged evaluation and its offline-evaluability waiver
+  inside a boundary, and an honestly undecided component) and
+  `examples/support-triage` (decisions that act through three systems —
+  the governed tool boundary, approval gates, critics, idempotency, and
+  model-planner rejected on the record as not-simplest).
+- The prose reader treats a single newline as the space it is: briefs
+  arrive hard-wrapped, and "data cannot leave" split across a line break
+  silently vanished. A blank line stays a paragraph boundary.
+- The next-move footer loads the registry quietly; its failure is silence,
+  never a leaked error line.
+
 ## [0.1.8] — 2026-09-11
 
 The helping-hand release, shaped by walking the demonstration engagement

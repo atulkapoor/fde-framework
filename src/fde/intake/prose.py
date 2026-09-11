@@ -98,6 +98,11 @@ def parse_prose(
     case: three input forms in one sentence is a real property of the system
     being described, not an ambiguity of phrasing, and today this framework
     can only carry one of them per engagement."""
+    # Briefs arrive hard-wrapped: "data\ncannot leave" is the same sentence
+    # as "data cannot leave", and a recogniser phrase must not vanish because
+    # a line broke inside it. A blank line is a paragraph and stays a
+    # boundary; a single newline is just where the editor wrapped.
+    text = re.sub(r"(?<!\n)\n(?!\n)", " ", text)
     facts: list[Fact] = []
     for dimension in registry.dimensions.values():
         if dimension.type is ValueType.DURATION_MS:

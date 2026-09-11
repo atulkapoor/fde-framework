@@ -1,0 +1,3 @@
+{"id": "q1", "input": "Can a customer return an opened item after 30 days?", "output": "Only with a manager override: policy RET-4 allows opened returns up to 60 days when the item is defective, otherwise 30 days sealed.", "verified": true}
+{"id": "q2", "input": "What is the escalation path for a data deletion request?", "output": "Log it as a privacy ticket the same day, assign to the data-protection queue, and confirm completion to the requester within 30 days per policy PRIV-2.", "verified": true}
+{"id": "q3", "input": "Do contractors get badge access on weekends?", "output": "No. Policy SEC-9 restricts contractor badges to business hours; weekend access needs a sponsor request 48 hours ahead.", "verified": true}

@@ -518,3 +518,21 @@ def test_a_negation_speaks_only_for_its_own_sentence(reg):
     values = {f.dimension: f.value for f in facts}
     assert values.get("confidence_calibrated") is False
     assert values.get("recall_span") == "within_session"
+
+
+def test_a_phrase_split_by_a_line_wrap_still_reads(reg):
+    """Briefs arrive hard-wrapped at 80 columns; 'data\\ncannot leave' is
+    the same sentence as 'data cannot leave', and the phrase vanishing at
+    the wrap point cost the policy-qa example its residency fact."""
+    facts = parse_prose("Runs on-prem, data\ncannot leave.", reg)
+    assert any(f.dimension == "data_residency" and f.value == "cannot_leave"
+               for f in facts)
+
+
+def test_a_blank_line_is_still_a_boundary(reg):
+    """The paragraph break stays load-bearing: negation in one paragraph
+    must not leak into the next."""
+    facts = parse_prose(
+        "Recall has never been calibrated.\n\nRecall within a session is required.",
+        reg)
+    assert any(f.dimension == "recall_span" for f in facts)

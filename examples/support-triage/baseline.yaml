@@ -1,0 +1,8 @@
+volume: {value: 2600, unit: complaints/month, definition: complaints entering the triage queue}
+cycle_time_per_unit_seconds: {value: 420, unit: s, definition: complaint opened to decision recorded, by hand}
+labour_hours_per_week: {value: 60, unit: h/week, definition: triage team reading and deciding}
+rework_rate: {value: 0.09, unit: ratio, definition: decisions reversed on customer callback}
+exception_rate: {value: 0.14, unit: ratio, definition: complaints escalated past the triage team}
+error_rate: {value: 0.06, unit: ratio, definition: wrong decision recorded against the labelled outcome}
+business_metric: {value: 26, unit: hours, definition: mean complaint age at decision}
+sampled: {n: 40, method: random complaints across two months}

@@ -876,7 +876,9 @@ def _echo_next(name, engagement) -> None:
     """One-line footer naming the next move. A hint must never break the
     command it decorates, so every failure here is silence."""
     try:
-        registry = _registry(DEFAULT_ROOT)
+        # Quiet load on purpose: _registry prints its one-line refusal
+        # before raising, and a hint that fails must fail silently.
+        registry = load_registry(default_root())
         command, _ = _next_action(name, engagement, registry)
         typer.echo(f"next: {command}")
     except Exception:  # noqa: BLE001

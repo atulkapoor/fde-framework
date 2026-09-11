@@ -1,0 +1,8 @@
+volume: {value: 1200, unit: questions/month, definition: questions posted to the support channel}
+cycle_time_per_unit_seconds: {value: 900, unit: s, definition: question posted to answer accepted, searching by hand}
+labour_hours_per_week: {value: 15, unit: h/week, definition: senior engineers answering policy questions}
+rework_rate: {value: 0.12, unit: ratio, definition: answers corrected after a policy was misread}
+exception_rate: {value: 0.2, unit: ratio, definition: questions escalated to the policy owner}
+error_rate: {value: 0.05, unit: ratio, definition: answers contradicting the current policy text}
+business_metric: {value: 11, unit: hours, definition: mean time to an accepted answer}
+sampled: {n: 40, method: random questions across one quarter}
