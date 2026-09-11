@@ -853,13 +853,20 @@ def _next_action(name, engagement, registry) -> tuple[str, str]:
         return (f"fde samples {name} --file pairs.jsonl",
                 "no sample pairs yet -- the client's own examples become the exam")
     profile = engagement.profile
-    space = Space.from_registry(registry).apply(profile)
-    questions = remaining_questions(space, profile, registry)
-    if questions and status.completeness < 0.9:
-        question = questions[0]
-        role = question.roles[0] if question.roles else "sponsor"
-        return (f"fde ask {name} --role {role}",
-                f"highest-value open question: {question.asks}")
+    # Ask only while an answer could still change what gets built: an
+    # honestly unmeasured dimension (the flagship case) must not trap the
+    # ladder on a question nobody can answer while every component already
+    # decides without it.
+    architecture = build_architecture(profile, registry)
+    if architecture.decisions.undecided():
+        space = Space.from_registry(registry).apply(profile)
+        questions = remaining_questions(space, profile, registry)
+        if questions:
+            question = questions[0]
+            role = question.roles[0] if question.roles else "sponsor"
+            return (f"fde ask {name} --role {role}",
+                    f"highest-value open question: {question.asks} "
+                    f"(undecided: {', '.join(architecture.decisions.undecided())})")
     if not (engagement.root / "predictions.jsonl").exists():
         return (f"fde build {name} --out project",
                 "gates pass and the exam is seeded -- emit the project")

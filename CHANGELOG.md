@@ -5,6 +5,15 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+- `fde next`'s ask rung now asks only while an answer could change what
+  gets built: an honestly unmeasured dimension (the flagship unmeasured-
+  coverage case) no longer traps the ladder on a question nobody can
+  answer while every component already decides without it. When it does
+  ask, it names the undecided components the answer would unblock.
+- "Decide each …" reads as a decision workload — both demonstration
+  engagements' own statements parsed to nothing and leaned on samples
+  inference for the shape they declared.
+
 - Two new worked examples, each a replay-tested real transcript:
   `examples/policy-qa` (freeform answers over 40k documents — the retrieval
   recall eval, the judged evaluation and its offline-evaluability waiver

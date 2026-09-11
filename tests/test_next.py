@@ -125,3 +125,41 @@ def test_recording_commands_name_the_next_move(engagement):
     (engagement / "framework").symlink_to(Path(FRAMEWORK))
     result = runner.invoke(app, ["data-access", "acme", "--note", "rows"])
     assert "next:" in result.output
+
+
+def test_an_undecided_component_keeps_the_ask_rung_alive(engagement):
+    """Remove the query answer and retrieval cannot decide -- the ladder
+    asks, and names what the answer would unblock."""
+    clear_gates(engagement)
+    root = engagement / "engagements" / "acme"
+    facts = (root / "facts" / "0001.yaml").read_text()
+    # Freeform puts retrieval in scope; without the query shape it cannot
+    # decide, and the ladder must ask rather than build a raising module.
+    facts = facts.replace("value: structured", "value: freeform")
+    (root / "facts" / "0001.yaml").write_text(
+        "\n".join(line for line in facts.splitlines() if "query_pattern" not in line))
+    # Waive AFTER the facts change: a waiver is bound to the state it was
+    # granted against, and one recorded before the shape flip would not
+    # cover the gate that now fires.
+    runner.invoke(app, ["waive", "acme", "offline_evaluability",
+                        "--reason", "local judge planned"])
+    (root / "artifacts").mkdir(exist_ok=True)
+    (root / "artifacts" / "pairs.jsonl").write_text(
+        '{"id": "p0", "verified": true, "input": "r", "output": {"total": "1"}}\n')
+    out = nxt()
+    assert "fde ask" in out and "undecided" in out
+
+
+def test_an_unanswerable_question_does_not_trap_the_ladder(engagement):
+    """cheap_path_coverage honestly unmeasured is the flagship case: every
+    component still decides, so the move is build -- not the same question
+    forever."""
+    clear_gates(engagement)
+    root = engagement / "engagements" / "acme"
+    facts = (root / "facts" / "0001.yaml").read_text()
+    (root / "facts" / "0001.yaml").write_text(
+        "\n".join(line for line in facts.splitlines() if "cheap_path_coverage" not in line))
+    (root / "artifacts").mkdir(exist_ok=True)
+    (root / "artifacts" / "pairs.jsonl").write_text(
+        '{"id": "p0", "verified": true, "input": "r", "output": {"total": "1"}}\n')
+    assert "fde build acme" in nxt()

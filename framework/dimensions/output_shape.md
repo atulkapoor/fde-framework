@@ -17,7 +17,7 @@ recognises:
   classification: [predict which, classify, score each, will churn, risk score,
                    classification output, classification model]
   ranking: [rank, prioritise, order by relevance, shortlist]
-  decision: [decide whether, choose an action, schedule, allocate, route to,
+  decision: [decide each, decide whether, choose an action, schedule, allocate, route to,
              output is a decision, decision output, assignments]
 ---
 What comes out decides more than what goes in.

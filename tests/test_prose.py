@@ -536,3 +536,14 @@ def test_a_blank_line_is_still_a_boundary(reg):
         "Recall has never been calibrated.\n\nRecall within a session is required.",
         reg)
     assert any(f.dimension == "recall_span" for f in facts)
+
+
+def test_decide_each_reads_as_a_decision_workload(reg):
+    """'Decide each incoming complaint: refund, escalate, or reply' parsed
+    to nothing -- both demo engagements leaned on samples inference for
+    the shape their own statement declared."""
+    facts = parse_prose(
+        "Decide each incoming customer complaint: refund, escalate, or reply.",
+        reg)
+    assert any(f.dimension == "output_shape" and f.value == "decision"
+               for f in facts)
