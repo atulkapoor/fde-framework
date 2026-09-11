@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>fde-framework — from problem statement to deployed AI project</title>
+<title>fde-framework — from problem statement to deployable AI project</title>
 <meta name="description" content="Open-source framework for Forward Deployed Engineers: typed-fact discovery, seven pre-build gates, evidence-cited architecture. pip install fde-framework">
 <link rel="canonical" href="https://atulkapoor.github.io/fde-framework/">
 <link rel="icon" type="image/png" href="favicon.png">
@@ -42,7 +42,7 @@
   main { max-width:880px; margin:0 auto; padding:56px 24px 80px; }
   h1 { font-size:2.6rem; margin:0 0 4px; letter-spacing:-.5px; } h1 span { color:var(--accent); }
   .tag { color:var(--muted); font-size:1.12rem; margin:0 0 22px; max-width:660px; }
-  img { max-width:100%; border-radius:10px; display:block; }
+  img { max-width:100%; height:auto; border-radius:10px; display:block; }
   code, pre { font-family:"SF Mono",Menlo,Consolas,monospace; }
   code { background:var(--card); border:1px solid var(--line); border-radius:6px; padding:2px 7px; font-size:.92em; }
   pre { background:#161b22; border:1px solid #30363d; color:#e6edf3; border-radius:10px; padding:16px 20px; overflow-x:auto; font-size:.85rem; line-height:1.55; margin:0; }
@@ -63,6 +63,8 @@
 </style>
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"FAQPage","mainEntity":[
+{"@type":"Question","name":"Has anyone actually run fde-framework end to end?","acceptedAnswer":{"@type":"Answer","text":"Yes — a complete engagement on 626 real scanned receipts is public, refusals preserved: gates passed on real rows, a holdout that refused an overfit implementation, and a measured plateau that flipped the design from rules to a model. See github.com/atulkapoor/fde-demo-receipts. Production-proven it is not, yet."}},
+{"@type":"Question","name":"Can the coding agent game the emitted evals?","acceptedAnswer":{"@type":"Answer","text":"It tried. The evals are hashed and restored if touched, files planted beside them are removed, and a holdout set the delivery never ships catches a memorized answer key — an implementation green on every visible case and red on unseen ones is refused."}},
 {"@type":"Question","name":"Does fde-framework need an LLM to run?","acceptedAnswer":{"@type":"Answer","text":"No. Discovery, decisions and builds are fully offline. Model assistance is opt-in per command, and hosted models are refused wherever the engagement says data may not leave."}},
 {"@type":"Question","name":"What does deterministic mean in fde-framework?","acceptedAnswer":{"@type":"Answer","text":"Same facts in, byte-identical project out. Rebuilds diff empty and the architecture carries a fingerprint; if two builds differ, a decision changed."}},
 {"@type":"Question","name":"Does fde-framework work air-gapped?","acceptedAnswer":{"@type":"Answer","text":"Yes. The registry ships inside the wheel, evaluation can run on a local model, and the emitted boundary refuses at import if sensitive work is placed outside."}},
@@ -75,6 +77,7 @@
   <p class="tag">An open-source framework for <strong>Forward Deployed Engineers</strong> — from a client problem statement to a runnable, deployable AI project, with every decision traced to a fact.</p>
   <p class="row">
     <a class="btn" href="https://github.com/atulkapoor/fde-framework">View on GitHub</a>
+    <a class="btn2" href="https://github.com/atulkapoor/fde-demo-receipts">Real run, refusals included</a>
     <a class="btn2" href="https://github.com/atulkapoor/fde-framework/tree/main/examples/invoice-extraction">Worked example</a>
     <a class="btn2" href="https://github.com/atulkapoor/fde-framework/stargazers">★ Star</a>
     <a href="https://pypi.org/project/fde-framework/">PyPI</a>
@@ -84,12 +87,12 @@
   <pre id="quick"><span class="d">$</span> pip install fde-framework
 <span class="d">$</span> fde start acme --statement <span class="o">"Extract fields from supplier invoices."</span>
 <span class="d">$</span> fde build acme --out project</pre>
-  <button onclick="navigator.clipboard.writeText('pip install fde-framework').then(()=>{this.textContent='copied'; setTimeout(()=>this.textContent='copy',1200)})"
+  <button onclick="navigator.clipboard.writeText('pip install fde-framework\nfde start acme --statement "Extract fields from supplier invoices."\nfde build acme --out project').then(()=>{this.textContent='copied'; setTimeout(()=>this.textContent='copy',1200)})"
     style="position:absolute;top:10px;right:10px;background:#21262d;color:#e6edf3;border:1px solid #30363d;border-radius:6px;padding:4px 10px;font:12px SF Mono,Menlo,monospace;cursor:pointer">copy</button>
 </div>
 
   <h2>Watch it work</h2>
-  <p class="sub">Captured verbatim from a v0.1.5 session, re-verified byte-identical on v0.1.8 — trims are marked with <code>…</code>. The <a href="https://github.com/atulkapoor/fde-framework/tree/main/examples/invoice-extraction">worked example</a> in the repo reproduces its full transcript exactly.</p>
+  <p class="sub">Captured verbatim from a v0.1.5 session; examples 1–3 re-verified byte-identical on v0.1.8 — trims are marked with <code>…</code>. The <a href="https://github.com/atulkapoor/fde-framework/tree/main/examples/invoice-extraction">worked example</a> in the repo reproduces its full transcript exactly.</p>
 
   <p class="ex-label">1 · A paragraph becomes typed facts — and the next questions</p>
   <pre><span class="d">$</span> fde start acme --statement <span class="o">"Extract fields from 500,000 scanned supplier
@@ -150,8 +153,8 @@ holdout: <span class="g">green</span> (cases the implementer never saw)</pre>
   <div class="grid">
     <div class="card"><h3><span aria-hidden="true">🔍</span> Discovery that compounds</h3><p>Prose, PDFs, sample pairs, role-scoped interviews and hardware scans feed one profile. Provenance decides conflicts; disagreement between people is a finding, not an error.</p></div>
     <div class="card"><h3><span aria-hidden="true">🚧</span> Seven gates before building</h3><p>Verified data access can never be waived. Every waiver ships in the delivered RISKS.md with its reason and your name.</p></div>
-    <div class="card"><h3><span aria-hidden="true">🧾</span> Decisions with receipts</h3><p>Simplest applicable approach per component, cited evidence, named rejected alternatives — and rebuilding from the same facts yields the identical project.</p></div>
-    <div class="card"><h3><span aria-hidden="true">📦</span> A real project out</h3><p>Pipeline with approval gates and critics, three-layer evals plus recall@K for the retrieval layer alone, a runbook with a diagnosis walk (definitions first, the model last), SLOs carrying the captured baseline, compliance docs. On-prem, hybrid, customer-VPC, air-gapped.</p></div>
+    <div class="card"><h3><span aria-hidden="true">🧾</span> Decisions with receipts</h3><p>Simplest applicable approach per component, cited evidence, named rejected alternatives.</p></div>
+    <div class="card"><h3><span aria-hidden="true">📦</span> A real project out</h3><p>Approval-gated pipeline, three-layer evals plus recall@K for the retrieval layer alone, a runbook with a diagnosis walk, SLOs carrying the captured baseline. Deploy assets for on-prem, hybrid, customer-VPC or air-gapped.</p></div>
     <div class="card"><h3><span aria-hidden="true">🎛️</span> Multi-modal by design</h3><p>A system that takes photos and documents and telemetry — or voice, or video — gets one perception path per modality, each decided by its own rules.</p></div>
     <div class="card"><h3><span aria-hidden="true">🧭</span> It always names the next move</h3><p>Every recording command ends with a one-line <code>next:</code>, and <code>fde next</code> answers "where was I?" from everything on record — the gates' remedy pattern, generalized to the whole lifecycle.</p></div>
     <div class="card"><h3><span aria-hidden="true">🤖</span> LLMs propose, never decide</h3><p>Reading briefs, mining vocabulary, implementing against the fenced harness, judging output after human calibration. The decision path stays deterministic.</p></div>
