@@ -21,7 +21,7 @@
 <meta name="twitter:image" content="https://atulkapoor.github.io/fde-framework/social-preview.png">
 <script type="application/ld+json">
 {"@context":"https://schema.org","@type":"SoftwareApplication","name":"fde-framework",
-"softwareVersion":"0.1.7","applicationCategory":"DeveloperApplication",
+"softwareVersion":"0.1.8","applicationCategory":"DeveloperApplication",
 "operatingSystem":"macOS, Linux, Windows",
 "description":"Open-source framework for Forward Deployed Engineers: from client problem statement to a deployable AI project, every decision traced to a fact.",
 "url":"https://atulkapoor.github.io/fde-framework/",
@@ -89,7 +89,7 @@
 </div>
 
   <h2>Watch it work</h2>
-  <p class="sub">Captured verbatim from a v0.1.5 session, re-verified byte-identical on v0.1.7 — trims are marked with <code>…</code>. The <a href="https://github.com/atulkapoor/fde-framework/tree/main/examples/invoice-extraction">worked example</a> in the repo reproduces its full transcript exactly.</p>
+  <p class="sub">Captured verbatim from a v0.1.5 session, re-verified byte-identical on v0.1.8 — trims are marked with <code>…</code>. The <a href="https://github.com/atulkapoor/fde-framework/tree/main/examples/invoice-extraction">worked example</a> in the repo reproduces its full transcript exactly.</p>
 
   <p class="ex-label">1 · A paragraph becomes typed facts — and the next questions</p>
   <pre><span class="d">$</span> fde start acme --statement <span class="o">"Extract fields from 500,000 scanned supplier
@@ -153,6 +153,7 @@ holdout: <span class="g">green</span> (cases the implementer never saw)</pre>
     <div class="card"><h3><span aria-hidden="true">🧾</span> Decisions with receipts</h3><p>Simplest applicable approach per component, cited evidence, named rejected alternatives — and rebuilding from the same facts yields the identical project.</p></div>
     <div class="card"><h3><span aria-hidden="true">📦</span> A real project out</h3><p>Pipeline with approval gates and critics, three-layer evals plus recall@K for the retrieval layer alone, a runbook with a diagnosis walk (definitions first, the model last), SLOs carrying the captured baseline, compliance docs. On-prem, hybrid, customer-VPC, air-gapped.</p></div>
     <div class="card"><h3><span aria-hidden="true">🎛️</span> Multi-modal by design</h3><p>A system that takes photos and documents and telemetry — or voice, or video — gets one perception path per modality, each decided by its own rules.</p></div>
+    <div class="card"><h3><span aria-hidden="true">🧭</span> It always names the next move</h3><p>Every recording command ends with a one-line <code>next:</code>, and <code>fde next</code> answers "where was I?" from everything on record — the gates' remedy pattern, generalized to the whole lifecycle.</p></div>
     <div class="card"><h3><span aria-hidden="true">🤖</span> LLMs propose, never decide</h3><p>Reading briefs, mining vocabulary, implementing against the fenced harness, judging output after human calibration. The decision path stays deterministic.</p></div>
   </div>
 
@@ -169,7 +170,7 @@ holdout: <span class="g">green</span> (cases the implementer never saw)</pre>
     <div class="card"><h3>How does it improve?</h3><p>Per engagement: overrides are honoured and recorded, trigger predictions are calibrated against what actually fired, and anonymised cases enter the corpus only through human review.</p></div>
   </div>
 
-  <p class="quiet">Apache-2.0 · Python 3.11+ · 888 tests green at v0.1.7 · built by <a href="https://github.com/atulkapoor">Atul Kapoor</a> · <a href="https://www.linkedin.com/in/atulkapoor">LinkedIn</a> · <code>pip install fde-framework</code></p>
+  <p class="quiet">Apache-2.0 · Python 3.11+ · 893 tests green at v0.1.8 · built by <a href="https://github.com/atulkapoor">Atul Kapoor</a> · <a href="https://www.linkedin.com/in/atulkapoor">LinkedIn</a> · <code>pip install fde-framework</code></p>
 </main>
 </body>
 </html>
