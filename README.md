@@ -127,40 +127,21 @@ framework than any feature.
 
 ---
 
-## The idea
+## Two rules
 
-Three parts.
+Every intake surface — prose, interviews, scans, sample pairs, the client's
+existing stack — emits facts into one profile, and two rules make that safe.
+**Arrival order never decides anything** — provenance does, and it is
+dimension-dependent: a measurement outranks anything said about the
+environment, while a stated requirement outranks a measurement, since you
+cannot detect a latency *budget*. And **two people disagreeing is a finding,
+not a conflict to resolve**; the dimension is left unresolved and reported,
+because the gap between what a sponsor believes and what a user experiences
+is usually the most valuable thing discovery produces.
 
-**Input** is one operation with several interchangeable surfaces — free-flow
-prose, a role-scoped interview, an environment scan, sample input/output pairs,
-an inventory of what the client already runs. Each emits a `Fact` into one
-`Profile`. No surface is a prerequisite for any other, so an FDE can write prose,
-interview a sponsor on Monday and three users on Wednesday, drop in sample files,
-and arrive at the same place.
-
-Two rules make that work. **Arrival order never decides anything** — provenance
-does, and it is dimension-dependent: a measurement outranks anything said about
-the environment, while a stated requirement outranks a measurement, since you
-cannot detect a latency *budget*. And **two people disagreeing is a finding, not
-a conflict to resolve**; the dimension is left unresolved and reported, because
-the gap between what a sponsor believes and what a user experiences is usually
-the most valuable thing discovery produces.
-
-**Processing** prunes a space of possibilities as facts arrive, decomposes the
-problem into components, and decides an approach, pattern and stack for each —
-with cited evidence, ranked rejected alternatives, and a measurable trigger for
-when to graduate to something more sophisticated. Seven gates stand before
-building: verified data access (the one that cannot be waived), a re-measurable
-baseline, a named evaluation owner, scope drift against the original statement,
-offline evaluability for air-gapped deployments, licence compatibility
-against what the client intends to ship, and a client security review wherever
-the system lives in their environment or touches their systems.
-
-**Output** is a project: code, an evaluation harness seeded from the client's
-own examples, deployment artifacts for whichever substrate was actually chosen
-(systemd unit, Docker Compose, Kubernetes manifests), approval gates and
-critics in front of anything irreversible, and the documents explaining all
-three — including a risk page naming every gate that was waived and why.
+The full pipeline those rules feed — space pruning, decomposition, the seven
+gates, decision, emission — is in
+[ARCHITECTURE.md](https://github.com/atulkapoor/fde-framework/blob/main/ARCHITECTURE.md).
 
 ## What it will not do
 
