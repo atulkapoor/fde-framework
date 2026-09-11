@@ -55,7 +55,7 @@ access — no build. The remedies ship with every gate.*
 | **Discovery that compounds** | Prose, PDFs, sample pairs, a role-scoped interview and a hardware scan all feed one profile — provenance decides conflicts, never arrival order, and disagreement between people is surfaced as a finding |
 | **Gates before building** | Seven checks with remedies; verified data access cannot be waived, and every waiver ships in the project's `RISKS.md` with its reason |
 | **Decisions with receipts** | Simplest applicable approach per component, cited evidence, named rejected alternatives — and `fde override` records your call and honours it on every later run |
-| **A real project out** | Pipeline in topological order, fail-closed approval gates and critics, an eval harness CI can gate on — recall@K for the retrieval layer alone where one exists — deploy assets for the substrate that was actually earned, a runbook with a diagnosis walk, SLOs carrying the captured baseline, teardown |
+| **A real project out** | Pipeline in topological order — multi-modal inputs fan out one perception path per modality — fail-closed approval gates and critics, an eval harness CI can gate on — recall@K for the retrieval layer alone where one exists — deploy assets for the substrate that was actually earned, a runbook with a diagnosis walk, SLOs carrying the captured baseline, teardown |
 | **Deterministic by design** | The decision path never calls an LLM: same profile, byte-identical project — a diff between builds means a decision changed. Model assistance exists only as opt-in commands, and the boundary doctrine governs them |
 | **Jurisdiction as data** | Locale packs preset answers at the weakest provenance and attach dated compliance obligations to the build; they can never change how decisions are made |
 | **Self-evolution, honestly** | Overrides, trigger calibration and anonymised cases are captured per engagement; the corpus grows only through human-reviewed ingestion |
@@ -90,12 +90,12 @@ Three different claims, and the differences are the point.
 
 **Demonstrated**: a complete engagement has run end to end on real data —
 626 scanned receipts from the public SROIE corpus, through gates, build,
-and an agent-driven implement loop whose holdout refused an overfit
-implementation, whose measured plateau became a recorded fact, and whose
+and an agent-driven implement loop (`fde implement`, graded against held-out
+cases the agent never sees) whose holdout refused an overfit implementation, whose measured plateau became a recorded fact, and whose
 rebuild flipped the design from rules to a model with the reason on the
 record. The full run, refusals included, is public:
 [fde-demo-receipts](https://github.com/atulkapoor/fde-demo-receipts).
-Two of this framework's releases (0.1.6, 0.1.7) shipped from what that
+Three of this framework's releases (0.1.6–0.1.8) shipped from what that
 run found.
 
 **Built**: the pipeline exists end to end — intake (prose, documents, sample
@@ -103,9 +103,9 @@ pairs, role-scoped interview, hardware scan) → fact log with provenance →
 permutation space → seven gates → decide → architect → build (code, evals,
 deploy and ops assets, `RISKS.md`, `COMPLIANCE.md`) → retro and case
 capture. Overrides are honoured on the next run, trigger observations feed
-calibration, and a reviewed case can enter the corpus. over 870 tests; four
-fresh-eyes review rounds (142 findings, each resolved and the fixes pinned
-as regression tests); CI gates on the suite, lint, and a sanitisation scan of
+calibration, and a reviewed case can enter the corpus. 890+ tests; four
+fresh-eyes review rounds, every finding resolved and the fix pinned as a
+regression test; CI gates on the suite, lint, and a sanitisation scan of
 the tree *and its history*; the evidence corpus is anchored to publicly
 documented production deployments; every decision is reproducible from its
 inputs.
@@ -228,18 +228,17 @@ refuses by name and says exactly what to install.
 
 ```bash
 fde start acme --statement "Extract fields from supplier invoices."
-fde ask engagements/acme --role admin      # role-scoped interview
-fde status engagements/acme                # gates, gaps, disagreements
-fde architect engagements/acme             # the design, with rationale
-fde build engagements/acme --out project   # refuses until gates clear
+fde ask acme --role admin        # bare names resolve to ./engagements/acme
+fde status acme                  # gates, gaps, disagreements
+fde architect acme               # the design, with rationale
+fde build acme --out project     # refuses until gates clear
 
-fde scan engagements/acme                  # what this hardware runs
+fde scan acme                    # what this hardware runs
 fde cost --requests-per-day 500000 --model-b 70   # dated fleet sizing
 
 fde kb validate   # parse and cross-link the registry
 fde kb gaps                        # what the corpus is missing
 fde kb sweep                       # profiles no approach can serve
-.venv/bin/pytest -q
 ```
 
 `kb validate` is strict, because CI runs it and a warning nobody reads is not a
@@ -339,15 +338,14 @@ the same receipts the emitted `ARCHITECTURE.md` prints.
 | `fde start <name> --statement "..."` | begin an engagement |
 | `fde frame <eng> --file brief.pdf` | prose or documents → facts, played back for correction |
 | `fde frame <eng> --reader llm --endpoint http://localhost:11434` | a local model proposes what the deterministic reader missed, at weakest provenance |
-| `fde samples <eng> --file pairs.jsonl` | input/output pairs → contract, metrics, golden set |
+| `fde samples <eng> --file pairs.jsonl` | input/output pairs → contract, metrics, golden/edge/adversarial evals (`--sensitive <field>` marks fields for masking) |
 | `fde ask <eng> --role admin` | role-scoped interview, ordered by what changes the design |
 | `fde ask <eng> --role admin --scope non_functional` | one scope axis at a time — the dedicated NFR pass |
 | `fde scan <eng>` | measure the hardware, and get a local-model plan sized to it (runtime, judge, coder) |
 | `fde next <eng>` | The single best next action, judged from everything recorded — ask it any time |
 | `fde status <eng>` | gates, gaps, waivers, disagreements |
 | `fde baseline / data-access / security-review / waive / restate` | satisfy or knowingly waive a gate |
-| `fde cost --price-per-seat 25 --workflows-per-day 8` | unit economics: whether a seat earns more than it burns, with the levers priced |
-| `fde samples <eng> --file pairs.jsonl --sensitive <field>` | golden/edge/adversarial evals from the client's own pairs, sensitive fields marked |
+| `fde cost --price-per-seat 25 --workflows-per-day 8` | unit economics with the levers priced; `--requests-per-day N --model-b B` for dated fleet sizing |
 | `fde kb suggest --file brief.md --endpoint http://localhost:11434` | mine a brief for recogniser gaps — proposed, never applied |
 | `fde kb export-training <eng> --out train.jsonl` | (brief, facts) pairs — the fine-tune flywheel, kept with the engagement |
 | `fde reuse <eng> <stack>` | record what the client already operates, so reuse can beat adoption |
@@ -358,7 +356,6 @@ the same receipts the emitted `ARCHITECTURE.md` prints.
 | `fde triage --statement "..." --statement "..."` | rank candidate problems by what discovery can already decide |
 | `fde override --component X --choose Y --because "..."` | your call, recorded and honoured |
 | `fde observe / retro` | record trigger firings; capture the case |
-| `fde cost --requests-per-day N --model-b B` | dated fleet sizing |
 | `fde kb validate / gaps / sweep` | registry health, work items, dead zones |
 
 ## Troubleshooting
@@ -444,22 +441,18 @@ anywhere** — it works on a plane and inside an air gap, and a text editor is
 always a legal way into its state. Discovery, decisions, and builds never call
 an LLM.
 
-Four commands are the deliberate exceptions, each opt-in and each governed by
-the framework's own boundary doctrine: `fde frame --reader llm` (a model
-proposes facts, at the weakest provenance — refused to hosted models unless the
-engagement states data may leave; local endpoints always allowed), `fde kb
-suggest` (mines a brief for recogniser gaps under the same rule, proposing —
-never applying — vocabulary), `fde implement` (drives a coding agent you
-name), and the judge-based eval harness in *generated* projects whose
-evaluation decided `judged` (configured by `LLM_ENDPOINT`, hosted path refused
-inside a boundary). Nothing calls a model silently, and `fde scan` recommends
-a local model sized to your hardware so none of it needs to leave the machine.
-The LLM is everywhere as a **proposer**; the decision path stays
-deterministic, because fingerprints, byte-identical rebuilds and an
-accountable RISKS.md are the product. Fine-tuning follows the corpus's own
-client rule: `fde kb export-training` builds the (brief, facts) corpus from
-retained briefs, and a fine-tuned reader earns adoption when the pairs number
-in the thousands *and* the measured base-model hit rate falls short.
+Four commands are the deliberate exceptions — each opt-in, each governed by
+the boundary doctrine (hosted models refused unless the engagement states
+data may leave; local endpoints always allowed):
+
+- `fde frame --reader llm` — a model proposes facts, at the weakest provenance
+- `fde kb suggest` — mines a brief for recogniser gaps, proposing (never applying) vocabulary
+- `fde implement` — drives a coding agent you name
+- the judge-based eval harness in *generated* projects whose evaluation
+  decided `judged` (`LLM_ENDPOINT`, hosted path refused inside a boundary)
+
+Nothing calls a model silently, and `fde scan` recommends a local model
+sized to your hardware so none of it needs to leave the machine.
 
 Engagement directories (client facts, baselines, gate state) are excluded
 from version control by construction and enforced in CI — along with
@@ -498,9 +491,9 @@ The registry is the shared asset; engagements are private working state.
 - **Capability-verb extraction** — "update the claims system of record"
   implies an integration no regex can count; the LLM reader proposes facts
   today, and component hints are its natural next job.
-- **The honest gaps list lives in the tool**: `fde kb gaps` and
-  `fde kb sweep` report what the corpus is missing and which profile shapes
-  no approach can serve yet.
+The honest gaps list lives in the tool itself: `fde kb gaps` and
+`fde kb sweep` report what the corpus is missing and which profile shapes
+no approach can serve yet.
 
 ## Documentation
 
@@ -510,7 +503,8 @@ The registry is the shared asset; engagements are private working state.
 | See a real transcript with expected output | [Worked example](https://github.com/atulkapoor/fde-framework/tree/main/examples/invoice-extraction) |
 | Understand the moving parts | [ARCHITECTURE.md](https://github.com/atulkapoor/fde-framework/blob/main/ARCHITECTURE.md) |
 | Understand a gate that just refused me | `fde status <eng>` — every gate names its remedy and its clearing command |
-| Add a dimension / approach / template | [CONTRIBUTING.md](https://github.com/atulkapoor/fde-framework/blob/main/CONTRIBUTING.md) — incl. the template context table |
+| Add a dimension / approach / template | [fde-demo-receipts](https://github.com/atulkapoor/fde-demo-receipts) | A complete engagement on real data — every refusal preserved |
+| [CONTRIBUTING.md](https://github.com/atulkapoor/fde-framework/blob/main/CONTRIBUTING.md) — incl. the template context table |
 | Use it as a library | [Python API](#python-api) |
 | Report a vulnerability | [SECURITY.md](https://github.com/atulkapoor/fde-framework/blob/main/SECURITY.md) |
 | See what changed | [CHANGELOG.md](https://github.com/atulkapoor/fde-framework/blob/main/CHANGELOG.md) · [Releases](https://github.com/atulkapoor/fde-framework/releases) |
@@ -518,10 +512,11 @@ The registry is the shared asset; engagements are private working state.
 
 ## Development
 
+Set up as in [Install → from source](#install) (python3.11+), then:
+
 ```bash
-git clone https://github.com/atulkapoor/fde-framework.git && cd fde-framework
-python3 -m venv .venv && .venv/bin/pip install -e ".[dev,documents]"
-.venv/bin/pytest -q          # ~880 tests, < 60s
+.venv/bin/pip install -e ".[dev,documents]"
+.venv/bin/pytest -q          # 890+ tests, < 60s
 .venv/bin/ruff check src tests
 ```
 
