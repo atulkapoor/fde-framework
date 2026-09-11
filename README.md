@@ -27,6 +27,9 @@ client engagement from a problem statement to a runnable, deployable AI
 project — with every decision traced to a fact, and every fact traced to a
 source.
 
+Not an agent framework — the thing that decides whether you need one, picks
+it as a stack when you do, and grades what it builds.
+
 Forward deployed engineers arrive with incomplete information, a client who may
 not know what they need, and a deadline. This is the tooling for that:
 structured discovery and requirements intake, a decision engine that cites its
