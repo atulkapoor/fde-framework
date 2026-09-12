@@ -5,6 +5,33 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.9] — 2026-09-12
+
+Shaped by the model-in-the-loop demonstrations and a benchmark review of
+small local judges:
+
+- The emitted judge speaks a discrete rubric — correct / partial /
+  incorrect mapped to {1, 0.5, 0} — instead of inventing a decimal.
+  Local-scale judges agree with human graders far better on verdicts than
+  on open-ended numeric scores, and the reference in the prompt is what
+  makes a small judge legitimate at all.
+- An agent round that outlives its budget is a round result, never a
+  traceback: the receipts demonstration's local-inference rounds ran past
+  the hardcoded hour and the loop died mid-sentence. `--agent-timeout`
+  raises the budget when the model runs inside the eval loop, the overrun
+  lands in the round log with what the agent said, and a check that
+  exceeds its own budget reports rather than raises.
+- Two new worked examples, each a replay-tested real transcript:
+  `examples/policy-qa` (freeform + retrieval: the recall eval, the judged
+  evaluation and its offline-evaluability waiver, an honestly undecided
+  component) and `examples/support-triage` (decisions that act: the
+  governed tool boundary, critics, idempotency — and model-planner
+  rejected on the record as not-simplest).
+- `fde next` asks only while an answer could change what gets built, and
+  names the undecided components; the prose reader survives hard-wrapped
+  briefs; "Decide each …" reads as a decision workload; the next-move
+  footer fails silently instead of leaking a registry error.
+
 - `fde next`'s ask rung now asks only while an answer could change what
   gets built: an honestly unmeasured dimension (the flagship unmeasured-
   coverage case) no longer traps the ladder on a question nobody can

@@ -113,9 +113,16 @@ def _run_check(project: Path, check: str | None,
         sys.executable, "evals/harness.py", "--min-score", "0.85",
     ]
     command = command + (extra or [])
-    result = subprocess.run(  # noqa: S603 - the check is the caller's own command
-        command, cwd=project, capture_output=True, text=True, timeout=1800,
-    )
+    try:
+        result = subprocess.run(  # noqa: S603 - the check is the caller's own command
+            command, cwd=project, capture_output=True, text=True, timeout=1800,
+        )
+    except subprocess.TimeoutExpired:
+        return False, (
+            "the check exceeded its 1800s budget -- a model in the eval "
+            "loop makes honest runs slow; shrink the exam or speed up the "
+            "model"
+        )
     tail = "\n".join((result.stdout + result.stderr).strip().splitlines()[-15:])
     return result.returncode == 0, tail
 
@@ -147,7 +154,8 @@ class AgentMissing(RuntimeError):
     """The coding agent's command is not on this machine."""
 
 
-def _run_agent(project: Path, agent_cmd: str, prompt: str) -> bool:
+def _run_agent(project: Path, agent_cmd: str, prompt: str,
+               timeout: float = 3600.0) -> bool:
     """Run the agent with the brief on stdin, or via {prompt_file}.
 
     The placeholder exists because not every agent reads stdin: aider takes
@@ -167,8 +175,21 @@ def _run_agent(project: Path, agent_cmd: str, prompt: str) -> bool:
     try:
         result = subprocess.run(  # noqa: S603 - the agent is the caller's own command
             shlex.split(agent_cmd),
-            cwd=project, input=stdin, capture_output=True, text=True, timeout=3600,
+            cwd=project, input=stdin, capture_output=True, text=True,
+            timeout=timeout,
         )
+    except subprocess.TimeoutExpired:
+        # A model-in-the-loop round can legitimately outlive any fixed
+        # budget -- the receipts demonstration's local-inference rounds ran
+        # past an hour. A budget overrun is a round result, never a
+        # traceback.
+        error_file = project / ".implement" / "agent-last-error.txt"
+        error_file.parent.mkdir(exist_ok=True)
+        error_file.write_text(
+            f"agent exceeded its {timeout:.0f}s budget -- raise it with "
+            f"--agent-timeout, shrink the exam, or speed up the model"
+        )
+        return False
     except FileNotFoundError as exc:
         raise AgentMissing(
             f"the coding agent {shlex.split(agent_cmd)[0]!r} is not on this "
@@ -194,6 +215,7 @@ def run_loop(
     check: str | None = None,
     invoke_agent=None,
     holdout: Path | None = None,
+    agent_timeout: float = 3600.0,
 ) -> ImplementReport:
     """The loop. `invoke_agent` is injectable for tests."""
     project = Path(project)
@@ -203,7 +225,8 @@ def run_loop(
         path for directory in protected_dirs if directory.is_dir()
         for path in directory.rglob("*") if path.is_file()
     }
-    invoke = invoke_agent or (lambda prompt: _run_agent(project, agent_cmd, prompt))
+    invoke = invoke_agent or (
+        lambda prompt: _run_agent(project, agent_cmd, prompt, agent_timeout))
     rounds: list[Round] = []
 
     def green_report(number: int, tail: str) -> ImplementReport:

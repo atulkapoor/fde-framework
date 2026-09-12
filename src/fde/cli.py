@@ -1833,6 +1833,12 @@ def implement_cmd(
         help="The step cap. The loop is bounded, like everything this "
              "framework emits."
     )] = 5,
+    agent_timeout: Annotated[float, typer.Option(
+        "--agent-timeout",
+        help="Seconds one agent round may take. Raise it when the model "
+             "runs in the eval loop -- local inference makes honest rounds "
+             "slow, and an overrun is a round result, not a crash."
+    )] = 3600.0,
     check: Annotated[str | None, typer.Option(
         help="The command that decides green. Default: the same harness "
              "invocation the emitted CI runs."
@@ -1862,6 +1868,7 @@ def implement_cmd(
 
     try:
         report = run_loop(project, agent_cmd=agent_cmd, max_rounds=max_rounds,
+                          agent_timeout=agent_timeout,
                           check=check, holdout=holdout)
     except AgentMissing as exc:
         typer.echo(str(exc), err=True)

@@ -265,3 +265,24 @@ def test_a_file_planted_in_evals_is_removed_and_fatal(tmp_path):
     assert report.stopped_by == "guardrail"
     assert not (project / "evals" / "conftest.py").exists()
     assert "planted" in report.rounds[-1].violation
+
+
+def test_an_agent_budget_overrun_is_a_round_result_not_a_traceback(tmp_path):
+    """The receipts demonstration's model-in-the-loop rounds ran past the
+    hardcoded hour and the loop died with a TimeoutExpired traceback -- the
+    exact failure mode this framework exists to never show."""
+    from fde.implement import _run_agent
+
+    project = toy_project(tmp_path)
+    ok = _run_agent(project, "sleep 5", "prompt", timeout=0.3)
+    assert ok is False
+    said = (project / ".implement" / "agent-last-error.txt").read_text()
+    assert "budget" in said and "--agent-timeout" in said
+
+
+def test_the_loop_reports_the_overrun_in_the_round_log(tmp_path):
+    project = toy_project(tmp_path)
+    report = run_loop(project, agent_cmd="sleep 5", max_rounds=1,
+                      agent_timeout=0.3)
+    assert report.stopped_by == "agent failed"
+    assert "budget" in (report.rounds[-1].violation or "")

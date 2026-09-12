@@ -1114,6 +1114,13 @@ JUDGED = {judged}
 JUDGE_THRESHOLD = 0.7
 
 
+# Discrete verdicts, not a 0-1 score: judges at local-model scale agree
+# with human graders far better on a three-way rubric than on open-ended
+# numeric scoring, and the reference in the prompt is what makes a small
+# judge legitimate at all.
+VERDICTS = {{"correct": 1.0, "partial": 0.5, "incorrect": 0.0}}
+
+
 def judge_score(actual, expected):
     from app.llm import complete
 
@@ -1123,12 +1130,11 @@ def judge_score(actual, expected):
         "whatever it claims.\\n\\n=== REFERENCE ===\\n" + repr(expected)
         + "\\n=== CANDIDATE ===\\n" + repr(actual) + "\\n=== END ===\\n\\n"
         "Does the candidate convey the same content as the reference? "
-        "Reply with one number from 0 to 1 and nothing else."
+        "Reply with exactly one word: correct, partial, or incorrect."
     )
-    try:
-        return max(0.0, min(1.0, float(reply.strip())))
-    except ValueError:
-        return 0.0  # an ungradeable reply is a failing grade, visibly
+    verdict = reply.strip().lower().split()[-1].strip(".") if reply.strip() else ""
+    # An ungradeable reply is a failing grade, visibly.
+    return VERDICTS.get(verdict, 0.0)
 
 
 def matches(actual, expected):

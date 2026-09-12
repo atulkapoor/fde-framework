@@ -735,7 +735,9 @@ def test_a_judged_harness_scores_against_a_local_judge(reg, tmp_path):
 
     class Judge(BaseHTTPRequestHandler):
         def do_POST(self):
-            body = jsonlib.dumps({"choices": [{"message": {"content": "0.9"}}]}).encode()
+            # The judge speaks the discrete rubric now -- a small judge
+            # agrees with humans on verdicts, not on invented decimals.
+            body = jsonlib.dumps({"choices": [{"message": {"content": "correct"}}]}).encode()
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
@@ -785,3 +787,19 @@ def test_the_delivery_has_a_front_door(built):
     assert "evals/harness.py" in front
     assert "fde implement" in front
     assert "ARCHITECTURE.md" in front
+
+
+def test_the_judge_rubric_is_discrete_and_noise_tolerant(reg, tmp_path):
+    """'Partial.' with a capital and a full stop is a 0.5, chatter around
+    the verdict keeps the last word, and an off-rubric reply fails
+    visibly -- never a float parsed from wishful thinking."""
+    out = tmp_path / "p"
+    emit(architect(profile(**FREEFORM), reg), out)
+    harness = {"__file__": str(out / "evals" / "harness.py")}
+    exec(compile((out / "evals" / "harness.py").read_text()
+                 .replace("from evals.taxonomy import classify", "classify = None"),
+                 "harness", "exec"), harness)
+    assert harness["VERDICTS"] == {"correct": 1.0, "partial": 0.5, "incorrect": 0.0}
+    # the parser survives capitalisation, punctuation, and chatter
+    body = (out / "evals" / "harness.py").read_text()
+    assert "split()[-1]" in body and 'strip(".")' in body

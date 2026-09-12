@@ -2,7 +2,7 @@
 # Distribution name matches the repository and stays unique on any index;
 # the import package and the CLI command remain the short `fde`.
 name = "fde-framework"
-version = "0.1.8"
+version = "0.1.9"
 description = "A framework for Forward Deployed Engineers: from problem statement to a deployable AI project, every decision traced to a fact."
 readme = "README.md"
 license = {text = "Apache-2.0"}
