@@ -91,15 +91,19 @@ implemented. The full design is in [ARCHITECTURE.md](https://github.com/atulkapo
 
 Three different claims, and the differences are the point.
 
-**Demonstrated**: a complete engagement has run end to end on real data —
-626 scanned receipts from the public SROIE corpus, through gates, build,
-and an agent-driven implement loop (`fde implement`, graded against held-out
-cases the agent never sees) whose holdout refused an overfit implementation, whose measured plateau became a recorded fact, and whose
-rebuild flipped the design from rules to a model with the reason on the
-record. The full run, refusals included, is public:
-[fde-demo-receipts](https://github.com/atulkapoor/fde-demo-receipts).
-Three of this framework's releases (0.1.6–0.1.8) shipped from what that
-run found.
+**Demonstrated**: two complete engagements have run end to end on real
+data, both public with every refusal preserved.
+[fde-demo-receipts](https://github.com/atulkapoor/fde-demo-receipts) —
+626 scanned receipts through gates, build, and an agent-driven implement
+loop (`fde implement`, graded against held-out cases the agent never sees)
+whose holdout refused an overfit implementation and whose measured plateau
+flipped the design from rules to a model, reason on the record.
+[fde-demo-complaints](https://github.com/atulkapoor/fde-demo-complaints) —
+2,034 real consumer complaints through the decision shape: the exam
+refused ambiguous ground truth before it existed, the agent posture was
+decided from the facts, and the loop finished **green with the holdout
+passing** — the framework's first. Four of this framework's releases
+shipped from what these runs found.
 
 **Built**: the pipeline exists end to end — intake (prose, documents, sample
 pairs, role-scoped interview, hardware scan) → fact log with provenance →
