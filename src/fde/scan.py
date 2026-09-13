@@ -474,9 +474,10 @@ def recommend_local_models(
         )
     notes.append(
         "schema-bound extraction is the one job a sub-1B model may honestly "
-        "hold: a 0.6B extractor measured a 72.6% ceiling on noisy OCR "
-        "against an 85% bar -- clear your own gate or step up; specialist "
-        "extractors (LFM2-Extract class) are the staged upgrade"
+        "hold: a 0.6B extractor reached a real exam's provable optimum and "
+        "88% of its achievable holdout -- audit the exam before blaming "
+        "the model, and clear your own gate; specialist extractors "
+        "(LFM2-Extract class) are the staged upgrade"
     )
 
     # Continuous batching is what separates the engines under load: a
