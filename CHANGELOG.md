@@ -5,6 +5,25 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.10] — 2026-09-13
+
+The model research becomes product:
+
+- `fde next` knows the wall both demonstrations hit: a build that calls a
+  model, with no `LLM_ENDPOINT` standing, gets "run `fde scan`" as its
+  next move — which names the runtime, the model sized to the measured
+  hardware, and the export line. Never silence at the exact step a user
+  is stuck on.
+- `fde scan` carries the measured doctrine: judging has a floor (sub-1B
+  judges agree with human graders ~68%, 4B-class ~88% — verdicts, never
+  scores, calibrate first), and schema-bound extraction is the one job a
+  sub-1B model may honestly hold (a 0.6B extractor measured a 72.6%
+  ceiling on noisy OCR), with specialist extractors as the staged
+  upgrade.
+- The site gains a dated, sourced local-models guidance page merging the
+  published benchmarks with the first-party numbers from the public
+  demonstration runs.
+
 ## [0.1.9] — 2026-09-12
 
 Shaped by the model-in-the-loop demonstrations and a benchmark review of

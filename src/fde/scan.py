@@ -466,6 +466,18 @@ def recommend_local_models(
             f"the judge and reader fit, `fde implement` wants a hosted or "
             f"remote agent"
         )
+        notes.append(
+            "judging has a measured floor: sub-1B judges agree with human "
+            "graders ~68% of the time, 4B-class ~88% -- below that, "
+            "verdicts (the emitted rubric), never scores, and calibrate "
+            "against your grader before quoting any number"
+        )
+    notes.append(
+        "schema-bound extraction is the one job a sub-1B model may honestly "
+        "hold: a 0.6B extractor measured a 72.6% ceiling on noisy OCR "
+        "against an 85% bar -- clear your own gate or step up; specialist "
+        "extractors (LFM2-Extract class) are the staged upgrade"
+    )
 
     # Continuous batching is what separates the engines under load: a
     # sequential queue serves one generation at a time, and requests begin

@@ -8,6 +8,7 @@ through authoring content and the links do not resolve yet.
 from __future__ import annotations
 
 import json
+import os
 import re
 from datetime import date
 from pathlib import Path
@@ -870,6 +871,16 @@ def _next_action(name, engagement, registry) -> tuple[str, str]:
     if not (engagement.root / "predictions.jsonl").exists():
         return (f"fde build {name} --out project",
                 "gates pass and the exam is seeded -- emit the project")
+    # The wall both demonstrations hit, made into a rung: a build that
+    # calls a model cannot be implemented until an endpoint stands, and
+    # scan is what names the runtime, the model, and the export line for
+    # the hardware that was actually measured.
+    from fde.emit import _needs_model
+    if _needs_model(architecture) and not os.environ.get("LLM_ENDPOINT"):
+        return (f"fde scan {name}",
+                "this build calls a model and LLM_ENDPOINT is not set -- "
+                "scan names the runtime, the model sized to this hardware, "
+                "and the export line")
     command = "fde implement project"
     holdout = engagement.root / "artifacts" / "holdout.jsonl"
     if holdout.exists():

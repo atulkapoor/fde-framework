@@ -105,7 +105,11 @@ def test_after_the_exam_the_build_is_the_move(engagement):
     assert "fde build acme" in nxt()
 
 
-def test_after_the_build_the_implement_loop_is_the_move(engagement):
+def test_after_the_build_the_implement_loop_is_the_move(engagement, monkeypatch):
+    # FULL_FACTS carries measured coverage 0.33, so this build calls a
+    # model -- the implement rung is only reachable past the scan rung,
+    # with an endpoint standing.
+    monkeypatch.setenv("LLM_ENDPOINT", "http://localhost:11434")
     clear_gates(engagement)
     root = engagement / "engagements" / "acme"
     (root / "artifacts").mkdir(exist_ok=True)
@@ -163,3 +167,33 @@ def test_an_unanswerable_question_does_not_trap_the_ladder(engagement):
     (root / "artifacts" / "pairs.jsonl").write_text(
         '{"id": "p0", "verified": true, "input": "r", "output": {"total": "1"}}\n')
     assert "fde build acme" in nxt()
+
+
+def test_a_model_calling_build_names_the_scan_before_the_loop(engagement, monkeypatch):
+    """Both demonstrations hit this wall: a build that calls a model, no
+    endpoint standing, and the ladder went quiet at exactly that step.
+    Now it names scan -- which names the runtime, the model, and the
+    export line for the hardware that was measured."""
+    monkeypatch.delenv("LLM_ENDPOINT", raising=False)
+    clear_gates(engagement)
+    root = engagement / "engagements" / "acme"
+    (root / "artifacts").mkdir(exist_ok=True)
+    (root / "artifacts" / "pairs.jsonl").write_text(
+        '{"id": "p0", "verified": true, "input": "r", "output": {"total": "1"}}\n')
+    (root / "predictions.jsonl").write_text("{}\n")
+    # FULL_FACTS carries cheap_path_coverage 0.33, so representation is
+    # llm-extraction: this build calls a model.
+    out = nxt()
+    assert "fde scan acme" in out
+    assert "LLM_ENDPOINT" in out
+
+
+def test_with_an_endpoint_standing_the_move_is_implement(engagement, monkeypatch):
+    monkeypatch.setenv("LLM_ENDPOINT", "http://localhost:11434")
+    clear_gates(engagement)
+    root = engagement / "engagements" / "acme"
+    (root / "artifacts").mkdir(exist_ok=True)
+    (root / "artifacts" / "pairs.jsonl").write_text(
+        '{"id": "p0", "verified": true, "input": "r", "output": {"total": "1"}}\n')
+    (root / "predictions.jsonl").write_text("{}\n")
+    assert "fde implement project" in nxt()

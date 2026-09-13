@@ -492,6 +492,7 @@ no approach can serve yet.
 | Understand the moving parts | [ARCHITECTURE.md](https://github.com/atulkapoor/fde-framework/blob/main/ARCHITECTURE.md) |
 | Understand a gate that just refused me | `fde status <eng>` — every gate names its remedy and its clearing command |
 | Add a dimension / approach / template | [fde-demo-receipts](https://github.com/atulkapoor/fde-demo-receipts) | A complete engagement on real data — every refusal preserved |
+| [Local models, measured](https://atulkapoor.github.io/fde-framework/models.html) | Which small models hold up for extraction and judging — benchmarks with sources, first-party numbers with repro links |
 | [CONTRIBUTING.md](https://github.com/atulkapoor/fde-framework/blob/main/CONTRIBUTING.md) — incl. the template context table |
 | Use it as a library | [Python API](#python-api) |
 | Report a vulnerability | [SECURITY.md](https://github.com/atulkapoor/fde-framework/blob/main/SECURITY.md) |
