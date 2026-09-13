@@ -91,8 +91,8 @@ implemented. The full design is in [ARCHITECTURE.md](https://github.com/atulkapo
 
 Three different claims, and the differences are the point.
 
-**Demonstrated**: two complete engagements have run end to end on real
-data, both public with every refusal preserved.
+**Demonstrated**: three complete engagements have run end to end on real
+data, all public with every refusal preserved.
 [fde-demo-receipts](https://github.com/atulkapoor/fde-demo-receipts) —
 626 scanned receipts through gates, build, and an agent-driven implement
 loop (`fde implement`, graded against held-out cases the agent never sees)
@@ -102,8 +102,14 @@ flipped the design from rules to a model, reason on the record.
 2,034 real consumer complaints through the decision shape: the exam
 refused ambiguous ground truth before it existed, the agent posture was
 decided from the facts, and the loop finished **green with the holdout
-passing** — the framework's first. Four of this framework's releases
-shipped from what these runs found.
+passing** — the framework's first.
+[fde-demo-rfc-qa](https://github.com/atulkapoor/fde-demo-rfc-qa) —
+freeform QA over 58 real RFCs: 100% recall@10 on real queries, a green
+loop, and then the calibration gate **refusing its own judge** exactly as
+the prediction published beforehand said it would (73.7% agreement,
+refused; the judge's 89.5% was 26 points of flattery over the hand-graded
+63.2%). Six of this framework's releases (0.1.6–0.1.11) shipped from what
+these runs found.
 
 **Built**: the pipeline exists end to end — intake (prose, documents, sample
 pairs, role-scoped interview, hardware scan) → fact log with provenance →
