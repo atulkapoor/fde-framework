@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Local models for FDE work — measured, dated guidance</title>
+<meta name="description" content="Which small local models hold up for extraction and judging in client engagements — published benchmarks merged with measured runs on real data. Dated, sourced, revisable.">
+<link rel="icon" href="favicon.png">
+<style>
+  :root { color-scheme: light dark;
+    --bg:#ffffff; --fg:#1f2328; --muted:#57606a; --card:#f6f8fa; --line:#d0d7de; --accent:#0969da; }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg:#0d1117; --fg:#e6edf3; --muted:#9ea7b3; --card:#161b22; --line:#30363d; --accent:#79c0ff; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif; }
+  main { max-width:880px; margin:0 auto; padding:56px 24px 80px; }
+  h1 { font-size:2.6rem; margin:0 0 4px; letter-spacing:-.5px; } h1 span { color:var(--accent); }
+  .tag { color:var(--muted); font-size:1.12rem; margin:0 0 22px; max-width:660px; }
+  img { max-width:100%; height:auto; border-radius:10px; display:block; }
+  code, pre { font-family:"SF Mono",Menlo,Consolas,monospace; }
+  code { background:var(--card); border:1px solid var(--line); border-radius:6px; padding:2px 7px; font-size:.92em; }
+  pre { background:#161b22; border:1px solid #30363d; color:#e6edf3; border-radius:10px; padding:16px 20px; overflow-x:auto; font-size:.85rem; line-height:1.55; margin:0; }
+  a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; }
+  .row { margin:18px 0 26px; } .row a { display:inline-block; margin:0 14px 10px 0; font-weight:600; }
+  .btn { background:#1f6feb; color:#fff !important; padding:9px 18px; border-radius:8px; }
+  .btn2 { background:var(--card); border:1px solid var(--line); color:var(--fg) !important; padding:8px 17px; border-radius:8px; }
+  .btn:hover, .btn2:hover { text-decoration:none; filter:brightness(1.15); }
+  h2 { margin:52px 0 6px; font-size:1.5rem; } .sub { color:var(--muted); margin:0 0 18px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:14px; margin-top:20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px; }
+  .card h3 { margin:0 0 6px; font-size:1.02rem; }
+  .card p { margin:0; color:var(--muted); font-size:.92rem; }
+  .g { color:#7ee787; } .b { color:#79c0ff; } .o { color:#ffa657; } .r { color:#ff7b72; } .d { color:#8b949e; }
+  .ex-label { color:var(--muted); font-size:.85rem; text-transform:uppercase; letter-spacing:.08em; margin:26px 0 8px; }
+  .cap { color:var(--muted); font-size:.9rem; margin:8px 0 0; }
+  .quiet { color:var(--muted); font-size:.9rem; margin-top:56px; border-top:1px solid var(--line); padding-top:22px; }
+</style>
+</head>
+<body>
+<main class="wrap">
+  <p><a href="index.html">&larr; fde-framework</a></p>
+  <h1>Local models for FDE work</h1>
+  <p class="sub">Guidance as of <strong>2026-09</strong> — model releases move monthly; every number below carries its source, and the first-party numbers link to reproducible public runs. This page exists because engagements inside a data boundary run models locally, and "which model" deserves receipts.</p>
+
+  <h2>First-party: measured on a real engagement</h2>
+  <p>From <a href="https://github.com/atulkapoor/fde-demo-receipts">fde-demo-receipts</a> — 626 real scanned receipts, field-exact-match scoring, identical 84-case exam and 30 unseen holdout receipts for both rows:</p>
+  <div style="overflow-x:auto"><table>
+    <tr><th>Path</th><th>Golden</th><th>Holdout (unseen)</th><th>Verdict</th></tr>
+    <tr><td>Rules, agent-tuned to plateau</td><td>73.8%</td><td>33.3%</td><td>score was substantially memorized structure</td></tr>
+    <tr><td>qwen3:0.6b, agent-built pipeline</td><td>72.6%</td><td><strong>50.0%</strong></td><td>ties on the visible exam, +17 points where truth lives</td></tr>
+  </table></div>
+  <p>The bounded loop refused both at the 85% bar: 72.6% is the measured ceiling of a 0.6B extractor on noisy OCR. Throughput on 17GB Apple-silicon unified memory: ~102 tok/s.</p>
+
+  <h2>From the published record</h2>
+  <p><strong>Extraction (schema-bound):</strong> a sub-1B model may honestly hold this job — the fixed-schema task is far easier than the instruction-following benchmarks suggest (qwen3-0.6b: IFEval 54.5 <a href="https://arxiv.org/html/2505.09388v1">[Qwen3 TR]</a>, yet 72.6% measured above). Specialist extractors are the staged upgrade: the LFM2-Extract family (1.2B) reports ~99.6% JSON validity and parity with 27B-class generalists on document extraction <a href="https://huggingface.co/LiquidAI/LFM2-1.2B-Extract">[model card]</a> — vendor-run numbers, so clear your own gate first.</p>
+  <p><strong>Judging (reference-based) has a measured floor.</strong> SLMJury <a href="https://arxiv.org/html/2606.07810">[arXiv 2606.07810]</a> tested judges 0.6B–14B on 64k reference-based verdicts: qwen3-0.6b agrees with human graders <strong>67.9%</strong> of the time; qwen3-4b, <strong>87.6%</strong>; phi-4-mini, 88.2%; qwen3-8b, 89.0% — the curve saturates near 4B. Below 4B-class, a judge adds noise faster than signal.</p>
+  <p><strong>Verdicts, never scores.</strong> Small judges reach ~ρ0.57 on open-ended 0–1 scoring versus near-88% agreement on discrete verdicts — which is why the framework's emitted judge asks <em>correct / partial / incorrect</em> and maps to {1, 0.5, 0}. And the reference answer in the prompt is what makes a small judge legitimate at all; without one, none of this size class is.</p>
+
+  <h2>What the framework does with this</h2>
+  <ul>
+    <li><code>fde scan &lt;engagement&gt;</code> names the runtime, the models sized to the measured hardware, and the export line — dated, and concurrency-aware past ~1000 requests/day.</li>
+    <li><code>fde next</code> knows the wall: a build that calls a model with no endpoint standing gets "run fde scan" as its next move, not silence.</li>
+    <li>The judge is never trusted before calibration against a human grader — an uncalibrated judge is a random number generator with a monthly bill.</li>
+  </ul>
+  <p class="quiet">Sources and the full benchmark review: see the linked papers and model cards above. This page is revised when the guidance date changes.</p>
+</main>
+</body>
+</html>
