@@ -352,6 +352,20 @@ the same receipts the emitted `ARCHITECTURE.md` prints.
 | `fde observe / retro` | record trigger firings; capture the case |
 | `fde kb validate / gaps / sweep` | registry health, work items, dead zones |
 
+## Why not RAGAS or TruLens?
+
+Deliberately. Their headline metrics are judge-scored, and an uncalibrated
+judge is the failure mode this framework has now measured first-party: a
+local judge inflated results by 26 points before the calibration gate
+refused it ([the run is public](https://github.com/atulkapoor/fde-demo-rfc-qa)).
+The emitted evals are seeded from the client's own verified examples,
+stdlib-only — they run inside an air gap and hand over with zero
+dependencies — reference-based with discrete verdicts, and no judged number
+is quoted before the judge beats a human-agreement bar against the named
+eval owner. If your team wants RAGAS or TruLens dashboards alongside, point
+them at the same golden pairs — the JSONL is the same shape. The gate a
+delivery is graded on stays calibrated, or stays silent.
+
 ## Troubleshooting
 
 **`no registry here`** — you passed `--registry`/`--root` at a directory that
