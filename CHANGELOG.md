@@ -5,6 +5,22 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.11] — 2026-09-13
+
+Found by asking the simplest question nobody had asked: has anyone
+deployed the deliverable?
+
+- The emitted deployment unit runs `python -m app.pipeline` — and the
+  emitted pipeline defined functions and exited cleanly, a service that
+  dies silently on its first start. The pipeline is now the service:
+  stdlib-only HTTP, `/health` for the probe, POST `/` hands the JSON body
+  to `run()`, and a contract refusal is a 422 with the reason — the
+  fail-closed honesty, spoken over HTTP. Pinned by starting the emitted
+  service and talking to it.
+- `fde scan`'s extraction note tells the corrected receipts story: a 0.6B
+  extractor reached a real exam's provable optimum — audit the exam
+  before blaming the model.
+
 ## [0.1.10] — 2026-09-13
 
 The model research becomes product:

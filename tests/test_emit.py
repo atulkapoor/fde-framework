@@ -803,3 +803,66 @@ def test_the_judge_rubric_is_discrete_and_noise_tolerant(reg, tmp_path):
     # the parser survives capitalisation, punctuation, and chatter
     body = (out / "evals" / "harness.py").read_text()
     assert "split()[-1]" in body and 'strip(".")' in body
+
+
+def test_the_deployment_entrypoint_actually_serves(reg, tmp_path):
+    """The systemd unit runs `python -m app.pipeline`. A module that
+    defines functions and exits cleanly is a service that dies silently
+    on its first start -- found by asking 'has anyone deployed the
+    deliverable?' and getting no for an answer. The emitted pipeline is
+    now the service: /health answers, POST / runs the pipeline, and a
+    refusal is a 422 with the reason."""
+    import json as jsonlib
+    import time
+    import urllib.request
+
+    out = tmp_path / "p"
+    emit(architect(profile(**COMPLETE), reg), out)
+    (out / "app" / "pipeline_impl_patch.py").write_text("")  # no-op marker
+    # Stub every step so the service can answer without an implementation.
+    (out / "app" / "pipeline.py").write_text(
+        (out / "app" / "pipeline.py").read_text().replace(
+            "def run(payload):\n"
+            "    for name, step in STEPS:\n"
+            "        payload = step.run(payload)\n"
+            "    return payload",
+            "def run(payload):\n"
+            "    from app.contract import RefusedInput\n"
+            "    if payload is None:\n"
+            "        raise RefusedInput('empty payload')\n"
+            "    return {'echo': payload}"))
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "app.pipeline"], cwd=out,
+        env={"PATH": "/usr/bin", "PORT": "18923"},
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+    )
+    try:
+        for _ in range(50):
+            try:
+                health = urllib.request.urlopen(
+                    "http://127.0.0.1:18923/health", timeout=1).read()
+                break
+            except OSError:
+                time.sleep(0.1)
+        else:
+            raise AssertionError(f"service never came up: {proc.stdout.read()[:400]}")
+        assert jsonlib.loads(health)["status"] == "ok"
+
+        req = urllib.request.Request(
+            "http://127.0.0.1:18923/", data=b'{"x": 1}',
+            headers={"Content-Type": "application/json"})
+        body = jsonlib.loads(urllib.request.urlopen(req, timeout=2).read())
+        assert body["result"] == {"echo": {"x": 1}}
+
+        refuse = urllib.request.Request(
+            "http://127.0.0.1:18923/", data=b"null",
+            headers={"Content-Type": "application/json"})
+        try:
+            urllib.request.urlopen(refuse, timeout=2)
+            raise AssertionError("a refusal must be a 422, not a 200")
+        except urllib.error.HTTPError as e:
+            assert e.code == 422
+            assert "refused" in e.read().decode()
+    finally:
+        proc.terminate()
+        proc.wait(timeout=5)
