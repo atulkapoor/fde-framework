@@ -5,6 +5,21 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.12] — 2026-09-13
+
+The corrected record, carried to every frozen surface:
+
+- Status: three complete demonstrations, all public — including the third
+  run's calibration gate refusing its own judge exactly as the prediction
+  published beforehand said it would (73.7% agreement vs the 0.80 bar;
+  the judge's 89.5% was 26 points of flattery over the hand-graded 63.2%),
+  and 100% recall@10 on the retrieval eval's first real-data queries.
+- `fde scan`'s extraction note tells the corrected receipts story — the
+  0.6B extractor reached the exam's provable optimum; audit the exam
+  before blaming the model.
+- The Documentation table row an earlier edit corrupted is repaired, and
+  all three demonstration repositories are linked from it.
+
 ## [0.1.11] — 2026-09-13
 
 Found by asking the simplest question nobody had asked: has anyone
