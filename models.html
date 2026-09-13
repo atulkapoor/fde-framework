@@ -34,6 +34,11 @@
   .ex-label { color:var(--muted); font-size:.85rem; text-transform:uppercase; letter-spacing:.08em; margin:26px 0 8px; }
   .cap { color:var(--muted); font-size:.9rem; margin:8px 0 0; }
   .quiet { color:var(--muted); font-size:.9rem; margin-top:56px; border-top:1px solid var(--line); padding-top:22px; }
+
+table { border-collapse: collapse; width: 100%; margin: 14px 0; font-size: 0.95em; }
+th, td { border: 1px solid #30363d; padding: 8px 12px; text-align: left; vertical-align: top; }
+th { background: #161b22; }
+tr:nth-child(even) td { background: rgba(110,118,129,0.07); }
 </style>
 </head>
 <body>
@@ -42,14 +47,19 @@
   <h1>Local models for FDE work</h1>
   <p class="sub">Guidance as of <strong>2026-09</strong> — model releases move monthly; every number below carries its source, and the first-party numbers link to reproducible public runs. This page exists because engagements inside a data boundary run models locally, and "which model" deserves receipts.</p>
 
-  <h2>First-party: measured on a real engagement</h2>
-  <p>From <a href="https://github.com/atulkapoor/fde-demo-receipts">fde-demo-receipts</a> — 626 real scanned receipts, field-exact-match scoring, identical 84-case exam and 30 unseen holdout receipts for both rows:</p>
+  <h2>Measured first-party, task by task</h2>
+
+  <h3>Extraction — rules vs. a 0.6B model, same exam</h3>
+  <p><a href="https://github.com/atulkapoor/fde-demo-receipts">fde-demo-receipts</a>: 626 real scanned receipts, field-exact-match scoring. Both rows faced the identical 84-case exam and the same 30 receipts neither ever saw.</p>
   <div style="overflow-x:auto"><table>
-    <tr><th>Path</th><th>Golden</th><th>Holdout (unseen)</th><th>Verdict</th></tr>
-    <tr><td>Rules, agent-tuned to plateau</td><td>73.8%</td><td>33.3%</td><td>score was substantially memorized structure</td></tr>
-    <tr><td>qwen3:0.6b, agent-built pipeline</td><td>72.6%</td><td><strong>50.0%</strong></td><td>ties on the visible exam, +17 points where truth lives</td></tr>
+    <tr><th>Path</th><th>Golden (84)</th><th>Holdout (30, unseen)</th></tr>
+    <tr><td>Rules, agent-tuned to plateau</td><td>73.8%</td><td>33.3%</td></tr>
+    <tr><td>qwen3:0.6b, agent-built pipeline</td><td>72.6%</td><td><strong>50.0%</strong></td></tr>
   </table></div>
-  <p>The bounded loop refused both at the 85% bar: 72.6% is the measured ceiling of a 0.6B extractor on noisy OCR. Throughput on 17GB Apple-silicon unified memory: ~102 tok/s.</p>
+  <p>Read the columns separately. On the visible exam: a tie. On unseen receipts: seventeen points — the rules' score was substantially memorized structure, the model's mostly capability. Neither cleared the 85% bar, so the bounded loop refused both; 72.6% stands as the measured ceiling of a 0.6B extractor on noisy OCR. Throughput: ~102 tok/s on 17GB Apple-silicon unified memory.</p>
+
+  <h3>Judging — the calibration gate, run for real</h3>
+  <p>The third demonstration (freeform Q&amp;A over real documents) puts the same 0.6B model through the framework's judge-calibration gate: hand-graded outputs against the model's verdicts, agreement measured before any judged number is trusted. The published record (SLMJury) measured this model at 67.9% agreement — below any honest bar. Our run either replicates that first-party or surprises us; <strong>whichever happens is the finding</strong>, and it lands here with a link to the reproducible run.</p>
 
   <h2>From the published record</h2>
   <p><strong>Extraction (schema-bound):</strong> a sub-1B model may honestly hold this job — the fixed-schema task is far easier than the instruction-following benchmarks suggest (qwen3-0.6b: IFEval 54.5 <a href="https://arxiv.org/html/2505.09388v1">[Qwen3 TR]</a>, yet 72.6% measured above). Specialist extractors are the staged upgrade: the LFM2-Extract family (1.2B) reports ~99.6% JSON validity and parity with 27B-class generalists on document extraction <a href="https://huggingface.co/LiquidAI/LFM2-1.2B-Extract">[model card]</a> — vendor-run numbers, so clear your own gate first.</p>
