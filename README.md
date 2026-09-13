@@ -497,9 +497,9 @@ no approach can serve yet.
 | See a real transcript with expected output | [Worked example](https://github.com/atulkapoor/fde-framework/tree/main/examples/invoice-extraction) |
 | Understand the moving parts | [ARCHITECTURE.md](https://github.com/atulkapoor/fde-framework/blob/main/ARCHITECTURE.md) |
 | Understand a gate that just refused me | `fde status <eng>` — every gate names its remedy and its clearing command |
-| Add a dimension / approach / template | [fde-demo-receipts](https://github.com/atulkapoor/fde-demo-receipts) | A complete engagement on real data — every refusal preserved |
-| [Local models, measured](https://atulkapoor.github.io/fde-framework/models.html) | Which small models hold up for extraction and judging — benchmarks with sources, first-party numbers with repro links |
-| [CONTRIBUTING.md](https://github.com/atulkapoor/fde-framework/blob/main/CONTRIBUTING.md) — incl. the template context table |
+| See complete engagements on real data, refusals preserved | [fde-demo-receipts](https://github.com/atulkapoor/fde-demo-receipts) · [fde-demo-complaints](https://github.com/atulkapoor/fde-demo-complaints) · [fde-demo-rfc-qa](https://github.com/atulkapoor/fde-demo-rfc-qa) |
+| Pick a local model with receipts | [Local models, measured](https://atulkapoor.github.io/fde-framework/models.html) |
+| Add a dimension / approach / template | [CONTRIBUTING.md](https://github.com/atulkapoor/fde-framework/blob/main/CONTRIBUTING.md) — incl. the template context table |
 | Use it as a library | [Python API](#python-api) |
 | Report a vulnerability | [SECURITY.md](https://github.com/atulkapoor/fde-framework/blob/main/SECURITY.md) |
 | See what changed | [CHANGELOG.md](https://github.com/atulkapoor/fde-framework/blob/main/CHANGELOG.md) · [Releases](https://github.com/atulkapoor/fde-framework/releases) |
