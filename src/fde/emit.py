@@ -93,6 +93,7 @@ def emit(
     write_deploy(architecture, out)
     write_ops(architecture, out, registry, baseline=baseline)
     _write_project_file(out)
+    _write_gitignore(out)
     (out / "ARCHITECTURE.md").write_text(render_architecture(architecture, registry))
     _write_risks(out, waivers or [], overrides or [], architecture)
     return EmitReport(path=out, scaffolded=scaffolded)
@@ -531,11 +532,36 @@ def _write_pipeline(architecture: Architecture, out: Path, registry=None) -> Non
         f"if __name__ == \"__main__\":\n"
         f"    import json as _json\n"
         f"    import os as _os\n"
+        f"    import signal as _signal\n"
+        f"    import sys as _sys\n"
+        f"    import uuid as _uuid\n"
         f"    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer\n"
         f"\n"
         f"    from app.contract import RefusedInput\n"
         f"\n"
         f"    MAX_BODY = int(_os.environ.get(\"MAX_BODY_BYTES\", str(10 * 1024 * 1024)))\n"
+        f"    NEEDS_MODEL = {str(bool(_needs_model(architecture)))}\n"
+        f"\n"
+        f"    def _log(**fields):\n"
+        f"        # JSON to stderr, flushed: journalctl at 3am must show\n"
+        f"        # what happened, and a buffered print dies with SIGTERM.\n"
+        f"        print(_json.dumps(fields, default=str), file=_sys.stderr, flush=True)\n"
+        f"\n"
+        f"    def _preflight():\n"
+        f"        problems = []\n"
+        f"        if NEEDS_MODEL:\n"
+        f"            endpoint = _os.environ.get(\"LLM_ENDPOINT\")\n"
+        f"            if not endpoint and not _os.environ.get(\"ANTHROPIC_API_KEY\"):\n"
+        f"                problems.append(\"no model: set LLM_ENDPOINT \"\n"
+        f"                                \"(see deploy/env.example)\")\n"
+        f"            elif endpoint:\n"
+        f"                import urllib.request as _rq\n"
+        f"                try:\n"
+        f"                    _rq.urlopen(endpoint.rstrip(\"/\") + \"/v1/models\", timeout=3)\n"
+        f"                except Exception as exc:  # noqa: BLE001\n"
+        f"                    problems.append(\n"
+        f"                        f\"model endpoint unreachable: {{type(exc).__name__}}\")\n"
+        f"        return problems\n"
         f"\n"
         f"    class _Handler(BaseHTTPRequestHandler):\n"
         f"        # A slow or malicious socket must cost one thread and one\n"
@@ -551,7 +577,17 @@ def _write_pipeline(architecture: Architecture, out: Path, registry=None) -> Non
         f"\n"
         f"        def do_GET(self):\n"
         f"            if self.path == \"/health\":\n"
+        f"                # Liveness only: the process is up.\n"
         f"                self._send(200, {{\"status\": \"ok\"}})\n"
+        f"            elif self.path == \"/ready\":\n"
+        f"                # Readiness: dependencies answer. A deploy gates\n"
+        f"                # on this; misconfiguration surfaces here, not on\n"
+        f"                # the first user.\n"
+        f"                problems = _preflight()\n"
+        f"                if problems:\n"
+        f"                    self._send(503, {{\"ready\": False, \"problems\": problems}})\n"
+        f"                else:\n"
+        f"                    self._send(200, {{\"ready\": True}})\n"
         f"            else:\n"
         f"                self._send(404, {{\"error\": \"POST / with a JSON payload\"}})\n"
         f"\n"
@@ -581,22 +617,43 @@ def _write_pipeline(architecture: Architecture, out: Path, registry=None) -> Non
         f"            except RefusedInput as refusal:\n"
         f"                self._send(422, {{\"refused\": str(refusal)}})\n"
         f"            except Exception as exc:  # noqa: BLE001\n"
-        f"                # A dropped connection tells the caller nothing; a\n"
-        f"                # 500 with the exception NAME (never a traceback)\n"
-        f"                # is a diagnosable failure.\n"
-        f"                self._send(500, {{\"error\": type(exc).__name__,\n"
-        f"                                 \"detail\": str(exc)[:200]}})\n"
+        f"                # A dropped connection tells the caller nothing.\n"
+        f"                # Dependency failures are 503 (retry later);\n"
+        f"                # everything else 500 -- the exception NAME and a\n"
+        f"                # correlation id, never a traceback.\n"
+        f"                cid = str(_uuid.uuid4())[:8]\n"
+        f"                transient = type(exc).__name__ in (\n"
+        f"                    \"URLError\", \"TimeoutError\", \"ConnectionResetError\",\n"
+        f"                    \"ConnectionRefusedError\", \"ModelUnconfigured\", \"timeout\")\n"
+        f"                _log(level=\"error\", correlation_id=cid,\n"
+        f"                     error=type(exc).__name__, detail=str(exc)[:300])\n"
+        f"                self._send(503 if transient else 500,\n"
+        f"                           {{\"error\": type(exc).__name__,\n"
+        f"                            \"correlation_id\": cid,\n"
+        f"                            \"detail\": str(exc)[:200]}})\n"
         f"\n"
         f"        def log_message(self, fmt, *args):\n"
-        f"            print(fmt % args)\n"
+        f"            _log(level=\"access\", line=fmt % args)\n"
         f"\n"
         f"    port = int(_os.environ.get(\"PORT\", \"8080\"))\n"
         f"    # Loopback by default: exposing the port is a deployment\n"
         f"    # decision made in the unit file (Environment=BIND=...),\n"
         f"    # never a default the code took alone.\n"
         f"    bind = _os.environ.get(\"BIND\", \"127.0.0.1\")\n"
-        f"    print(f\"serving on {{bind}}:{{port}} -- /health, POST /\")\n"
-        f"    ThreadingHTTPServer((bind, port), _Handler).serve_forever()\n"
+        f"    for problem in _preflight():\n"
+        f"        _log(level=\"warning\", boot_problem=problem)\n"
+        f"    server = ThreadingHTTPServer((bind, port), _Handler)\n"
+        f"\n"
+        f"    def _drain(signum, frame):\n"
+        f"        # Flush, stop accepting, exit clean: a dirty stop loses\n"
+        f"        # the log buffer and reads as a crash to systemd.\n"
+        f"        _log(level=\"info\", event=\"sigterm: draining\")\n"
+        f"        raise SystemExit(0)\n"
+        f"\n"
+        f"    _signal.signal(_signal.SIGTERM, _drain)\n"
+        f"    _log(level=\"info\", event=f\"serving on {{bind}}:{{port}}\",\n"
+        f"         ready_endpoint=\"/ready\", needs_model=NEEDS_MODEL)\n"
+        f"    server.serve_forever()\n"
     )
 
 
@@ -729,7 +786,9 @@ def _boundary_present() -> bool:
     return True
 
 
-def complete(prompt: str, timeout: float = 120.0) -> str:
+def complete(prompt: str, timeout: float | None = None) -> str:
+    if timeout is None:
+        timeout = float(os.environ.get("LLM_TIMEOUT", "120"))
     endpoint = os.environ.get("LLM_ENDPOINT")
     if endpoint:
         body = json.dumps({
@@ -744,8 +803,18 @@ def complete(prompt: str, timeout: float = 120.0) -> str:
             endpoint.rstrip("/") + "/v1/chat/completions",
             data=body, headers={"Content-Type": "application/json"},
         )
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            return json.load(response)["choices"][0]["message"]["content"]
+        # One bounded retry: a transport blip is not a model failure,
+        # and a person may be waiting on the difference.
+        last_error = None
+        for attempt in (1, 2):
+            try:
+                with urllib.request.urlopen(request, timeout=timeout) as response:
+                    return json.load(response)["choices"][0]["message"]["content"]
+            except (urllib.error.URLError, TimeoutError) as exc:
+                last_error = exc
+                if attempt == 1:
+                    time.sleep(0.5)
+        raise last_error
 
     if os.environ.get("ANTHROPIC_API_KEY"):
         if _boundary_present():
@@ -753,7 +822,14 @@ def complete(prompt: str, timeout: float = 120.0) -> str:
                 "this build carries a data boundary, so the hosted model is "
                 "refused -- point LLM_ENDPOINT at a model inside it"
             )
-        import anthropic
+        try:
+            import anthropic
+        except ImportError as exc:
+            raise ModelUnconfigured(
+                "the hosted path needs the anthropic package -- "
+                "`pip install anthropic` -- or set LLM_ENDPOINT to a local "
+                "OpenAI-compatible server instead"
+            ) from exc
 
         response = anthropic.Anthropic().messages.create(
             model=os.environ.get("LLM_MODEL", "claude-haiku-4-5-20251001"),
@@ -1382,6 +1458,14 @@ if __name__ == "__main__":
 '''
 
 
+def _write_gitignore(out: Path) -> None:
+    # Bytecode for two interpreter versions was once tracked in a public
+    # deliverable's git history. The emitted project ships its own hygiene.
+    (out / ".gitignore").write_text(
+        "__pycache__/\n*.py[co]\n.venv/\nvar/\n*.sqlite3\n.implement/\n"
+    )
+
+
 def _write_project_file(out: Path) -> None:
     # The delivery is named for itself, never "generated":
     # the first file a reviewer opens should not say the vendor
@@ -1395,7 +1479,7 @@ def _write_project_file(out: Path) -> None:
         "[project]\n"
         f'name = "{project_name}"\n'
         'version = "0.1.0"\n'
-        'requires-python = ">=3.11"\n\n'
+        'requires-python = ">=3.10"\n\n'
         "[build-system]\n"
         'requires = ["setuptools>=68"]\n'
         'build-backend = "setuptools.build_meta"\n\n'

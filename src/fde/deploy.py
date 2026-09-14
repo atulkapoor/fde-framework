@@ -28,6 +28,7 @@ PYTHON_BASE = "python:3.12-slim"
 def write_deploy(architecture, out: Path) -> None:
     deploy = out / "deploy"
     deploy.mkdir(parents=True, exist_ok=True)
+    _write_env_example(architecture, deploy)
 
     substrate = _approach(architecture, "deployment")
     provisioner = _approach(architecture, "provisioning")
@@ -91,6 +92,11 @@ def _systemd(deploy: Path) -> None:
         "Type=simple\n"
         "User=app\n"
         "WorkingDirectory=/opt/app\n"
+        "# One configuration story: defaults here, overrides in the env\n"
+        "# file. Unbuffered stdout so journalctl shows the truth at 3am.\n"
+        "Environment=PYTHONUNBUFFERED=1\n"
+        "Environment=STATE_DIR=/var/lib/app\n"
+        "EnvironmentFile=-/etc/app/env\n"
         "ExecStart=/opt/app/.venv/bin/python -m app.pipeline\n"
         "Restart=on-failure\n"
         "RestartSec=5\n"
@@ -364,6 +370,37 @@ def _teardown(deploy: Path, substrate: str | None, provisioner: str | None) -> N
         "engagement.\n"
     )
     (deploy / "TEARDOWN.md").write_text("# Taking it away\n\n" + "\n".join(sections))
+
+
+def _write_env_example(architecture, deploy: Path) -> None:
+    """The environment, in one documented place, generated from what was
+    actually emitted -- a mandatory variable that appears in no document
+    is discovered by the first user instead of the deploy."""
+    from fde.emit import _needs_model
+
+    lines = [
+        "# Copy to /etc/app/env (the unit reads it via EnvironmentFile).",
+        "# Every variable the emitted service reads, with its default.",
+        "",
+        "PORT=8080",
+        "# Loopback by default; exposing the port is a decision made here.",
+        "BIND=127.0.0.1",
+        "MAX_BODY_BYTES=10485760",
+        "# Writable state (ledgers, queues). Must match ReadWritePaths in",
+        "# the unit.",
+        "STATE_DIR=/var/lib/app",
+    ]
+    if _needs_model(architecture):
+        lines += [
+            "",
+            "# This build calls a model. A local OpenAI-compatible endpoint",
+            "# (fde scan names one sized to the hardware):",
+            "LLM_ENDPOINT=http://localhost:11434",
+            "LLM_MODEL=set-me",
+            "LLM_TIMEOUT=120",
+            "LLM_MAX_TOKENS=512",
+        ]
+    (deploy / "env.example").write_text("\n".join(lines) + "\n")
 
 
 def _approach(architecture, component: str) -> str | None:

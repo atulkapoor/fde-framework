@@ -940,3 +940,53 @@ def test_the_service_binds_loopback_unless_told_otherwise(reg, tmp_path):
     body = (out / "app" / "pipeline.py").read_text()
     assert '"BIND", "127.0.0.1"' in body
     assert "ThreadingHTTPServer" in body
+
+
+def test_ready_reports_the_missing_model_health_stays_liveness(reg, tmp_path):
+    """/health said ok with the model down and misconfiguration was
+    discovered by the first user. /ready runs the preflight; a deploy
+    gates on it."""
+    import json as jsonlib
+    import time
+    import urllib.error
+    import urllib.request
+
+    out = tmp_path / "p"
+    emit(architect(profile(**FREEFORM), reg), out)  # freeform: needs a model
+    assert (out / "deploy" / "env.example").exists()
+    assert "LLM_ENDPOINT" in (out / "deploy" / "env.example").read_text()
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "app.pipeline"], cwd=out,
+        env={"PATH": "/usr/bin", "PORT": "18941"},
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    )
+    try:
+        for _ in range(50):
+            try:
+                health = urllib.request.urlopen(
+                    "http://127.0.0.1:18941/health", timeout=1)
+                break
+            except OSError:
+                time.sleep(0.1)
+        else:
+            raise AssertionError(proc.stderr.read()[:300])
+        assert health.status == 200
+        try:
+            urllib.request.urlopen("http://127.0.0.1:18941/ready", timeout=3)
+            raise AssertionError("/ready must 503 with no model configured")
+        except urllib.error.HTTPError as e:
+            assert e.code == 503
+            body = jsonlib.loads(e.read())
+            assert "LLM_ENDPOINT" in " ".join(body["problems"])
+    finally:
+        proc.terminate()
+        proc.wait(timeout=5)
+
+
+def test_the_emitted_project_ships_its_own_hygiene(reg, tmp_path):
+    out = tmp_path / "p"
+    emit(architect(profile(**COMPLETE), reg), out)
+    ignore = (out / ".gitignore").read_text()
+    assert "__pycache__" in ignore and "*.sqlite3" in ignore
+    unit = (out / "deploy" / "systemd" / "app.service").read_text()
+    assert "PYTHONUNBUFFERED=1" in unit and "EnvironmentFile=" in unit

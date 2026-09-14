@@ -5,6 +5,33 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.14] — 2026-09-14
+
+The operational shell, from a staff-engineer acceptance review that
+graded the emitted deliverables C-to-F on operations and refused to sign:
+
+- **The service tells operators the truth**: structured JSON logs to
+  stderr, flushed (journalctl showed literally nothing at 3am before);
+  the unit sets PYTHONUNBUFFERED; SIGTERM flushes and exits clean;
+  errors carry a correlation id.
+- **Dependency failures are 503s, not mysteries**: a dead or stalled
+  model endpoint answers with retry-later semantics; `/ready` runs a real
+  preflight (model reachable, config present) so a deploy gates on it —
+  `/health` stays honest liveness. Boot logs its preflight problems.
+- **Configuration is one story**: the unit reads `/etc/app/env`
+  (EnvironmentFile), a generated `deploy/env.example` documents every
+  variable the emitted service actually reads — including the model
+  variables exactly when the build needs a model — and STATE_DIR points
+  writable state at /var/lib/app where the unit's sandbox allows it.
+- The one model seam gets one bounded retry and an `LLM_TIMEOUT` env;
+  the hosted path's `anthropic` import failure explains itself; emitted
+  projects ship their own `.gitignore`; the interpreter floor matches
+  what the deliverables actually run on (3.10).
+
+Deferred to the next batch, tracked: a model-free CI lane for emitted
+workflows, a complete ansible path, a unit-test smoke in the
+deliverable, and a generated "first five minutes" runbook section.
+
 ## [0.1.13] — 2026-09-14
 
 Two hostile audits before the framework's first Show HN — one attacking
