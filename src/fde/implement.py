@@ -103,7 +103,8 @@ def _tracked_files(project: Path) -> dict[Path, str]:
 
 
 def _run_check(project: Path, check: str | None,
-               extra: list[str] | None = None) -> tuple[bool, str]:
+               extra: list[str] | None = None,
+               timeout: float = 1800.0) -> tuple[bool, str]:
     # CI's floor is 0.0 -- "no regression". The loop's job is different:
     # finish. A default bar of zero once declared a 70% implementation done
     # and handed it to the holdout, whose verdict then read a half-built
@@ -115,13 +116,13 @@ def _run_check(project: Path, check: str | None,
     command = command + (extra or [])
     try:
         result = subprocess.run(  # noqa: S603 - the check is the caller's own command
-            command, cwd=project, capture_output=True, text=True, timeout=1800,
+            command, cwd=project, capture_output=True, text=True, timeout=timeout,
         )
     except subprocess.TimeoutExpired:
         return False, (
-            "the check exceeded its 1800s budget -- a model in the eval "
-            "loop makes honest runs slow; shrink the exam or speed up the "
-            "model"
+            f"the check exceeded its {timeout:.0f}s budget -- a model in "
+            f"the eval loop makes honest runs slow; raise --check-timeout, "
+            f"shrink the exam, or speed up the model"
         )
     tail = "\n".join((result.stdout + result.stderr).strip().splitlines()[-15:])
     return result.returncode == 0, tail
@@ -186,8 +187,9 @@ def _run_agent(project: Path, agent_cmd: str, prompt: str,
         error_file = project / ".implement" / "agent-last-error.txt"
         error_file.parent.mkdir(exist_ok=True)
         error_file.write_text(
-            f"agent exceeded its {timeout:.0f}s budget -- raise it with "
-            f"--agent-timeout, shrink the exam, or speed up the model"
+            f"TIMEOUT: agent exceeded its {timeout:.0f}s budget -- raise "
+            f"it with --agent-timeout, shrink the exam, or speed up the "
+            f"model"
         )
         return False
     except FileNotFoundError as exc:
@@ -216,6 +218,7 @@ def run_loop(
     invoke_agent=None,
     holdout: Path | None = None,
     agent_timeout: float = 3600.0,
+    check_timeout: float = 1800.0,
 ) -> ImplementReport:
     """The loop. `invoke_agent` is injectable for tests."""
     project = Path(project)
@@ -232,7 +235,8 @@ def run_loop(
     def green_report(number: int, tail: str) -> ImplementReport:
         if holdout is not None:
             held, held_tail = _run_check(
-                project, check, extra=["--cases", str(Path(holdout).resolve())]
+                project, check, extra=["--cases", str(Path(holdout).resolve())],
+                timeout=check_timeout,
             )
             if not held:
                 rounds.append(Round(number, False, held_tail,
@@ -248,7 +252,7 @@ def run_loop(
         return ImplementReport(rounds, done=True, stopped_by="harness green")
 
     for number in range(1, max_rounds + 1):
-        passed, tail = _run_check(project, check)
+        passed, tail = _run_check(project, check, timeout=check_timeout)
         if passed:
             return green_report(number, tail)
 
@@ -295,14 +299,22 @@ def run_loop(
             return ImplementReport(rounds, done=False, stopped_by="guardrail")
 
         rounds.append(Round(number, False, tail, changed))
-        if not agent_ok and not changed:
+        if not agent_ok:
             error_file = project / ".implement" / "agent-last-error.txt"
+            said = ""
             if error_file.exists():
                 said = " ".join(error_file.read_text().split())[-300:]
+            # A burned budget must be visible even when the agent left
+            # edits behind -- five silent 3600s rounds is a day nobody
+            # gets back. And a timeout is a timeout, never "exited".
+            if said.startswith("TIMEOUT:"):
+                rounds[-1].violation = f"the agent round timed out: {said[8:].strip()}"
+            elif said:
                 rounds[-1].violation = f"the agent command exited nonzero: {said}"
-            return ImplementReport(rounds, done=False, stopped_by="agent failed")
+            if not changed:
+                return ImplementReport(rounds, done=False, stopped_by="agent failed")
 
-    passed, tail = _run_check(project, check)
+    passed, tail = _run_check(project, check, timeout=check_timeout)
     if passed:
         return green_report(max_rounds + 1, tail)
     rounds.append(Round(max_rounds + 1, passed, tail))

@@ -648,7 +648,7 @@ def ask(
         )
     )
     typer.echo(f"\nRecorded {len(gathered)} answer(s) from {respondent}.")
-    _echo_next(root, engagement)
+    _echo_next(root, engagement, registry)
 
 
 def _with_all(profile, facts):
@@ -854,21 +854,28 @@ def _next_action(name, engagement, registry) -> tuple[str, str]:
         return (f"fde samples {name} --file pairs.jsonl",
                 "no sample pairs yet -- the client's own examples become the exam")
     profile = engagement.profile
-    # Ask only while an answer could still change what gets built: an
-    # honestly unmeasured dimension (the flagship case) must not trap the
-    # ladder on a question nobody can answer while every component already
-    # decides without it.
+    built = (engagement.root / "predictions.jsonl").exists()
     architecture = build_architecture(profile, registry)
-    if architecture.decisions.undecided():
+    # Ask only while an answer could still change what gets built -- and
+    # never after a build exists: build's own footer says "implement",
+    # and a ladder that re-interviews at that point contradicts the tool
+    # one line above it. Undecided components in a built project raise on
+    # use, which is the honest state until somebody answers; the ladder's
+    # job then is finishing, not re-opening discovery.
+    if not built and architecture.decisions.undecided():
         space = Space.from_registry(registry).apply(profile)
         questions = remaining_questions(space, profile, registry)
         if questions:
             question = questions[0]
             role = question.roles[0] if question.roles else "sponsor"
-            return (f"fde ask {name} --role {role}",
+            dimension = registry.dimensions.get(question.resolves)
+            scope_attr = getattr(dimension, "scope", "")
+            scope = getattr(scope_attr, "value", None) or scope_attr
+            scope_flag = f" --scope {scope}" if scope else ""
+            return (f"fde ask {name} --role {role}{scope_flag}",
                     f"highest-value open question: {question.asks} "
                     f"(undecided: {', '.join(architecture.decisions.undecided())})")
-    if not (engagement.root / "predictions.jsonl").exists():
+    if not built:
         return (f"fde build {name} --out project",
                 "gates pass and the exam is seeded -- emit the project")
     # The wall both demonstrations hit, made into a rung: a build that
@@ -876,12 +883,24 @@ def _next_action(name, engagement, registry) -> tuple[str, str]:
     # scan is what names the runtime, the model, and the export line for
     # the hardware that was actually measured.
     from fde.emit import _needs_model
-    if _needs_model(architecture) and not os.environ.get("LLM_ENDPOINT"):
+    endpoint = os.environ.get("LLM_ENDPOINT", "")
+    from urllib.parse import urlparse
+    parsed = urlparse(endpoint)
+    endpoint_ok = bool(parsed.scheme in ("http", "https") and parsed.netloc)
+    if _needs_model(architecture) and not endpoint_ok:
+        why = ("this build calls a model and LLM_ENDPOINT is not set -- "
+               if not endpoint else
+               f"this build calls a model and LLM_ENDPOINT={endpoint!r} is "
+               f"not a usable URL -- ")
         return (f"fde scan {name}",
-                "this build calls a model and LLM_ENDPOINT is not set -- "
-                "scan names the runtime, the model sized to this hardware, "
-                "and the export line")
-    command = "fde implement project"
+                why + "scan names the runtime, the model sized to this "
+                "hardware, and the export line")
+    # The project path build actually used, not a guess: `fde build X
+    # --out pqa-project` once left the hint pointing at a different
+    # engagement's ./project.
+    out_record = engagement.root / ".last-out"
+    out_path = out_record.read_text().strip() if out_record.exists() else "project"
+    command = f"fde implement {out_path}"
     holdout = engagement.root / "artifacts" / "holdout.jsonl"
     if holdout.exists():
         command += f" --holdout {holdout}"
@@ -890,13 +909,13 @@ def _next_action(name, engagement, registry) -> tuple[str, str]:
             "client, and fde retro after the measurement window")
 
 
-def _echo_next(name, engagement) -> None:
+def _echo_next(name, engagement, registry=None) -> None:
     """One-line footer naming the next move. A hint must never break the
     command it decorates, so every failure here is silence."""
     try:
         # Quiet load on purpose: _registry prints its one-line refusal
         # before raising, and a hint that fails must fail silently.
-        registry = load_registry(default_root())
+        registry = registry or load_registry(default_root())
         command, _ = _next_action(name, engagement, registry)
         typer.echo(f"next: {command}")
     except Exception:  # noqa: BLE001
@@ -1672,6 +1691,9 @@ def build_cmd(
         _write_compliance(Path(out), locale)
 
     typer.echo(f"wrote {out}")
+    # The ladder's implement hint reads this back: the path that was
+    # actually built, never an assumed ./project.
+    (engagement.root / ".last-out").write_text(str(out))
     # The exam's size belongs in the build receipt: an empty golden set
     # emitted next to sixty pairs on disk once read as a finished build.
     counts = {}
@@ -1850,6 +1872,11 @@ def implement_cmd(
              "runs in the eval loop -- local inference makes honest rounds "
              "slow, and an overrun is a round result, not a crash."
     )] = 3600.0,
+    check_timeout: Annotated[float, typer.Option(
+        "--check-timeout",
+        help="Seconds one check run may take. Raise it when a judged "
+             "harness runs a local model over a large golden set."
+    )] = 1800.0,
     check: Annotated[str | None, typer.Option(
         help="The command that decides green. Default: the same harness "
              "invocation the emitted CI runs."
@@ -1878,8 +1905,12 @@ def implement_cmd(
         raise typer.Exit(1)
 
     try:
+        if agent_timeout <= 0 or check_timeout <= 0:
+            typer.echo("budgets must be positive seconds", err=True)
+            raise typer.Exit(1)
         report = run_loop(project, agent_cmd=agent_cmd, max_rounds=max_rounds,
                           agent_timeout=agent_timeout,
+                          check_timeout=check_timeout,
                           check=check, holdout=holdout)
     except AgentMissing as exc:
         typer.echo(str(exc), err=True)

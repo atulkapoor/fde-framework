@@ -102,6 +102,12 @@ def parse_prose(
     # as "data cannot leave", and a recogniser phrase must not vanish because
     # a line broke inside it. A blank line is a paragraph and stays a
     # boundary; a single newline is just where the editor wrapped.
+    # Length-preserving normalization for the quantity path (spans must
+    # keep indexing the caller's original text): a single newline -- LF or
+    # the CR of a CRLF pair -- reads as the space it is; a blank line
+    # stays a paragraph boundary. Vocabulary matching below is whitespace-
+    # flexible on its own and needs none of this.
+    text = re.sub(r"\r(?=\n)", " ", text)
     text = re.sub(r"(?<!\n)\n(?!\n)", " ", text)
     facts: list[Fact] = []
     for dimension in registry.dimensions.values():
@@ -236,9 +242,14 @@ def _read_vocabulary(
 
     for value, phrases in _recognises(dimension).items():
         for phrase in phrases:
-            at = lowered.find(phrase.lower())
-            if at < 0:
+            # Whitespace-flexible: a brief hard-wrapped mid-phrase ("data\r\n
+            # cannot leave", "data\n  cannot leave") states the same phrase.
+            # Matching on the original text keeps every span exact.
+            pattern = r"[\s]+".join(re.escape(word) for word in phrase.lower().split())
+            found = re.search(pattern, lowered)
+            if not found:
                 continue
+            at = found.start()
             window = lowered[max(0, at - LOOKBACK): at]
             # A negation only speaks for its own sentence: "never been
             # calibrated. Recall within a session" once suppressed the

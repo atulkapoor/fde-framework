@@ -800,9 +800,18 @@ def test_the_judge_rubric_is_discrete_and_noise_tolerant(reg, tmp_path):
                  .replace("from evals.taxonomy import classify", "classify = None"),
                  "harness", "exec"), harness)
     assert harness["VERDICTS"] == {"correct": 1.0, "partial": 0.5, "incorrect": 0.0}
-    # the parser survives capitalisation, punctuation, and chatter
-    body = (out / "evals" / "harness.py").read_text()
-    assert "split()[-1]" in body and 'strip(".")' in body
+    parse = harness["parse_verdict"]
+    # the parser survives chatter and formatting...
+    assert parse("**correct**") == 1.0
+    assert parse("Verdict:\ncorrect.") == 1.0
+    assert parse("partially correct") == 0.5  # the audit's exact case
+    assert parse("partial") == 0.5
+    # ...and never lets chatter INVERT the verdict (the graded failures of
+    # a real 0.6B judge, executed by the 0.1.12 audit):
+    assert parse("not correct") == 0.0
+    assert parse("The candidate is wrong, so the answer is not correct") == 0.0
+    assert parse("incorrect\ncorrect") == 0.0
+    assert parse("") == 0.0 and parse("I cannot grade this") == 0.0
 
 
 def test_the_deployment_entrypoint_actually_serves(reg, tmp_path):
@@ -866,3 +875,68 @@ def test_the_deployment_entrypoint_actually_serves(reg, tmp_path):
     finally:
         proc.terminate()
         proc.wait(timeout=5)
+
+
+def test_the_service_answers_500_not_a_dropped_connection(reg, tmp_path):
+    """A fresh build's first POST once got curl: (52) empty reply -- the
+    unwired gate's RuntimeError killed the connection with no status. Every
+    failure now has a shape: 500 with the exception NAME, never a
+    traceback, never silence. Plus the parsing edges the audit dropped
+    connections on."""
+    import json as jsonlib
+    import time
+    import urllib.error
+    import urllib.request
+
+    out = tmp_path / "p"
+    emit(architect(profile(**COMPLETE), reg), out)
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "app.pipeline"], cwd=out,
+        env={"PATH": "/usr/bin", "PORT": "18931"},
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+    )
+    try:
+        for _ in range(50):
+            try:
+                urllib.request.urlopen("http://127.0.0.1:18931/health", timeout=1)
+                break
+            except OSError:
+                time.sleep(0.1)
+        else:
+            raise AssertionError(proc.stdout.read()[:300])
+
+        def post(body, headers=None, path="/"):
+            req = urllib.request.Request(
+                f"http://127.0.0.1:18931{path}", data=body,
+                headers={"Content-Type": "application/json", **(headers or {})})
+            try:
+                resp = urllib.request.urlopen(req, timeout=3)
+                return resp.status, jsonlib.loads(resp.read())
+            except urllib.error.HTTPError as e:
+                return e.code, jsonlib.loads(e.read())
+
+        # unwired gate -> 500 with the exception name, not a dropped socket
+        code, body = post(b'{"doc": "hello"}')
+        assert code == 500 and "error" in body, (code, body)
+
+        code, body = post(b"x" * 100, path="/nowhere")
+        assert code == 404
+        code, body = post(b"{}" , headers={"Content-Length": "zzz"})
+        assert code == 400
+        big = b"x" * (11 * 1024 * 1024)
+        try:
+            code, body = post(big)
+            assert code == 413
+        except urllib.error.URLError:
+            pass  # server rejected and closed before reading -- also correct
+    finally:
+        proc.terminate()
+        proc.wait(timeout=5)
+
+
+def test_the_service_binds_loopback_unless_told_otherwise(reg, tmp_path):
+    out = tmp_path / "p"
+    emit(architect(profile(**COMPLETE), reg), out)
+    body = (out / "app" / "pipeline.py").read_text()
+    assert '"BIND", "127.0.0.1"' in body
+    assert "ThreadingHTTPServer" in body

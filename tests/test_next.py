@@ -197,3 +197,53 @@ def test_with_an_endpoint_standing_the_move_is_implement(engagement, monkeypatch
         '{"id": "p0", "verified": true, "input": "r", "output": {"total": "1"}}\n')
     (root / "predictions.jsonl").write_text("{}\n")
     assert "fde implement project" in nxt()
+
+
+def test_a_built_engagement_is_never_sent_back_to_the_interview(engagement, monkeypatch):
+    """The audit's wedge: build's own footer says implement while the
+    ladder said ask, forever. Built means the ladder's job is finishing."""
+    monkeypatch.setenv("LLM_ENDPOINT", "http://localhost:11434")
+    clear_gates(engagement)
+    root = engagement / "engagements" / "acme"
+    facts = (root / "facts" / "0001.yaml").read_text()
+    facts = facts.replace("value: structured", "value: freeform")
+    (root / "facts" / "0001.yaml").write_text(
+        "\n".join(line for line in facts.splitlines() if "query_pattern" not in line))
+    runner.invoke(app, ["waive", "acme", "offline_evaluability",
+                        "--reason", "local judge planned"])
+    (root / "artifacts").mkdir(exist_ok=True)
+    (root / "artifacts" / "pairs.jsonl").write_text(
+        '{"id": "p0", "verified": true, "input": "r", "output": {"total": "1"}}\n')
+    (root / "predictions.jsonl").write_text("{}\n")
+    (root / ".last-out").write_text("pqa-project")
+    out = nxt()
+    assert "fde ask" not in out
+    assert "fde implement pqa-project" in out
+
+
+def test_the_ask_hint_carries_the_scope_that_surfaces_its_question(engagement):
+    clear_gates(engagement)
+    root = engagement / "engagements" / "acme"
+    facts = (root / "facts" / "0001.yaml").read_text()
+    facts = facts.replace("value: structured", "value: freeform")
+    (root / "facts" / "0001.yaml").write_text(
+        "\n".join(line for line in facts.splitlines() if "query_pattern" not in line))
+    runner.invoke(app, ["waive", "acme", "offline_evaluability",
+                        "--reason", "local judge planned"])
+    (root / "artifacts").mkdir(exist_ok=True)
+    (root / "artifacts" / "pairs.jsonl").write_text(
+        '{"id": "p0", "verified": true, "input": "r", "output": {"total": "1"}}\n')
+    out = nxt()
+    assert "--scope" in out
+
+
+def test_a_garbage_endpoint_does_not_clear_the_model_rung(engagement, monkeypatch):
+    monkeypatch.setenv("LLM_ENDPOINT", "::::garbage::::")
+    clear_gates(engagement)
+    root = engagement / "engagements" / "acme"
+    (root / "artifacts").mkdir(exist_ok=True)
+    (root / "artifacts" / "pairs.jsonl").write_text(
+        '{"id": "p0", "verified": true, "input": "r", "output": {"total": "1"}}\n')
+    (root / "predictions.jsonl").write_text("{}\n")
+    out = nxt()
+    assert "fde scan acme" in out and "not a usable URL" in out

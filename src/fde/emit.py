@@ -531,11 +531,16 @@ def _write_pipeline(architecture: Architecture, out: Path, registry=None) -> Non
         f"if __name__ == \"__main__\":\n"
         f"    import json as _json\n"
         f"    import os as _os\n"
-        f"    from http.server import BaseHTTPRequestHandler, HTTPServer\n"
+        f"    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer\n"
         f"\n"
         f"    from app.contract import RefusedInput\n"
         f"\n"
+        f"    MAX_BODY = int(_os.environ.get(\"MAX_BODY_BYTES\", str(10 * 1024 * 1024)))\n"
+        f"\n"
         f"    class _Handler(BaseHTTPRequestHandler):\n"
+        f"        # A slow or malicious socket must cost one thread and one\n"
+        f"        # deadline, never the service.\n"
+        f"        timeout = 30\n"
         f"        def _send(self, code, body):\n"
         f"            data = _json.dumps(body, default=str).encode()\n"
         f"            self.send_response(code)\n"
@@ -551,7 +556,21 @@ def _write_pipeline(architecture: Architecture, out: Path, registry=None) -> Non
         f"                self._send(404, {{\"error\": \"POST / with a JSON payload\"}})\n"
         f"\n"
         f"        def do_POST(self):\n"
-        f"            length = int(self.headers.get(\"Content-Length\", 0))\n"
+        f"            if self.path != \"/\":\n"
+        f"                self._send(404, {{\"error\": \"POST / with a JSON payload\"}})\n"
+        f"                return\n"
+        f"            raw_length = self.headers.get(\"Content-Length\")\n"
+        f"            if raw_length is None:\n"
+        f"                self._send(411, {{\"error\": \"Content-Length required\"}})\n"
+        f"                return\n"
+        f"            try:\n"
+        f"                length = int(raw_length)\n"
+        f"            except ValueError:\n"
+        f"                self._send(400, {{\"error\": \"Content-Length is not a number\"}})\n"
+        f"                return\n"
+        f"            if length < 0 or length > MAX_BODY:\n"
+        f"                self._send(413, {{\"error\": \"body too large\"}})\n"
+        f"                return\n"
         f"            try:\n"
         f"                payload = _json.loads(self.rfile.read(length) or b\"null\")\n"
         f"            except ValueError:\n"
@@ -561,13 +580,23 @@ def _write_pipeline(architecture: Architecture, out: Path, registry=None) -> Non
         f"                self._send(200, {{\"result\": run(payload)}})\n"
         f"            except RefusedInput as refusal:\n"
         f"                self._send(422, {{\"refused\": str(refusal)}})\n"
+        f"            except Exception as exc:  # noqa: BLE001\n"
+        f"                # A dropped connection tells the caller nothing; a\n"
+        f"                # 500 with the exception NAME (never a traceback)\n"
+        f"                # is a diagnosable failure.\n"
+        f"                self._send(500, {{\"error\": type(exc).__name__,\n"
+        f"                                 \"detail\": str(exc)[:200]}})\n"
         f"\n"
         f"        def log_message(self, fmt, *args):\n"
         f"            print(fmt % args)\n"
         f"\n"
         f"    port = int(_os.environ.get(\"PORT\", \"8080\"))\n"
-        f"    print(f\"serving on :{{port}} -- /health, POST /\")\n"
-        f"    HTTPServer((\"0.0.0.0\", port), _Handler).serve_forever()\n"
+        f"    # Loopback by default: exposing the port is a deployment\n"
+        f"    # decision made in the unit file (Environment=BIND=...),\n"
+        f"    # never a default the code took alone.\n"
+        f"    bind = _os.environ.get(\"BIND\", \"127.0.0.1\")\n"
+        f"    print(f\"serving on {{bind}}:{{port}} -- /health, POST /\")\n"
+        f"    ThreadingHTTPServer((bind, port), _Handler).serve_forever()\n"
     )
 
 
@@ -707,6 +736,9 @@ def complete(prompt: str, timeout: float = 120.0) -> str:
             "model": os.environ.get("LLM_MODEL", "default"),
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0,
+            # A local model with no cap holds the request for as long as
+            # it feels like reasoning; a person is sometimes waiting.
+            "max_tokens": int(os.environ.get("LLM_MAX_TOKENS", "512")),
         }).encode()
         request = urllib.request.Request(
             endpoint.rstrip("/") + "/v1/chat/completions",
@@ -807,7 +839,11 @@ def _write_evals(
         (evals / "load.py").write_text(
             _LOAD.format(
                 latency_ms=int(latency),
-                arrival=int((architecture.values or {}).get("arrival_rate") or 0),
+                # Resolved here, not with a runtime `or`: `40 or 86_400`
+                # in emitted code always evaluates to 40 and reads like a
+                # bug to every reviewer who meets it.
+                arrival=int((architecture.values or {}).get("arrival_rate")
+                            or 86_400),
             )
         )
 
@@ -889,7 +925,7 @@ from pathlib import Path
 from app.pipeline import run  # noqa: F401 -- raises until implemented, by design
 
 BUDGET_MS = {latency_ms}
-ARRIVAL_PER_DAY = {arrival} or 86_400  # unstated -> one per second
+ARRIVAL_PER_DAY = {arrival}
 
 
 def test_p95_under_budget():
@@ -1133,6 +1169,7 @@ It is a system nobody has attacked yet.
 
 import argparse
 import json
+import re
 import sys
 from collections import Counter
 from pathlib import Path
@@ -1178,9 +1215,30 @@ def judge_score(actual, expected):
         "Does the candidate convey the same content as the reference? "
         "Reply with exactly one word: correct, partial, or incorrect."
     )
-    verdict = reply.strip().lower().split()[-1].strip(".") if reply.strip() else ""
-    # An ungradeable reply is a failing grade, visibly.
-    return VERDICTS.get(verdict, 0.0)
+    return parse_verdict(reply)
+
+
+def parse_verdict(reply):
+    """Small local judges are verbose; the parser must never let chatter
+    invert the verdict. Each rule below was learned from a real reply:
+    the verdict is read from the LAST non-empty line; a negation on that
+    line ("not correct") is ungradeable; a reply containing more than one
+    distinct verdict token ("incorrect\\ncorrect") contradicts itself and
+    is ungradeable. Ungradeable is a failing grade, visibly."""
+    lines = [line.strip() for line in (reply or "").splitlines() if line.strip()]
+    if not lines:
+        return 0.0
+    last = lines[-1].lower()
+    match = re.match(r"^[^a-z]*(correct|partial(?:ly)?|incorrect)\\b", last)
+    if not match:
+        return 0.0
+    if re.search(r"\\bnot\\b|n't\\b", last):
+        return 0.0
+    distinct = set(re.findall(r"\\b(correct|incorrect|partial)\\b", reply.lower()))
+    if len(distinct) > 1:
+        return 0.0
+    verdict = "partial" if match.group(1).startswith("partial") else match.group(1)
+    return VERDICTS[verdict]
 
 
 def matches(actual, expected):
@@ -1325,13 +1383,17 @@ if __name__ == "__main__":
 
 
 def _write_project_file(out: Path) -> None:
+    # The delivery is named for itself, never "generated":
+    # the first file a reviewer opens should not say the vendor
+    # could not be bothered to name the thing.
+    project_name = out.resolve().name.replace('_', '-') or 'delivery'
     # Packages named explicitly: the tree also holds evals/, deploy/ and
     # ops/, and setuptools refuses a flat layout with several top-level
     # directories -- so the emitted CI's `pip install -e .` died at install,
     # before the evaluation it exists to gate ever ran.
     (out / "pyproject.toml").write_text(
         "[project]\n"
-        'name = "generated"\n'
+        f'name = "{project_name}"\n'
         'version = "0.1.0"\n'
         'requires-python = ">=3.11"\n\n'
         "[build-system]\n"

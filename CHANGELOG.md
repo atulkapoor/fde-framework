@@ -5,6 +5,37 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.13] — 2026-09-14
+
+Two hostile audits before the framework's first Show HN — one attacking
+the shipped code, one reviewing the emitted deliverables as a client's
+staff engineer. Everything they broke, fixed at the emitters:
+
+- **The judge parser can no longer be inverted by chatter**: "not
+  correct" graded as a pass, "incorrect\ncorrect" passed on contradiction.
+  Verdicts now read from the last line, negations and self-contradictions
+  are ungradeable, and ungradeable fails visibly — pinned against the
+  audit's exact replies.
+- **The emitted service survives hostility**: threaded (one slow socket
+  froze the whole service, /health included), read deadlines, a body-size
+  cap, 400/404/411/413 for the parsing edges that dropped connections,
+  and a 500 with the exception's name where any unexpected failure
+  previously killed the socket silently — on a fresh build that was every
+  POST. Binds loopback by default: exposure is a deployment decision,
+  never a code default.
+- **The ladder stops arguing with the tools above it**: a built
+  engagement is never sent back to the interview; the implement hint uses
+  the out-path build actually recorded; the ask hint carries the --scope
+  that surfaces its question; a garbage LLM_ENDPOINT no longer clears the
+  model rung.
+- **Budgets are honest**: agent-round timeouts are labelled timeouts and
+  visible even when files changed; --check-timeout joins --agent-timeout;
+  non-positive budgets are refused.
+- The prose reader matches phrases whitespace-flexibly on the original
+  text (CRLF briefs included), keeping every span exact; the emitted
+  llm.py caps tokens; the emitted package is named for its delivery, not
+  "generated"; the load test's arrival default resolves at emit time.
+
 ## [0.1.12] — 2026-09-13
 
 The corrected record, carried to every frozen surface:

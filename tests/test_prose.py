@@ -547,3 +547,14 @@ def test_decide_each_reads_as_a_decision_workload(reg):
         reg)
     assert any(f.dimension == "output_shape" and f.value == "decision"
                for f in facts)
+
+
+def test_a_crlf_wrapped_phrase_still_reads_and_spans_still_index(reg):
+    """Windows briefs wrap with CRLF; the fix must be length-preserving so
+    every recorded span still slices the caller's ORIGINAL text."""
+    brief = "Runs on-prem, data\r\ncannot leave. 200,000 documents."
+    facts = parse_prose(brief, reg)
+    d = {f.dimension: f for f in facts}
+    assert d["data_residency"].value == "cannot_leave"
+    for f in facts:
+        assert brief[f.span[0]:f.span[1]].strip()
