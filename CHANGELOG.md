@@ -5,6 +5,35 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.15] — 2026-09-15
+
+The bar became executable. Three escalations on emitted-code quality in a
+row proved audit-and-patch is whack-a-mole, so this release changes the
+mechanism: `tests/test_acceptance.py` emits projects across representative
+architecture shapes and holds every emission to the operational contract —
+permanently. Every future quality finding lands there as a check before it
+lands anywhere as a fix. What the suite convicted on its first run, fixed
+at the emitters:
+
+- **The deliverable was uninstallable from its own box**: the systemd unit
+  demanded `/opt/app/.venv`, user `app`, `/var/lib/app` and `/etc/app/env`
+  while nothing shipped created any of them. The deploy README now carries
+  the full install sequence derived from the unit itself, and the ansible
+  playbook stages the whole package, builds the venv, creates the state
+  dir and installs the env file (never overwriting an edited one).
+- **A model-free CI lane**: emitted workflows gate every push on the
+  deliverable's own smoke; a judged evaluation joins only where the
+  repository configures `LLM_ENDPOINT` — a workflow that can never pass is
+  a permanent red X teaching everyone to ignore CI.
+- **The deliverable carries its own floor**: `tests/test_smoke.py` — the
+  contract exists, the fence holds at import, the exam refuses to be
+  empty. Model-free, seconds, true at emission and after implement.
+- **The runbook opens with the first five minutes**: systemctl, journalctl,
+  the health and readiness probes, and how a correlation id finds a
+  request's log line — commands before doctrine.
+- `env.example` documents `LLM_ENDPOINT` truthfully on no-model builds too
+  (the /ready preflight reads it; unset is correct and now says so).
+
 ## [0.1.14] — 2026-09-14
 
 The operational shell, from a staff-engineer acceptance review that

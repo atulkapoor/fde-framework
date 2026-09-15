@@ -102,8 +102,9 @@ else that looks like registry knowledge in `src/` is a bug — report it.
 |---|---|
 | `app/` | Components (implementations or honest scaffolds), pipeline in topological order, fail-closed approval gates and critics, boundary check imported by the pipeline |
 | `evals/` | Golden/edge/adversarial sets from the client's own pairs, a harness CI can gate on, recall\@K of the retrieval layer where one answers ranked queries |
-| `deploy/` | Assets for the chosen substrate and provisioner, TEARDOWN.md covering both |
-| `ops/` | Runbook keyed to the failure taxonomy, a diagnosis walk (definitions first, model last), SLOs from stated budgets, the captured baseline, rollback |
+| `tests/` | The deliverable's own model-free smoke: the contract exists, the fence holds at import, the exam refuses to be empty |
+| `deploy/` | Assets for the chosen substrate and provisioner — including the full install path the unit's demands imply — TEARDOWN.md covering both |
+| `ops/` | Runbook opening with the operator's first five minutes, keyed to the failure taxonomy, a diagnosis walk (definitions first, model last), SLOs from stated budgets, the captured baseline, rollback |
 | `ARCHITECTURE.md` | Scope read-out by axis, decisions, tools and in-topology alternatives, agent posture, rejected alternatives, undecided and unrealizable components |
 | `RISKS.md` | Every waived gate with its reason, every overridden recommendation |
 | `COMPLIANCE.md` | The applied locale's obligations, dated, with verification notes |
@@ -118,3 +119,7 @@ else that looks like registry knowledge in `src/` is a bug — report it.
   reason.
 - `emit` validates everything before writing anything.
 - Client material never enters the repository (CI-enforced, history included).
+- Every emission meets the operational contract: env vars documented,
+  the unit's demands creatable from what ships, a model-free CI lane, a
+  passing smoke on a fresh emission (`tests/test_acceptance.py` — a
+  quality finding lands there as a check before it lands as a fix).

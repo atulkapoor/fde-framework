@@ -101,6 +101,25 @@ def _runbook(architecture, registry) -> str:
         "grouped the way the evaluation harness classifies them, so a classified "
         "failure leads somewhere instead of sitting in a report.",
         "",
+        "## First five minutes",
+        "",
+        "Commands before theory -- establish what is actually happening:",
+        "",
+        "```bash",
+        "systemctl status app                    # running? since when? restarting?",
+        "journalctl -u app -n 100 --no-pager     # one JSON line per request",
+        "curl -s localhost:8080/health           # liveness: the process answers",
+        "curl -s localhost:8080/ready            # readiness: dependencies answer;",
+        "                                        # a 503 body names what is missing",
+        "```",
+        "",
+        "Every log line and every error response carry the same "
+        "`correlation_id`, so a user's failing request finds its log line by "
+        "id, not by timestamp guessing. A restart loop in `systemctl status` "
+        "with nothing in the journal means the process dies before logging -- "
+        "run the ExecStart command by hand as the `app` user and read stderr "
+        "directly.",
+        "",
         "## When the answers are wrong and nothing is obviously broken",
         "",
         f"Look at **{first_place_to_look}** first. Quality flows one direction "
@@ -485,6 +504,33 @@ def _ci(architecture, out: Path) -> None:
             "        run: python -c \"import app.boundary\"\n"
         )
 
+    # A judged harness needs a model, and a committed workflow that can
+    # never pass is a permanent red X teaching everyone to ignore CI. The
+    # model-free lanes gate every push; the judged evaluation joins them
+    # the moment the repository configures an endpoint.
+    if _approach(architecture, "evaluation") == "judged":
+        evaluate_step = (
+            "      # The judged evaluation needs a model. It runs whenever the\n"
+            "      # repository configures one (Settings > Variables); until\n"
+            "      # then the model-free lanes above still gate every push.\n"
+            "      - name: Evaluate\n"
+            "        if: ${{ vars.LLM_ENDPOINT != '' }}\n"
+            "        env:\n"
+            "          LLM_ENDPOINT: ${{ vars.LLM_ENDPOINT }}\n"
+            "          LLM_MODEL: ${{ vars.LLM_MODEL }}\n"
+            "        run: python evals/harness.py --min-score 0.0\n"
+        )
+    else:
+        evaluate_step = (
+            "      # Gating on tests alone measures whether the code runs, not\n"
+            "      # whether it is right. The evaluation is the one that says so --\n"
+            "      # and it prints every layer, adversarial included, so scoring\n"
+            "      # well on golden and badly on adversarial is visible in this\n"
+            "      # step's own output rather than averaged away.\n"
+            "      - name: Evaluate\n"
+            "        run: python evals/harness.py --min-score 0.0\n"
+        )
+
     workflows.joinpath("ci.yml").write_text(
         "name: ci\n"
         "on: [push, pull_request]\n\n"
@@ -495,16 +541,14 @@ def _ci(architecture, out: Path) -> None:
         "      - uses: actions/checkout@v4\n"
         "      - uses: actions/setup-python@v5\n"
         '        with: {python-version: "3.11"}\n'
-        "      - run: pip install -e .\n\n"
+        "      - run: pip install -e . pytest\n\n"
+        "      # The deliverable's own smoke: the contract, the fence and the\n"
+        "      # harness's refusal of an empty exam -- model-free, seconds.\n"
+        "      - name: Smoke\n"
+        "        run: python -m pytest -q tests/test_smoke.py\n"
         f"{boundary_step}"
         f"{retrieval_step}"
-        "      # Gating on tests alone measures whether the code runs, not\n"
-        "      # whether it is right. The evaluation is the one that says so --\n"
-        "      # and it prints every layer, adversarial included, so scoring\n"
-        "      # well on golden and badly on adversarial is visible in this\n"
-        "      # step's own output rather than averaged away.\n"
-        "      - name: Evaluate\n"
-        "        run: python evals/harness.py --min-score 0.0\n"
+        f"{evaluate_step}"
     )
 
 

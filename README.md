@@ -258,12 +258,22 @@ project/
 │   ├── retrieval.py      #   recall@10/50 of the retrieval layer alone — when retrieval answers ranked queries
 │   ├── acceptance.md     #   blind UAT protocol for the client's own judges
 │   └── load.py           #   p95 against the stated budget (when one was stated)
-├── deploy/               # the substrate that was earned + TEARDOWN.md for all of it
-├── ops/                  # runbook keyed to the failure taxonomy, diagnosis walk, SLOs, rollback
+├── tests/                # the deliverable's own model-free smoke: contract, fence, empty-exam refusal
+├── deploy/               # the substrate that was earned, its full install path, + TEARDOWN.md for all of it
+├── ops/                  # runbook (first-five-minutes commands up top), diagnosis walk, SLOs, rollback
 ├── ARCHITECTURE.md       # scope read-out, decisions, tools & alternatives, agent posture
 ├── RISKS.md              # every waived gate and overridden recommendation
 └── COMPLIANCE.md         # jurisdiction obligations, when a locale pack was applied
 ```
+
+Emitted quality is a pinned property, not a promise: the framework's own
+test suite emits projects across representative architecture shapes and
+holds every emission to the operational contract — every environment
+variable the code reads is documented, everything the systemd unit demands
+is created by a shipped installer, CI has a lane that goes green without a
+model, the smoke test passes on a fresh emission. A quality finding lands
+there as a check before it lands anywhere as a fix
+([`tests/test_acceptance.py`](tests/test_acceptance.py)).
 
 ## The full lifecycle, copy-paste
 

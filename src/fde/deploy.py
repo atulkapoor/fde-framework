@@ -232,6 +232,17 @@ def _ansible(deploy: Path, substrate: str | None = None) -> None:
     # a playbook copying deploy/systemd/ beside a compose substrate fails on
     # its first task, against a file this emitter never wrote.
     unit_tasks = (
+        "    - name: State directory the unit's ReadWritePaths= names\n"
+        "      ansible.builtin.file:\n"
+        "        path: /var/lib/app\n"
+        "        state: directory\n"
+        "        owner: app\n"
+        "    - name: Environment file the unit reads (never overwrites an edited one)\n"
+        "      ansible.builtin.copy:\n"
+        "        src: ../env.example\n"
+        "        dest: /etc/app/env\n"
+        "        mode: '0640'\n"
+        "        force: false\n"
         "    - name: Install the service unit\n"
         "      ansible.builtin.copy:\n"
         "        src: ../systemd/app.service\n"
@@ -260,11 +271,18 @@ def _ansible(deploy: Path, substrate: str | None = None) -> None:
         "      ansible.builtin.user:\n"
         "        name: app\n"
         "        system: true\n"
-        "    - name: Install the application\n"
+        "        home: /opt/app\n"
+        "    - name: Stage the project (the package, not just the app dir)\n"
         "      ansible.builtin.copy:\n"
-        "        src: ../../app\n"
+        "        src: '../../{{ item }}'\n"
         "        dest: /opt/app/\n"
         "        owner: app\n"
+        "      loop: [app, evals, pyproject.toml]\n"
+        "    - name: Interpreter the unit's ExecStart= names\n"
+        "      ansible.builtin.pip:\n"
+        "        name: /opt/app\n"
+        "        virtualenv: /opt/app/.venv\n"
+        "        virtualenv_command: python3 -m venv\n"
         f"{unit_tasks}"
     )
     (directory / "inventory.ini").write_text(
@@ -319,6 +337,58 @@ def _readme(deploy: Path, substrate: str | None, provisioner: str | None,
         f"environment has to be destroyed cleanly.\n\n"
         f"The reasoning for each is in `ARCHITECTURE.md`, alongside what was "
         f"rejected and why.\n"
+        + _install_section(substrate, provisioner)
+    )
+
+
+def _install_section(substrate: str | None, provisioner: str | None) -> str:
+    """The install path, derived from the unit that demands it.
+
+    A unit that wants /opt/app/.venv, user `app`, /var/lib/app and
+    /etc/app/env, shipped beside nothing that creates any of them, is a
+    deliverable the first operator cannot install. Every path below is the
+    unit's own; change one there and it changes here.
+    """
+    if substrate != "systemd-unit":
+        return ""
+    if provisioner == "ansible-playbook":
+        return (
+            "\n## Install\n\n"
+            "The playbook is the installer -- it creates everything the unit\n"
+            "expects (service account, venv, state dir, env file):\n\n"
+            "```bash\n"
+            "# hosts go in deploy/ansible/inventory.ini first\n"
+            "ansible-playbook -i deploy/ansible/inventory.ini deploy/ansible/site.yml\n"
+            "```\n\n"
+            "Then prove it from the host:\n\n"
+            "```bash\n"
+            "curl -s localhost:8080/health   # liveness: the process answers\n"
+            "curl -s localhost:8080/ready    # readiness: dependencies answer\n"
+            "journalctl -u app -n 20 --no-pager\n"
+            "```\n"
+        )
+    return (
+        "\n## Install\n\n"
+        "Every step below exists because the unit file demands its result --\n"
+        "the user, the interpreter path, the writable state dir, the env\n"
+        "file. Run as root on the target host, from this project's root:\n\n"
+        "```bash\n"
+        "useradd --system --home /opt/app app     # the unit's User=\n"
+        "mkdir -p /opt/app /var/lib/app\n"
+        "chown app /var/lib/app                   # ReadWritePaths= must be writable\n"
+        "rsync -a --exclude .git ./ /opt/app/     # stage the project\n"
+        "python3 -m venv /opt/app/.venv           # ExecStart's interpreter\n"
+        "/opt/app/.venv/bin/pip install /opt/app\n"
+        "install -D -m 640 deploy/env.example /etc/app/env    # then edit it\n"
+        "install -m 644 deploy/systemd/app.service /etc/systemd/system/app.service\n"
+        "systemctl daemon-reload && systemctl enable --now app\n"
+        "```\n\n"
+        "Then prove it:\n\n"
+        "```bash\n"
+        "curl -s localhost:8080/health   # liveness: the process answers\n"
+        "curl -s localhost:8080/ready    # readiness: dependencies answer\n"
+        "journalctl -u app -n 20 --no-pager\n"
+        "```\n"
     )
 
 
@@ -399,6 +469,13 @@ def _write_env_example(architecture, deploy: Path) -> None:
             "LLM_MODEL=set-me",
             "LLM_TIMEOUT=120",
             "LLM_MAX_TOKENS=512",
+        ]
+    else:
+        lines += [
+            "",
+            "# This build does not call a model. The service's /ready preflight",
+            "# reads LLM_ENDPOINT only in builds that do; here unset is correct.",
+            "# LLM_ENDPOINT=",
         ]
     (deploy / "env.example").write_text("\n".join(lines) + "\n")
 
