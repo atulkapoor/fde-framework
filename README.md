@@ -271,7 +271,8 @@ test suite emits projects across representative architecture shapes and
 holds every emission to the operational contract — every environment
 variable the code reads is documented, everything the systemd unit demands
 is created by a shipped installer, CI has a lane that goes green without a
-model, the smoke test passes on a fresh emission. A quality finding lands
+model, the smoke test passes on a fresh emission, the code is lint-clean,
+and the payload path chains no deployment steps. A quality finding lands
 there as a check before it lands anywhere as a fix
 ([`tests/test_acceptance.py`](tests/test_acceptance.py)).
 

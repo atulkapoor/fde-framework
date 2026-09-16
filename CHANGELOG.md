@@ -5,6 +5,36 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.16] — 2026-09-16
+
+The fourth escalation on emitted-code quality pointed at the application
+code itself, so the acceptance suite grew the checks that read every
+emission the way a client's staff engineer does:
+
+- **A real bug, fixed**: the emitted model seam's bounded retry called
+  `time.sleep` without importing `time` — the retry path crashed with
+  NameError on its first transport blip (shipped since 0.1.14; nothing
+  exercised the path).
+- **Emitted code is lint-clean, permanently**: every emission passes
+  `ruff --select F,E,W,I,B,UP` as an acceptance check — an undefined
+  name, an unsorted import block or a deprecated idiom is now a release
+  blocker, which is what caught the bug above.
+- **No passthrough padding**: emitting without a registry chained
+  deployment/provisioning/evaluation as payload steps — and the
+  acceptance suite itself was doing exactly that, blessing code no real
+  build produces. Library callers now get the same payload-only
+  pipeline `fde build` emits, the suite emits with the registry, and a
+  check pins the property.
+- **`run()` is no longer anonymous**: typed signature, and a failing
+  step's name reaches the journal as structured JSON before the
+  exception propagates unchanged — refusals pass through untouched.
+- **Advisory components say so in their first lines**: a module that is
+  decided-on-record but never chained carries the header (finding 20
+  closed).
+- The emitted smoke gains the promised deliverable invariants: unwired
+  approval gates and critics fail closed, and rank fusion rewards
+  agreement between retrievers.
+
 ## [0.1.15] — 2026-09-15
 
 The bar became executable. Three escalations on emitted-code quality in a

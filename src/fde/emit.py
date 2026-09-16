@@ -317,6 +317,15 @@ def _write_components(
         )
         if was_scaffold:
             scaffolded.append(component)
+        if component in _NON_PAYLOAD:
+            # Silence reads as running. A module that is decided-on-record
+            # but never chained says so in its own first lines.
+            body = (
+                "# Advisory: decided and recorded at build time -- not a\n"
+                "# step the payload passes through; the pipeline does not\n"
+                "# chain this module.\n"
+                + body
+            )
         path.write_text(body)
     return scaffolded
 
@@ -431,6 +440,12 @@ def _guarded(architecture: Architecture, node_id: str) -> str:
     return current
 
 
+# Mirrors the registry's pipeline: false set -- a deployment is decided
+# and emitted, never a step a payload passes through.
+_NON_PAYLOAD = {"deployment", "provisioning", "evaluation",
+                "observability", "governance", "accountability"}
+
+
 def _write_pipeline(architecture: Architecture, out: Path, registry=None) -> None:
     """Every node the moves produced, not only the components.
 
@@ -444,10 +459,13 @@ def _write_pipeline(architecture: Architecture, out: Path, registry=None) -> Non
         return node_entry is not None and node_entry.component and not node_entry.unfilled
 
     def _chains(component: str) -> bool:
+        # Without a registry (library callers), the same set the registry
+        # marks pipeline: false stays out -- the payload path must not
+        # grow deployment steps because a flag source was absent.
         if registry is None:
-            return True
+            return component not in _NON_PAYLOAD
         entry = registry.components.get(component)
-        return entry.pipeline if entry is not None else True
+        return entry.pipeline if entry is not None else component not in _NON_PAYLOAD
 
     ordered = [
         n for n in architecture.graph.ordered()
@@ -467,19 +485,34 @@ def _write_pipeline(architecture: Architecture, out: Path, registry=None) -> Non
     running = sorted({
         _module_name(n.id) for n in ordered if n.component and not n.unfilled
     })
+    # Importing the pipeline is what starts the system, so this is where
+    # the placement check has to live -- a boundary module nothing
+    # imports is a boundary reviewed in a document. Wrapped one-per-name
+    # whenever more than one name imports, so the block is isort-stable
+    # at any line width.
+    boundary_note = "# noqa: F401 -- placement checked at import"
+    has_boundary = bool(architecture.graph.sensitive_nodes())
+    if has_boundary and controls:
+        app_line = (f"from app import (\n"
+                    f"    boundary,  {boundary_note}\n"
+                    f"    controls,\n)")
+    elif has_boundary:
+        app_line = f"from app import boundary  {boundary_note}"
+    elif controls:
+        app_line = "from app import controls"
+    else:
+        app_line = ""
+    if len(running) == 1:
+        components_line = f"from app.components import {running[0]}"
+    else:
+        components_line = ("from app.components import (\n    "
+                           + ",\n    ".join(running) + ",\n)")
     imports = "\n".join(
-        f"from app.components import {name}" for name in running
+        part for part in (
+            app_line, components_line,
+            "from app.contract import RefusedInput",
+        ) if part
     )
-    if controls:
-        imports = f"from app import controls\n{imports}"
-    if architecture.graph.sensitive_nodes():
-        # Importing the pipeline is what starts the system, so this is where
-        # the placement check has to live -- a boundary module nothing
-        # imports is a boundary reviewed in a document.
-        imports = (
-            "from app import boundary  # noqa: F401 -- placement checked at import\n"
-            + imports
-        )
 
     lines = []
     for n in ordered:
@@ -491,7 +524,8 @@ def _write_pipeline(architecture: Architecture, out: Path, registry=None) -> Non
                 if key and key.idempotency_key else ""
             )
             lines.append(
-                f"    ({n.id!r}, controls.ApprovalGate(guards={guarded!r}{key_arg})),"
+                f"    ({n.id!r},\n"
+                f"     controls.ApprovalGate(guards={guarded!r}{key_arg})),"
             )
         elif n.type == "Critic" and n.id in control_ids:
             lines.append(
@@ -518,11 +552,26 @@ def _write_pipeline(architecture: Architecture, out: Path, registry=None) -> Non
         f"Adapting that input to the first step's payload shape is yours: do it\n"
         f"at the top of run(), where the seam is visible.\n"
         f'"""\n\n'
+        f"import json\n"
+        f"import sys\n\n"
         f"{imports}\n\n"
         f"STEPS = [\n{steps}\n]\n\n\n"
-        f"def run(payload):\n"
+        f"def run(payload: object) -> object:\n"
+        f'    """Run the payload path in order.\n\n'
+        f"    Exceptions propagate unchanged -- the service layer maps their\n"
+        f"    types to status codes -- but a failing step's name reaches the\n"
+        f"    journal first, so no traceback is anonymous. A refusal is an\n"
+        f"    answer, not a failure, and passes through untouched.\n"
+        f'    """\n'
         f"    for name, step in STEPS:\n"
-        f"        payload = step.run(payload)\n"
+        f"        try:\n"
+        f"            payload = step.run(payload)\n"
+        f"        except RefusedInput:\n"
+        f"            raise\n"
+        f"        except Exception:\n"
+        f'            print(json.dumps({{"failed_step": name}}),\n'
+        f"                  file=sys.stderr, flush=True)\n"
+        f"            raise\n"
         f"    return payload\n"
         f"\n\n"
         f"# The deployment runs `python -m app.pipeline`, and a module that\n"
@@ -537,8 +586,6 @@ def _write_pipeline(architecture: Architecture, out: Path, registry=None) -> Non
         f"    import sys as _sys\n"
         f"    import uuid as _uuid\n"
         f"    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer\n"
-        f"\n"
-        f"    from app.contract import RefusedInput\n"
         f"\n"
         f"    MAX_BODY = int(_os.environ.get(\"MAX_BODY_BYTES\", str(10 * 1024 * 1024)))\n"
         f"    NEEDS_MODEL = {str(bool(_needs_model(architecture)))}\n"
@@ -772,6 +819,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.request
 
 
@@ -1158,7 +1206,7 @@ def surfaced_ids(result):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--min-recall", type=float, default=0.0,
-                        help="fail below this mean recall@%d" % KS[0])
+                        help=f"fail below this mean recall@{KS[0]}")
     args = parser.parse_args()
 
     cases = load_cases()
@@ -1508,6 +1556,43 @@ def test_the_exam_refuses_to_be_empty():
             cwd=ROOT, capture_output=True, text=True, timeout=120,
         )
     assert result.returncode != 0, "the harness accepted an empty exam"
+
+
+def test_unwired_controls_fail_closed():
+    # A gate nobody wired must refuse, never wave through -- builds
+    # without anything mutative have no controls module, and that
+    # absence is correct.
+    try:
+        from app.controls import (
+            ApprovalGate,
+            Critic,
+            CriticRejected,
+            NeedsApproval,
+        )
+    except ImportError:
+        return
+    try:
+        ApprovalGate(guards="probe").run({})
+        raise AssertionError("an unwired approval gate passed the payload")
+    except NeedsApproval:
+        pass
+    try:
+        Critic(guards="probe").run({})
+        raise AssertionError("an unwired critic passed the payload")
+    except CriticRejected:
+        pass
+
+
+def test_rank_fusion_rewards_agreement():
+    # Only when this build fuses ranked lists: a document two retrievers
+    # agree on outranks a document either found alone. If this ever
+    # fails, retrieval quality claims mean nothing downstream.
+    try:
+        from app.components.retrieval import fuse
+    except ImportError:
+        return
+    fused = fuse({"lexical": ["a", "b"], "semantic": ["c", "a"]})
+    assert fused[0] == "a", "agreement did not outrank a single first place"
 '''
 
 

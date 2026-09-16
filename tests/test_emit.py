@@ -458,12 +458,16 @@ def test_no_control_guards_a_step_that_is_not_in_the_pipeline(reg, tmp_path):
 
 
 def test_the_pipeline_imports_only_what_it_runs(reg, tmp_path):
+    import re as _re
+
     emit(architect(profile(hosting="air-gapped", output_shape="decision"), reg), tmp_path)
     pipeline = (tmp_path / "app" / "pipeline.py").read_text()
-    for line in pipeline.splitlines():
-        if line.startswith("from app.components import "):
-            name = line.rsplit(" ", 1)[1]
-            assert f"('{name}'," in pipeline, f"dead import: {name}"
+    # Single-line and wrapped-parenthesized import forms both count.
+    block = _re.search(
+        r"from app\.components import (\([^)]*\)|[^\n]+)", pipeline
+    ).group(1)
+    for name in _re.findall(r"\w+", block):
+        assert f"('{name}'," in pipeline, f"dead import: {name}"
 
 
 def test_importing_the_pipeline_enforces_the_boundary(reg, tmp_path):
@@ -828,18 +832,22 @@ def test_the_deployment_entrypoint_actually_serves(reg, tmp_path):
     out = tmp_path / "p"
     emit(architect(profile(**COMPLETE), reg), out)
     (out / "app" / "pipeline_impl_patch.py").write_text("")  # no-op marker
-    # Stub every step so the service can answer without an implementation.
+    # Stub the pipeline so the service can answer without an
+    # implementation: a second run() shadows the real one, inserted just
+    # before the service block (anything appended after it would never
+    # execute -- serve_forever blocks). The marker is asserted so this
+    # stub can never silently no-op again.
+    source = (out / "app" / "pipeline.py").read_text()
+    marker = "# The deployment runs"
+    assert marker in source, "service-block marker moved; update this stub"
+    stub = (
+        "def run(payload):\n"
+        "    if payload is None:\n"
+        "        raise RefusedInput('empty payload')\n"
+        "    return {'echo': payload}\n\n\n"
+    )
     (out / "app" / "pipeline.py").write_text(
-        (out / "app" / "pipeline.py").read_text().replace(
-            "def run(payload):\n"
-            "    for name, step in STEPS:\n"
-            "        payload = step.run(payload)\n"
-            "    return payload",
-            "def run(payload):\n"
-            "    from app.contract import RefusedInput\n"
-            "    if payload is None:\n"
-            "        raise RefusedInput('empty payload')\n"
-            "    return {'echo': payload}"))
+        source.replace(marker, stub + marker, 1))
     proc = subprocess.Popen(
         [sys.executable, "-m", "app.pipeline"], cwd=out,
         env={"PATH": "/usr/bin", "PORT": "18923"},

@@ -121,5 +121,6 @@ else that looks like registry knowledge in `src/` is a bug — report it.
 - Client material never enters the repository (CI-enforced, history included).
 - Every emission meets the operational contract: env vars documented,
   the unit's demands creatable from what ships, a model-free CI lane, a
-  passing smoke on a fresh emission (`tests/test_acceptance.py` — a
-  quality finding lands there as a check before it lands as a fix).
+  passing smoke on a fresh emission, lint-clean code, a payload-only
+  pipeline (`tests/test_acceptance.py` — a quality finding lands there
+  as a check before it lands as a fix).

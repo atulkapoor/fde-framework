@@ -54,7 +54,10 @@ def emission(request, reg, tmp_path_factory):
     profile = Profile()
     profile.ingest([Fact(k, v, Provenance.ARTIFACT)
                     for k, v in SHAPES[request.param].items()])
-    emit(architect(profile, reg), out)
+    # The registry rides along, as it does in every real build -- an
+    # emission judged without it once chained deployment as a payload
+    # step and the suite blessed code no `fde build` ever produces.
+    emit(architect(profile, reg), out, registry=reg)
     return request.param, out
 
 
@@ -148,20 +151,46 @@ def test_ci_has_a_lane_that_can_go_green_without_a_model(emission):
             f"{shape}: the model-free evaluation was dropped from CI")
 
 
+def test_emitted_code_passes_its_own_lint(emission):
+    """The deliverable is code a client's staff engineer reads. An
+    undefined name, an unsorted import block, a 110-column line -- each
+    reads as ungroomed, and one of them (an unimported `time` in the
+    retry path) was a crash. Lint-clean is the executable floor."""
+    pytest.importorskip("ruff")
+    shape, out = emission
+    result = subprocess.run(
+        [sys.executable, "-m", "ruff", "check", "--isolated",
+         "--select", "F,E,W,I,B,UP", "--line-length", "100", str(out)],
+        capture_output=True, text=True, timeout=120,
+    )
+    assert result.returncode == 0, (
+        f"{shape}: emitted code fails its own lint:\n{result.stdout[-1500:]}")
+
+
+def test_the_pipeline_chains_only_payload_components(emission):
+    """A payload never passes through a deployment. Passthrough padding
+    in STEPS is what makes a deliverable read as generated filler."""
+    shape, out = emission
+    steps = (out / "app" / "pipeline.py").read_text()
+    steps = steps.split("STEPS = [", 1)[1].split("]", 1)[0]
+    for component in ("deployment", "provisioning", "evaluation",
+                      "observability", "governance", "accountability"):
+        assert f"{component}." not in steps, (
+            f"{shape}: {component} is chained as a payload step")
+
+
 def test_advisory_components_say_they_are_advisory(emission):
-    """A component that is decided-on-record but not wired into the
-    payload path must say so in its own docstring -- silence reads as
+    """A component that is decided-on-record but not chained into the
+    payload path must say so in its own first lines -- silence reads as
     running."""
     shape, out = emission
     pipeline = (out / "app" / "pipeline.py").read_text()
-    wired = set(re.findall(r"components import (\w+)", pipeline)) | set(
-        re.findall(r"\(\s*['\"](\w+)['\"]\s*,", pipeline))
+    steps = pipeline.split("STEPS = [", 1)[1].split("]", 1)[0]
+    chained = set(re.findall(r"(\w+)\.\w+\(", steps))
     for module in (out / "app" / "components").glob("*.py"):
-        if module.stem in ("__init__",) or module.stem in wired:
+        if module.stem in ("__init__",) or module.stem in chained:
             continue
         body = module.read_text()
-        if "raise" in body.split("\n\n")[0]:
-            continue  # undecided scaffolds announce themselves already
-        assert "advisory" in body[:1500].lower() or "build time" in body[:1500].lower(), (
-            f"{shape}: {module.name} is not wired into the pipeline and its "
-            f"docstring does not say it is advisory")
+        assert "advisory" in body[:1500].lower() or "raise" in body[:1500], (
+            f"{shape}: {module.name} is not chained into the pipeline and "
+            f"nothing in its first lines says it is advisory")
