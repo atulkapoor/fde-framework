@@ -144,4 +144,6 @@ class {{ class_name }}:
         return dropped
 
     def run(self, payload: Any) -> Any:
-        return payload
+        """Envelope in, envelope out: what is currently believed, under
+        `memory`, for the steps after this one to read."""
+        return {**payload, "memory": self.recall_long_term()}

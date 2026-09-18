@@ -37,7 +37,7 @@ embed: Callable[[str], list[float]] | None = None
 adjacency: dict[str, list[str]] = {}
 
 
-def run(query: str, top_k: int = TOP_K) -> list[dict]:
+def retrieve(query: str, top_k: int = TOP_K) -> list[dict]:
     """Seed hits by similarity, then walk the graph for what connects."""
     if client is None or embed is None:
         raise QdrantUnwired(
@@ -69,3 +69,19 @@ def run(query: str, top_k: int = TOP_K) -> list[dict]:
                                      "hop": hop, **(record.payload or {})}
         frontier = fresh
     return sorted(found.values(), key=lambda r: (r["hop"], -r["score"]))
+
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}: the envelope wrapper over retrieve()."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def run(self, payload: dict) -> dict:
+        """Envelope in, envelope out: `query` -> `retrieved`."""
+        from app.shapes import require  # the module also runs without the package
+
+        query = require(payload, "query", str, non_empty=True)
+        return {**payload, "retrieved": retrieve(query, top_k=payload.get("k", TOP_K))}

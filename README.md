@@ -258,6 +258,9 @@ project/
 │   ├── retrieval.py      #   recall@10/50 of the retrieval layer alone — when retrieval answers ranked queries
 │   ├── acceptance.md     #   blind UAT protocol for the client's own judges
 │   └── load.py           #   p95 against the stated budget (when one was stated)
+│   ├── shapes.py         #   the one envelope every step reads and writes; refusals at the door
+│   ├── service.py        #   the HTTP edge: identity, request ids, framing, readiness, drain
+│   └── ledger.py         #   append-only audit + idempotency keys under STATE_DIR — when anything is outward
 ├── tests/                # the deliverable's own model-free smoke: contract, fence, empty-exam refusal
 ├── deploy/               # the substrate that was earned, its full install path, + TEARDOWN.md for all of it
 ├── ops/                  # runbook (first-five-minutes commands up top), diagnosis walk, SLOs, rollback
@@ -272,7 +275,9 @@ holds every emission to the operational contract — every environment
 variable the code reads is documented, everything the systemd unit demands
 is created by a shipped installer, CI has a lane that goes green without a
 model, the smoke test passes on a fresh emission, the code is lint-clean,
-and the payload path chains no deployment steps. A quality finding lands
+the payload path composes end to end and refuses garbage at the door, the
+boundary refuses an endpoint outside it, the ledger survives a restart, and
+the service carries a request id on every answer. A quality finding lands
 there as a check before it lands anywhere as a fix
 ([`tests/test_acceptance.py`](tests/test_acceptance.py)).
 

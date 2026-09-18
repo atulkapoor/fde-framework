@@ -19,6 +19,8 @@ import re
 from collections.abc import Callable
 from typing import Any
 
+from app.shapes import require
+
 
 def normalise(label: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", label.lower()).strip()
@@ -41,10 +43,11 @@ class {{ class_name }}:
 
     def run(self, payload: dict[str, Any]) -> dict[str, Any]:
         contract = payload.get("contract", [])
-        records = [self._map(r, contract) for r in payload.get("records", [])]
+        records = [self._map(r, contract) for r in require(payload, "records", list)]
         settled = [r for r in records if not r["unmapped"] and not r["rejected"]]
         queue = [r for r in records if r["unmapped"] or r["rejected"]]
         return {
+            **payload,
             "records": records,
             # Coverage is measured on every batch, because the measured
             # number is what eventually justifies a model tier -- or keeps

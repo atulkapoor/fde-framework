@@ -25,6 +25,8 @@ import re
 from collections import Counter, defaultdict
 from typing import Any
 
+from app.shapes import require
+
 # Rank-fusion constant. Damps the top of each list so one retriever's first
 # result cannot dominate agreement between the others.
 RRF_K = 60
@@ -54,28 +56,43 @@ class {{ class_name }}:
 
     def __init__(self) -> None:
         self._documents: dict[str, str] = {}
+        self._sources: dict[str, str] = {}
         self._frequencies: dict[str, Counter] = {}
         self._document_frequency: Counter = Counter()
 
     def index(self, documents: list[dict[str, Any]]) -> None:
         for document in documents:
+            doc_id = str(document["id"])
+            # Re-indexing a document first retires its old postings, or the
+            # document frequency drifts above the document count and the
+            # ranking quietly rots on every corpus refresh.
+            if doc_id in self._frequencies:
+                for token in self._frequencies[doc_id]:
+                    self._document_frequency[token] -= 1
             tokens = self._tokenise(document["text"])
-            self._documents[document["id"]] = document["text"]
-            self._frequencies[document["id"]] = Counter(tokens)
+            self._documents[doc_id] = document["text"]
+            self._sources[doc_id] = str(document.get("source", doc_id))
+            self._frequencies[doc_id] = Counter(tokens)
             for token in set(tokens):
                 self._document_frequency[token] += 1
+
+    def __len__(self) -> int:
+        return len(self._documents)
 
     def retrieve(self, query: str, k: int = 5) -> list[dict[str, Any]]:
         """Lexical results, ranked. Where a semantic tier exists, its ranking
         is fused with this one rather than averaged against it."""
         ranked = self._lexical(query)
         return [
-            {"id": doc_id, "text": self._documents[doc_id], "rank": position + 1}
+            {"id": doc_id, "source": self._sources.get(doc_id, doc_id),
+             "text": self._documents[doc_id], "rank": position + 1}
             for position, doc_id in enumerate(ranked[:k])
         ]
 
-    def run(self, payload: dict[str, Any]) -> Any:
-        return self.retrieve(payload["query"], k=payload.get("k", 5))
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Envelope in, envelope out: `query` -> `retrieved`."""
+        query = require(payload, "query", str, non_empty=True)
+        return {**payload, "retrieved": self.retrieve(query, k=payload.get("k", 5))}
 
     # -- lexical ----------------------------------------------------------
 

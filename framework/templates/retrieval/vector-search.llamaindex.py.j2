@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import Any
 
 from app.contract import RefusedInput
+from app.shapes import require
 
 interface = "{{ interface }}"
 approach = "{{ approach }}"
@@ -31,7 +32,12 @@ index: Any = None
 
 
 class {{ class_name }}:
-    def run(self, query: str, top_k: int = TOP_K) -> list[dict]:
+    def run(self, payload: dict) -> dict:
+        """Envelope in, envelope out: `query` -> `retrieved`."""
+        query = require(payload, "query", str, non_empty=True)
+        return {**payload, "retrieved": self.retrieve(query, top_k=payload.get("k", TOP_K))}
+
+    def retrieve(self, query: str, top_k: int = TOP_K) -> list[dict]:
         if index is None:
             raise RefusedInput(
                 "no index is wired -- an empty result from an unwired store "

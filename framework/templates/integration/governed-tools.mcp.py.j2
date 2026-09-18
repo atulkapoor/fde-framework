@@ -23,8 +23,8 @@ belongs in front of the call.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 from collections.abc import Callable
+from dataclasses import dataclass, field
 from typing import Any
 
 
@@ -116,10 +116,15 @@ class {{ class_name }}:
             if not t.read_only_hint and not t.reversible
         )
 
-    def run(self, payload: dict[str, Any]) -> Any:
-        return self.call(
-            payload["tool"], payload.get("arguments", {}),
-            subject=payload["subject"],
-            granted_scopes=set(payload.get("granted_scopes", [])),
-            actor=payload.get("actor"),
-        )
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Envelope in, envelope out; authority from the principal the edge
+        set, never from scopes the body claims for itself."""
+        if "tool" not in payload:
+            return payload
+        principal = payload.get("principal") or {}
+        return {**payload, "integration": self.call(
+            str(payload["tool"]), payload.get("arguments", {}),
+            subject=str(principal.get("subject", "anonymous")),
+            granted_scopes=set(principal.get("scopes", [])),
+            actor="pipeline",
+        )}

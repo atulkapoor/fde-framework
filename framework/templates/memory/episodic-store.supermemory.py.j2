@@ -1,0 +1,177 @@
+"""{{ component }}: {{ approach }}, via {{ stack }}.
+
+{{ rationale }}
+
+An engine that extracts facts, resolves contradictions and forgets on its
+own -- the three problems the no-framework realization solves by hand.
+Earned only because the profile already runs it: a second stateful system
+is a second thing to operate, and memory holds client data by definition.
+
+**Residency is enforced here, not assumed.** The engine ships as one local
+binary speaking the same API as its hosted service. This module talks to
+whatever SUPERMEMORY_ENDPOINT names and refuses the hosted one outright
+when the build carries a data boundary -- a memory of regulated data does
+not get to leave via a convenience.
+
+Supersession is the engine's job. This module still tags every write with
+its key and its reason, so what was believed, and why, stays answerable
+from the record rather than from anyone's recollection.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import time
+import urllib.error
+import urllib.request
+from collections.abc import Callable
+from typing import Any
+from urllib.parse import urlparse
+
+# The local binary's default. The hosted service is the same API at a
+# different host, which is exactly why the host is checked below.
+DEFAULT_ENDPOINT = "http://localhost:6767"
+DEFAULT_TIMEOUT_SECONDS = 10.0
+HOSTED_HOSTS = ("supermemory.ai",)
+
+Transport = Callable[[str, str, dict[str, Any]], dict[str, Any]]
+
+
+class MemoryUnavailable(RuntimeError):
+    """The memory engine did not answer, or may not be used; nothing here
+    guesses instead."""
+
+
+def _boundary_present() -> bool:
+    try:
+        import app.boundary  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def _http_transport(endpoint: str, api_key: str, timeout: float) -> Transport:
+    """One bounded call per request; a failure is a typed error, never a
+    silent empty memory."""
+
+    def send(method: str, path: str, body: dict[str, Any]) -> dict[str, Any]:
+        request = urllib.request.Request(
+            endpoint.rstrip("/") + path,
+            data=json.dumps(body).encode(),
+            method=method,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                return json.load(response)
+        except (urllib.error.URLError, TimeoutError) as exc:
+            raise MemoryUnavailable(f"{method} {path}: {exc}") from exc
+
+    return send
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def __init__(self, container: str = "default",
+                 transport: Transport | None = None) -> None:
+        endpoint = os.environ.get("SUPERMEMORY_ENDPOINT", DEFAULT_ENDPOINT)
+        host = urlparse(endpoint).hostname or ""
+        hosted = any(host == h or host.endswith("." + h) for h in HOSTED_HOSTS)
+        if hosted and _boundary_present():
+            raise MemoryUnavailable(
+                "this build carries a data boundary, so the hosted memory "
+                "service is refused -- point SUPERMEMORY_ENDPOINT at the "
+                "local binary inside it"
+            )
+        self.container = container
+        # Wiped with the task. A mistake here disappears; the same mistake
+        # promoted is permanent and will be recalled with confidence.
+        self._scratch: dict[str, list[str]] = {}
+        self._send = transport or _http_transport(
+            endpoint,
+            os.environ.get("SUPERMEMORY_API_KEY", ""),
+            float(os.environ.get("SUPERMEMORY_TIMEOUT", str(DEFAULT_TIMEOUT_SECONDS))),
+        )
+
+    # -- the cheap tier: working state never leaves the process ----------
+
+    def note(self, session: str, observation: str) -> None:
+        """Working state. Kept for the task, promoted only on purpose."""
+        self._scratch.setdefault(session, []).append(observation)
+
+    def forget_session(self, session: str) -> None:
+        self._scratch.pop(session, None)
+
+    def promote(self, session: str, observation: str, because: str) -> None:
+        """Move something from working state into what is kept. Explicit on
+        purpose: automatic promotion is how a passing remark becomes a
+        permanent belief about somebody."""
+        if observation in self._scratch.get(session, []):
+            self.remember(observation, observation, because=because)
+
+    # -- what is kept -----------------------------------------------------
+
+    def remember(self, key: str, value: Any, because: str,
+                 now: float | None = None) -> str:
+        """Record a fact. The engine supersedes what it contradicts; the key
+        and reason ride along as metadata so the record stays auditable.
+        Returns the engine's id for the write."""
+        stamp = now if now is not None else time.time()
+        reply = self._send("POST", "/v3/documents", {
+            "content": f"{key}: {value}",
+            "containerTag": self.container,
+            "customId": f"{self.container}:{key}:{int(stamp)}",
+            "metadata": {"key": key, "because": because, "at": stamp},
+        })
+        return str(reply.get("id", ""))
+
+    def recall(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
+        """What the engine currently believes that bears on the query --
+        its resolved view, one answer per fact, ranked."""
+        reply = self._send("POST", "/v3/search", {
+            "q": query,
+            "containerTag": self.container,
+            "searchMode": "memories",
+            "limit": limit,
+        })
+        return [
+            {
+                "content": item.get("content") or item.get("memory") or "",
+                "score": item.get("score"),
+                "metadata": item.get("metadata") or {},
+            }
+            for item in reply.get("results", [])
+        ]
+
+    def history(self, key: str, limit: int = 20) -> list[dict[str, Any]]:
+        """What has been believed about this key, as the engine returns it.
+        The audit question is not what we think now; it is what we thought
+        when we acted -- so nothing is filtered here beyond the key."""
+        return [
+            item for item in self.recall(key, limit=limit)
+            if item["metadata"].get("key", key) == key
+        ]
+
+    # -- forgetting -------------------------------------------------------
+
+    def sweep(self) -> list[str]:
+        """Forgetting is the engine's job here -- expiry, decay and
+        contradiction are resolved on its side. Nothing is dropped by this
+        module, and this returns what it dropped: nothing."""
+        return []
+
+    def run(self, payload: Any) -> Any:
+        """Envelope in, envelope out: what the engine believes bears on the
+        query, under `memory`, for the steps after this one to read."""
+        query = payload.get("query") if isinstance(payload, dict) else None
+        recalled = self.recall(query) if isinstance(query, str) and query else []
+        return {**payload, "memory": recalled}

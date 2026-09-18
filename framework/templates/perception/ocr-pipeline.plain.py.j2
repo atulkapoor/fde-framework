@@ -24,6 +24,9 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from app.contract import RefusedInput
+from app.shapes import require
+
 # Below this, a region is not trusted and is queued for a human instead.
 MIN_REGION_CONFIDENCE = 0.75
 
@@ -46,26 +49,44 @@ class {{ class_name }}:
         self.critical = critical_regions or set()
 
     def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        source = require(payload, "pages", list, non_empty=True)
+        if self._engine is None:
+            # Not a lambda returning nothing: an unwired engine reporting a
+            # perfect clean share is the runbook's first number, lying.
+            raise NotImplementedError(
+                "wire engine= to an OCR engine (the profile decides which); "
+                "this scaffold does not read pages"
+            )
         pages = []
-        for page in payload.get("pages", []):
-            regions = (self._engine or (lambda p: []))(page)
+        for position, page in enumerate(source):
+            if not isinstance(page, dict):
+                raise RefusedInput(f"pages[{position}] is not an object")
+            regions = self._engine(page)
             weak = [r for r in regions if r.get("confidence", 0) < MIN_REGION_CONFIDENCE]
             critical_weak = [r for r in weak if r.get("name") in self.critical]
+            # A clean page with one bad box is not a clean page. With no
+            # critical regions declared, every weak region is somebody's
+            # problem rather than nobody's.
+            needs_human = bool(critical_weak) or (not self.critical and bool(weak))
 
             pages.append({
-                "id": page.get("id"),
+                "id": str(page.get("id", position)),
                 "text": "\n".join(r.get("text", "") for r in regions),
                 "regions": regions,
                 "weak_regions": [r.get("name") for r in weak],
-                # A clean page with one bad box is not a clean page.
-                "usable": not critical_weak,
-                "needs_human": bool(critical_weak),
+                "usable": not needs_human,
+                "needs_human": needs_human,
             })
 
         usable = [p for p in pages if p["usable"]]
         return {
+            **payload,
             "pages": pages,
+            # The record every later step reads: one per page.
+            "records": [{"id": p["id"], "text": p["text"], "raw": {},
+                         "losses": p["weak_regions"], "usable": p["usable"]}
+                        for p in pages],
             # The ceiling. Nothing downstream exceeds it.
-            "clean_share": len(usable) / (len(pages) or 1),
+            "clean_share": len(usable) / len(pages),
             "verify_queue": [p["id"] for p in pages if p["needs_human"]],
         }

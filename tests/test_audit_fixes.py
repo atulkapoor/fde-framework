@@ -200,7 +200,9 @@ def _run_template(name, wire):
     namespace = {}
     exec(compile(source, name, "exec"), namespace)  # noqa: S102
     wire(namespace)
-    return namespace["run"]("alpha")
+    # The module-level function is retrieve(); run() is the envelope
+    # wrapper on the class the pipeline instantiates.
+    return namespace["retrieve"]("alpha")
 
 
 def test_graph_retrieval_qdrant_actually_walks_its_graph():

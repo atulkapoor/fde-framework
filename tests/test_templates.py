@@ -145,9 +145,14 @@ def test_an_irreversible_action_stays_gated_however_accurate_it_has_been(built):
 from app.components.governance import Governance
 g = Governance()
 for _ in range(500):
-    g.record_approval("send_email", edited=False)
+    g.record_approval("send_email", edited=False, seconds=30.0)
 assert not g.may_run_unattended("send_email"), "irreversible actions never graduate"
 assert g.may_run_unattended("update_record") in (True, False)
+try:
+    g.run({"action": "send_email", "reversible": False})
+    raise SystemExit("an action that never graduates ran without an approver")
+except PermissionError:
+    pass
 print("ok")
 """)
     assert result.returncode == 0, result.stderr
@@ -158,9 +163,19 @@ def test_autonomy_is_earned_from_measured_approvals(built):
 from app.components.governance import Governance
 g = Governance()
 assert not g.may_run_unattended("update_record"), "nothing is autonomous on day one"
+# Approvals faster than reading are evidence about the reviewer, not the
+# system: two hundred one-second rubber stamps earn nothing.
 for _ in range(200):
-    g.record_approval("update_record", edited=False)
+    g.record_approval("update_record", edited=False, seconds=1.0)
+assert not g.may_run_unattended("update_record"), "rubber stamps must not count"
+g = Governance()
+for _ in range(200):
+    g.record_approval("update_record", edited=False, seconds=30.0)
 assert g.may_run_unattended("update_record"), "a measured record should earn it"
+# Earned autonomy is real: the action now runs with no approver named.
+# (The branch that granted this was unreachable before -- an audit finding.)
+outcome = g.run({"action": "update_record", "reversible": False})
+assert outcome["authorised"] and not outcome["duplicate"], outcome
 print("ok")
 """)
     assert result.returncode == 0, result.stderr

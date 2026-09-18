@@ -40,6 +40,11 @@ SHAPES = {
         output_shape="freeform", input_format="text", corpus_size=40_000,
         data_residency="cannot_leave", hosting="on-prem",
         external_systems=2, human_waiting="no", query_pattern="lookup"),
+    "assistant": dict(
+        output_shape="freeform", input_format="text", corpus_size=10_000,
+        data_residency="cannot_leave", hosting="on-prem",
+        external_systems=1, human_waiting="yes", query_pattern="lookup",
+        recall_span="across_sessions"),
 }
 
 
@@ -107,12 +112,16 @@ def test_everything_the_unit_demands_something_shipped_creates(emission):
     site = out / "deploy" / "ansible" / "site.yml"
     installer = (site.read_text() if site.exists()
                  else (out / "deploy" / "README.md").read_text())
+    # The unit itself creates the state dir (StateDirectory=), owned by
+    # the service user -- the one thing an installer should not do by hand.
+    installer += unit.read_text()
     for demand, evidence in [
         ("ExecStart interpreter", "venv"),
         ("installed package", "pip"),
         ("service account", "app"),
-        ("writable state dir", "/var/lib/app"),
+        ("writable state dir", "StateDirectory=app"),
         ("environment file", "env"),
+        ("release symlink for rollback", "current"),
     ]:
         assert evidence in installer, (
             f"{shape}: the unit demands a {demand} and no shipped "
@@ -142,8 +151,9 @@ def test_ci_has_a_lane_that_can_go_green_without_a_model(emission):
     ci = (out / ".github" / "workflows" / "ci.yml").read_text()
     assert "test_smoke.py" in ci, (
         f"{shape}: no model-free smoke lane in the workflow")
-    if shape == "freeform":  # judged evaluation -- needs a model
-        assert "if: ${{ vars.LLM_ENDPOINT != '' }}" in ci, (
+    judged = "JUDGED = True" in (out / "evals" / "harness.py").read_text()
+    if judged:  # a judged evaluation needs a model
+        assert "vars.LLM_ENDPOINT != ''" in ci, (
             f"{shape}: the judged harness runs unconditionally and can "
             f"never pass without a model")
     else:
@@ -185,8 +195,9 @@ def test_advisory_components_say_they_are_advisory(emission):
     running."""
     shape, out = emission
     pipeline = (out / "app" / "pipeline.py").read_text()
-    steps = pipeline.split("STEPS = [", 1)[1].split("]", 1)[0]
-    chained = set(re.findall(r"(\w+)\.\w+\(", steps))
+    # Instantiated anywhere in the pipeline module -- in STEPS, in
+    # INGEST_STEPS, or wired once as RETRIEVER.
+    chained = set(re.findall(r"\b(\w+)\.[A-Z]\w*\(", pipeline))
     for module in (out / "app" / "components").glob("*.py"):
         if module.stem in ("__init__",) or module.stem in chained:
             continue
@@ -194,3 +205,203 @@ def test_advisory_components_say_they_are_advisory(emission):
         assert "advisory" in body[:1500].lower() or "raise" in body[:1500], (
             f"{shape}: {module.name} is not chained into the pipeline and "
             f"nothing in its first lines says it is advisory")
+
+
+# --- the seams: every emission composes, refuses, and answers -------------
+
+REALISTIC = {
+    "extraction": {"pages": [{"id": "p1", "text": "TOTAL 12.50"}]},
+    "decision": "The bank charged a fee I never agreed to and will not refund it.",
+    "freeform": "Which status code says a resource has moved permanently?",
+    "assistant": "Remind me what we decided about the deployment window.",
+}
+
+
+def run_in(out: Path, code: str, env: dict | None = None):
+    return subprocess.run(
+        [sys.executable, "-c", code], cwd=out, capture_output=True, text=True,
+        timeout=120, env={"PATH": "/usr/bin", **(env or {})},
+    )
+
+
+def test_the_pipeline_composes_on_a_fresh_emission(emission):
+    """Every step reads the envelope the previous one wrote. The only
+    acceptable stops on a fresh emission are a scaffold saying it is not
+    implemented, or a model seam saying it is not configured -- never a
+    KeyError three steps in, which is what 'the components do not
+    compose' looks like at 3am."""
+    shape, out = emission
+    code = f"""
+import json
+from app import pipeline
+try:
+    result = pipeline.run({REALISTIC[shape]!r})
+    print("RESULT", json.dumps(result, default=str)[:200])
+except NotImplementedError as exc:
+    print("SCAFFOLD", exc)
+except Exception as exc:
+    if type(exc).__name__ == "ModelUnconfigured":
+        print("NO_MODEL", exc)
+    else:
+        raise
+"""
+    result = run_in(out, code)
+    assert result.returncode == 0, (
+        f"{shape}: the payload path does not compose:\n{result.stderr[-1500:]}")
+    assert result.stdout.split()[0] in ("RESULT", "SCAFFOLD", "NO_MODEL"), result.stdout
+
+
+def test_garbage_in_is_a_refusal_not_a_crash(emission):
+    """None, a number, an empty string: refused at the door with the
+    reason, never an AttributeError from the first step."""
+    shape, out = emission
+    code = """
+from app import pipeline
+from app.contract import RefusedInput
+for bad in (None, 42, "", [1, 2], {"documents": "not a list"}):
+    try:
+        pipeline.run(bad)
+    except RefusedInput:
+        continue
+    except NotImplementedError:
+        continue  # a scaffold refused later, after the envelope accepted an object
+    except Exception as exc:
+        if type(exc).__name__ == "ModelUnconfigured":
+            continue
+        raise SystemExit(f"{bad!r} produced {type(exc).__name__}: {exc}")
+    raise SystemExit(f"{bad!r} was accepted")
+print("ok")
+"""
+    result = run_in(out, code)
+    assert result.returncode == 0, f"{shape}: {result.stderr[-600:]}"
+
+
+def test_a_corpus_ingests_and_the_wired_retriever_answers(emission):
+    """With a retrieval layer, ingest() fills the same instance the
+    request path reads -- and evals/retrieval.py measures that one."""
+    shape, out = emission
+    if not (out / "app" / "components" / "retrieval.py").exists():
+        pytest.skip("no retrieval layer in this shape")
+    code = """
+from app import pipeline
+n = pipeline.ingest([{"id": "d1", "text": "SKU-99312 costs 40 dollars"},
+                     {"id": "d2", "text": "The office closes at six"}])
+assert n >= 2, n
+hits = pipeline.RETRIEVER.retrieve("SKU-99312", 5)
+assert hits and "SKU-99312" in hits[0]["text"], hits
+print("ok")
+"""
+    result = run_in(out, code)
+    assert result.returncode == 0, f"{shape}: {result.stderr[-800:]}"
+
+
+def test_the_edge_is_the_only_source_of_authority(emission):
+    """A body that claims scopes for itself is stripped before the
+    pipeline sees it; the principal is what the edge set."""
+    shape, out = emission
+    code = """
+from app.shapes import envelope
+env = envelope({"text": "hello", "principal": {"subject": "attacker", "scopes": ["admin"]},
+                "request_id": "forged"})
+assert "principal" not in env and "request_id" not in env, env
+print("ok")
+"""
+    result = run_in(out, code)
+    assert result.returncode == 0, f"{shape}: {result.stderr[-600:]}"
+
+
+def test_the_boundary_refuses_an_endpoint_outside_it(emission):
+    shape, out = emission
+    if not (out / "app" / "boundary.py").exists():
+        pytest.skip("no boundary in this shape")
+    outside = run_in(out, "import app.boundary", env={"LLM_ENDPOINT": "https://api.example.com"})
+    assert outside.returncode != 0 and "outside the boundary" in outside.stderr
+    inside = run_in(out, "import app.boundary", env={"LLM_ENDPOINT": "http://10.0.0.5:8000"})
+    assert inside.returncode == 0, inside.stderr
+    keyed = run_in(out, "import app.boundary", env={"ANTHROPIC_API_KEY": "sk-x"})
+    assert keyed.returncode != 0
+
+
+def test_the_ledger_outlives_the_process(emission):
+    shape, out = emission
+    if not (out / "app" / "ledger.py").exists():
+        pytest.skip("nothing outward in this shape")
+    state = out / "state"
+    state.mkdir(exist_ok=True)
+    code = """
+from app.ledger import LEDGER, KeyUnresolved
+key = LEDGER.key_for({"tool": "send", "arguments": {"to": "x"}})
+assert LEDGER.reserve(key, "d1") is None
+LEDGER.complete(key, {"sent": True})
+LEDGER.append({"phase": "outcome", "tool": "send"})
+print("ok")
+"""
+    first = run_in(out, code, env={"STATE_DIR": str(state)})
+    assert first.returncode == 0, first.stderr
+    again = run_in(out, """
+from app.ledger import LEDGER
+key = LEDGER.key_for({"tool": "send", "arguments": {"to": "x"}})
+earlier = LEDGER.reserve(key, "d1")
+assert earlier and earlier["outcome"] == {"sent": True}, earlier
+print("ok")
+""", env={"STATE_DIR": str(state)})
+    assert again.returncode == 0, again.stderr
+    assert (state / "audit.jsonl").exists() and (state / "idempotency.jsonl").exists()
+
+
+def test_the_service_carries_a_request_id_on_every_answer(emission):
+    """Refusals, answers and errors all carry the id -- and a bearer
+    token, when configured, gates POST and non-loopback /ready."""
+    shape, out = emission
+    import json as jsonlib
+    import socket
+    import time
+    import urllib.error
+    import urllib.request
+
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "app.pipeline"], cwd=out,
+        env={"PATH": "/usr/bin", "PORT": str(port), "AUTH_TOKEN": "s3cret",
+             "GRANTED_SCOPES": "x", "LLM_ENDPOINT": "http://127.0.0.1:9"},
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+    )
+    base = f"http://127.0.0.1:{port}"
+    try:
+        for _ in range(60):
+            try:
+                urllib.request.urlopen(base + "/health", timeout=1)
+                break
+            except OSError:
+                time.sleep(0.1)
+        else:
+            raise AssertionError(f"{shape}: service never came up: {proc.stdout.read()[:600]}")
+
+        def post(body, token="s3cret"):
+            req = urllib.request.Request(
+                base + "/", data=body, method="POST",
+                headers={"Content-Type": "application/json",
+                         **({"Authorization": f"Bearer {token}"} if token else {})})
+            try:
+                with urllib.request.urlopen(req, timeout=5) as r:
+                    return r.status, jsonlib.loads(r.read()), r.headers
+            except urllib.error.HTTPError as e:
+                return e.code, jsonlib.loads(e.read()), e.headers
+
+        code, body, headers = post(b"null", token=None)
+        assert code == 401 and "request_id" in body
+        code, body, headers = post(b"null")
+        assert code == 422 and body["request_id"] == headers["X-Request-Id"], (code, body)
+        code, body, headers = post(b'{"documents": "no"}')
+        assert code == 422, (code, body)
+        code, body, headers = post(b"[" * 5000)
+        assert code == 400, (code, body)
+        code, body, headers = post(jsonlib.dumps(REALISTIC[shape]).encode())
+        assert code in (200, 500, 503), (code, body)
+        assert "request_id" in body and "detail" not in body, body
+    finally:
+        proc.terminate()
+        assert proc.wait(timeout=20) == 0, "SIGTERM must drain and exit 0"

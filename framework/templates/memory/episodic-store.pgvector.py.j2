@@ -114,5 +114,8 @@ class {{ class_name }}:
                            {"subject": subject, "at": at})
             return [{"key": r[0], "value": r[1], "because": r[2]} for r in cursor.fetchall()]
 
-    def run(self, payload: dict[str, Any]) -> Any:
-        return self.current(payload["subject"])
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Envelope in, envelope out: the subject's current facts under `memory`."""
+        principal = payload.get("principal") or {}
+        subject = payload.get("subject") or principal.get("subject", "anonymous")
+        return {**payload, "memory": self.current(str(subject))}

@@ -113,8 +113,9 @@ def _runbook(architecture, registry) -> str:
         "                                        # a 503 body names what is missing",
         "```",
         "",
-        "Every log line and every error response carry the same "
-        "`correlation_id`, so a user's failing request finds its log line by "
+        "Every log line and every response -- answers, refusals, errors -- "
+        "carry the same `request_id` (also the `X-Request-Id` header, which a "
+        "caller may set), so a user's failing request finds its log line by "
         "id, not by timestamp guessing. A restart loop in `systemctl status` "
         "with nothing in the journal means the process dies before logging -- "
         "run the ExecStart command by hand as the `app` user and read stderr "
@@ -395,10 +396,11 @@ def _slo(architecture, baseline=None) -> str:
 
 ROLLBACK_STEPS = {
     "systemd-unit": (
-        "sudo systemctl stop app\n"
-        "sudo ln -sfn /opt/app-previous /opt/app\n"
-        "sudo systemctl start app\n"
+        "ls -1t /opt/app/releases/            # newest first; pick the one before\n"
+        "sudo ln -sfn /opt/app/releases/<previous> /opt/app/current\n"
+        "sudo systemctl restart app           # SIGTERM drains in-flight requests\n"
         "systemctl status app --no-pager\n"
+        "curl -s localhost:8080/ready\n"
     ),
     "compose": (
         "cd deploy\n"
@@ -508,7 +510,22 @@ def _ci(architecture, out: Path) -> None:
     # never pass is a permanent red X teaching everyone to ignore CI. The
     # model-free lanes gate every push; the judged evaluation joins them
     # the moment the repository configures an endpoint.
-    if _approach(architecture, "evaluation") == "judged":
+    if _approach(architecture, "evaluation") == "judged" and architecture.graph.sensitive_nodes():
+        evaluate_step = (
+            "      # The judged evaluation sends golden references and answers to\n"
+            "      # a model, and this build's data may not leave -- so it runs\n"
+            "      # only on a runner inside the boundary, never GitHub's. Label\n"
+            "      # a self-hosted runner `inside-boundary` to enable it.\n"
+            "      - name: Evaluate (inside the boundary only)\n"
+            "        if: >-\n"
+            "          ${{ contains(runner.labels, 'inside-boundary')\n"
+            "          && vars.LLM_ENDPOINT != '' }}\n"
+            "        env:\n"
+            "          LLM_ENDPOINT: ${{ vars.LLM_ENDPOINT }}\n"
+            "          LLM_MODEL: ${{ vars.LLM_MODEL }}\n"
+            "        run: python evals/harness.py --min-score 0.0 --report harness-report.json\n"
+        )
+    elif _approach(architecture, "evaluation") == "judged":
         evaluate_step = (
             "      # The judged evaluation needs a model. It runs whenever the\n"
             "      # repository configures one (Settings > Variables); until\n"
@@ -518,7 +535,7 @@ def _ci(architecture, out: Path) -> None:
             "        env:\n"
             "          LLM_ENDPOINT: ${{ vars.LLM_ENDPOINT }}\n"
             "          LLM_MODEL: ${{ vars.LLM_MODEL }}\n"
-            "        run: python evals/harness.py --min-score 0.0\n"
+            "        run: python evals/harness.py --min-score 0.0 --report harness-report.json\n"
         )
     else:
         evaluate_step = (
@@ -528,12 +545,18 @@ def _ci(architecture, out: Path) -> None:
             "      # well on golden and badly on adversarial is visible in this\n"
             "      # step's own output rather than averaged away.\n"
             "      - name: Evaluate\n"
-            "        run: python evals/harness.py --min-score 0.0\n"
+            "        run: python evals/harness.py --min-score 0.0 --report harness-report.json\n"
         )
 
     workflows.joinpath("ci.yml").write_text(
         "name: ci\n"
-        "on: [push, pull_request]\n\n"
+        "on:\n"
+        "  push:\n"
+        "  pull_request:\n"
+        "    # Fork PRs never receive repository variables here, so no\n"
+        "    # endpoint inside the network is reachable from a stranger's\n"
+        "    # branch; the model-free lanes still run for them.\n"
+        "    types: [opened, synchronize, reopened]\n\n"
         "jobs:\n"
         "  check:\n"
         "    runs-on: ubuntu-latest\n"
@@ -549,6 +572,14 @@ def _ci(architecture, out: Path) -> None:
         f"{boundary_step}"
         f"{retrieval_step}"
         f"{evaluate_step}"
+        "      # Every layer and every failure, kept beside the run -- the\n"
+        "      # console shows the first few; a regression is diffed from here.\n"
+        "      - uses: actions/upload-artifact@v4\n"
+        "        if: always()\n"
+        "        with:\n"
+        "          name: harness-report\n"
+        "          path: harness-report.json\n"
+        "          if-no-files-found: ignore\n"
     )
 
 

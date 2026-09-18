@@ -40,7 +40,7 @@ rerank: Callable[[str, str], float] | None = None
 adjacency: dict[str, list[str]] = {}
 
 
-def run(query: str, top_k: int = TOP_K) -> list[dict]:
+def retrieve(query: str, top_k: int = TOP_K) -> list[dict]:
     """Seed by similarity, expand along entities, let the reranker order."""
     if client is None or embed is None or rerank is None:
         raise QdrantUnwired(
@@ -81,3 +81,19 @@ def run(query: str, top_k: int = TOP_K) -> list[dict]:
         for c in found.values()
     ]
     return sorted(scored, key=lambda c: -c["rerank_score"])[:top_k]
+
+
+
+class {{ class_name }}:
+    """{{ interface }}, as {{ approach }}: the envelope wrapper over retrieve()."""
+
+    interface = "{{ interface }}"
+    approach = "{{ approach }}"
+    stack = "{{ stack }}"
+
+    def run(self, payload: dict) -> dict:
+        """Envelope in, envelope out: `query` -> `retrieved`."""
+        from app.shapes import require  # the module also runs without the package
+
+        query = require(payload, "query", str, non_empty=True)
+        return {**payload, "retrieved": retrieve(query, top_k=payload.get("k", TOP_K))}

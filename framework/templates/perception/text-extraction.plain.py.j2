@@ -22,9 +22,15 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from app.shapes import documents_of
+
 # Lines that look like a row of a table: repeated separators with content
 # between them. Crude, and enough to notice that structure was present.
-TABULAR = re.compile(r"(\S+\s*[|\t]\s*){2,}\S+")
+# Separators counted per line -- a linear scan. The nested-quantifier
+# pattern this replaces backtracked quadratically on long lines: a 40KB
+# body cost thirty seconds of CPU, per request, unauthenticated.
+SEPARATOR = re.compile(r"[|	]")
+MAX_SCAN = 4000  # characters of a line worth inspecting for structure
 
 # Runs of whitespace used as column separation rather than as spacing.
 COLUMNAR = re.compile(r"\S+ {3,}\S+ {3,}\S+")
@@ -38,21 +44,23 @@ class {{ class_name }}:
     stack = "{{ stack }}"
 
     def run(self, payload: dict[str, Any]) -> dict[str, Any]:
-        records = [self._read(d) for d in payload.get("documents", [])]
+        records = [self._read(d) for d in documents_of(payload)]
         clean = [r for r in records if not r["losses"]]
         return {
+            **payload,
             "records": records,
             # One number to quote before promising anything downstream. If this
             # is 0.6, no amount of work further along gets the system past it.
-            "clean_share": len(clean) / (len(records) or 1),
+            "clean_share": len(clean) / len(records),
         }
 
     def _read(self, document: dict[str, Any]) -> dict[str, Any]:
         text = document.get("text", "")
         losses = []
 
-        tabular_lines = [ln for ln in text.splitlines() if TABULAR.search(ln)]
-        columnar_lines = [ln for ln in text.splitlines() if COLUMNAR.search(ln)]
+        lines = text.splitlines()
+        tabular_lines = [ln for ln in lines if len(SEPARATOR.findall(ln[:MAX_SCAN])) >= 2]
+        columnar_lines = [ln for ln in lines if COLUMNAR.search(ln[:MAX_SCAN])]
 
         if tabular_lines:
             losses.append({

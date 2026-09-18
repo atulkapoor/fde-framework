@@ -5,6 +5,91 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.17] — 2026-09-18
+
+Four independent fresh-eyes audits of the 0.1.16 output — a principal
+engineer signing off a deliverable, a security red team, a maintainer
+inheriting it for two years, and a client staff engineer reviewing a
+shipped demo — converged on one diagnosis: essays with disconnected code.
+Components did not compose (the freeform build answered every request
+with a 500), controls could not fire, ledgers lived in RAM, nothing ever
+refused input, and the boundary was a placement table while the real
+egress had no host check. This release is the answer. Every class of
+finding became an acceptance check before it became a fix.
+
+- **The seams.** `app/shapes.py` is one envelope every step reads and
+  writes; steps return `{**payload, ...}`, never a fresh dict. The
+  pipeline orders steps by phase (what reads before what chunks before
+  what indexes; nothing outward before reasoning decides), splits an
+  ingest path from the request path where a retrieval layer exists,
+  loads the corpus from `CORPUS_DIR` at boot, and picks the OUTPUT the
+  caller gets back. Garbage is refused at the door with the reason.
+  Approval gates and critics apply to actions and pass everything else.
+- **The edge.** `app/service.py`, importable and tested: bearer-token
+  identity with the principal set from configuration (a body cannot
+  grant itself a scope); a request id on every log line and every
+  response, refusals included; strict framing (one decimal
+  Content-Length, no transfer-encoding, nested-JSON bombs are a 400);
+  bounded workers with a 503 on saturation; HTTP/1.1; no exception text
+  in any response; transient failures classified by type; configuration
+  validated once and refused with exit 78; `/ready` cached, loopback-or-
+  token, checking the model is actually served; SIGTERM drains.
+- **The boundary is code.** `app/boundary.py` validates every outward
+  URL at import — loopback, private ranges, or a named host — and refuses
+  `ANTHROPIC_API_KEY` outright; the unit adds `IPAddressDeny`/`Allow`.
+- **A durable ledger.** `app/ledger.py` keeps audit and idempotency keys
+  under `STATE_DIR`, fsync'd; keys are derived per action and reserved
+  BEFORE the call (the build-time constant is gone); a crash mid-call
+  leaves a key that refuses to be retried blind. Governed tools take
+  authority from the principal, enforce their declared input schema, and
+  record redacted arguments with the request id.
+- **A measured denial of service, fixed.** Perception's table detection
+  backtracked quadratically: a 40KB body cost thirty seconds of CPU per
+  request, unauthenticated. Replaced with a linear scan.
+- **Retrieval.** Re-indexing no longer corrupts document frequencies;
+  every hit carries its source document so recall@K grades per document;
+  `evals/retrieval.py` measures the pipeline's wired retriever after the
+  corpus loads; four templates that had no `run(payload)` gained one; the
+  two Qdrant graph templates gained the class the pipeline instantiates
+  (an emission choosing them failed at import before).
+- **Reasoning answers from evidence.** The llm reasoning template calls
+  the model with retrieved evidence framed as data — the discipline the
+  harness already had, applied to the application — and refuses without
+  a question.
+- **Harness and eval gates.** Field-level breakdown for structured
+  outputs; an empty adversarial set is red, like an empty golden set;
+  `--report` JSON kept as a CI artifact; `evals/calibrate.py` and an
+  UNCALIBRATED banner on every judged run until a human-agreement bar is
+  met (a refused judge turns the run red); `JUDGE_ENDPOINT`/`JUDGE_MODEL`
+  so the judge is not the author; judged evals on a build whose data may
+  not leave run only on an `inside-boundary` runner; the case schema is
+  documented.
+- **Deploy.** The hardening set (Protect*, Restrict*, SystemCallFilter,
+  capability bounding, Tasks/Memory/NOFILE limits, StateDirectory,
+  StartLimit); releases side by side with a `current` symlink, so
+  rollback is one atomic command and the runbook is finally true; a
+  nologin service account; the package staged, not the working tree; the
+  env file required. Ansible in parity.
+- **Documents.** RISKS.md lists the unanswered assumptions and separates
+  decided from implemented; the README's pieces and a run-it-locally
+  section; the runbook's request-id claim is true; `env.example` covers
+  every variable, the new ones included.
+- **Supermemory** joins the registry (MIT, one local binary on 6767) as
+  an episodic-store realization offered where the client already runs
+  it; the hosted host is refused behind a boundary.
+- Templates: governance's autonomy branch was unreachable and approval
+  latency defaulted to thirty seconds (now checked, and measured);
+  labelled-metrics scored truthiness (every class string is truthy, so
+  two wrong decisions scored 100%) and now scores equality per class; OCR
+  perception refuses without an engine and routes weak regions to a
+  person; memory templates return the envelope.
+
+Deferred, named: stateful component singletons under concurrent
+requests (per-request instances next); the MCP tool boundary's audit
+still in memory; three taxonomy sources the harness cannot reach; SHA-
+pinned actions and hashed installs; re-running the public demos on this
+emitter so what they show is what this emits.
+
 ## [0.1.16] — 2026-09-16
 
 The fourth escalation on emitted-code quality pointed at the application

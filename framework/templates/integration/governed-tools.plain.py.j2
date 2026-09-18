@@ -28,6 +28,9 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from app.contract import RefusedInput
+from app.ledger import LEDGER, redact
+
 
 class UnregisteredTool(LookupError):
     """Called something the boundary does not know about.
@@ -114,14 +117,26 @@ class {{ class_name }}:
                 f"{name!r} needs {tool.required_scope!r}, which {subject} does not hold"
             )
 
+        self._validate(tool, arguments)
+        # A mutative call reserves its key BEFORE acting; the same action
+        # retried finds the key taken and returns the recorded outcome.
+        key = None
+        if tool.mutative:
+            action = {"tool": name, "arguments": arguments, "subject": subject}
+            key = LEDGER.key_for(action)
+            earlier = LEDGER.reserve(key, LEDGER.key_for(arguments))
+            if earlier is not None:
+                return {"result": earlier.get("outcome"), "duplicate": True, "key": key}
         self._record("intent", tool, subject, actor, arguments)
         try:
             result = tool.run(**arguments)
         except Exception as exc:
-            self._record("failed", tool, subject, actor, arguments, error=str(exc))
+            self._record("failed", tool, subject, actor, arguments, error=type(exc).__name__)
             raise
         self._record("outcome", tool, subject, actor, arguments)
-        return result
+        if key is not None:
+            LEDGER.complete(key, result)
+        return {"result": result, "duplicate": False, "key": key}
 
     def mutative_tools(self) -> list[str]:
         """What needs a gate and an idempotency key."""
@@ -131,24 +146,54 @@ class {{ class_name }}:
         """What needs a critic in front of it."""
         return sorted(n for n, t in self._tools.items() if t.mutative and not t.reversible)
 
-    def run(self, payload: dict[str, Any]) -> Any:
-        return self.call(
-            payload["tool"],
-            payload.get("arguments", {}),
-            subject=payload["subject"],
-            granted_scopes=set(payload.get("granted_scopes", [])),
-            actor=payload.get("actor"),
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Envelope in, envelope out. A request that asks for no tool passes
+        untouched. One that does is authorised against the PRINCIPAL the
+        edge set -- never against scopes the body claims for itself."""
+        if "tool" not in payload:
+            return payload
+        principal = payload.get("principal") or {}
+        arguments = payload.get("arguments", {})
+        if not isinstance(arguments, dict):
+            raise RefusedInput("'arguments' must be an object")
+        self._request_id = payload.get("request_id")
+        result = self.call(
+            str(payload["tool"]),
+            arguments,
+            subject=str(principal.get("subject", "anonymous")),
+            granted_scopes=set(principal.get("scopes", [])),
+            actor="pipeline",
         )
+        return {**payload, "integration": result}
+
+    def _validate(self, tool: Tool, arguments: dict[str, Any]) -> None:
+        """The declared input schema is enforced, not decorative: unknown
+        keys never reach a tool's keyword arguments from a request body."""
+        schema = tool.input_schema
+        if not schema or not isinstance(schema, dict):
+            return  # nothing declared, nothing to hold the call to
+        unknown = sorted(k for k in arguments if k not in schema)
+        missing = sorted(k for k in schema if k not in arguments)
+        if unknown or missing:
+            raise RefusedInput(
+                f"{tool.name!r}: unknown arguments {unknown}, missing {missing}"
+            )
 
     def _record(self, phase, tool, subject, actor, arguments, error=None) -> None:
-        self.audit.append({
+        entry = {
             "phase": phase,
             "tool": tool.name,
             # The human is the subject; the agent is the actor. Not the reverse.
             "subject": subject,
             "actor": actor,
+            "request_id": getattr(self, "_request_id", None),
             "destructive": tool.destructive,
             "reversible": tool.reversible,
-            "argument_keys": sorted(arguments),
+            "arguments": redact(arguments),
             "error": error,
-        })
+        }
+        # A bounded tail in memory for tests and diagnosis; the ledger under
+        # STATE_DIR is the record that survives the process.
+        self.audit.append(entry)
+        del self.audit[:-200]
+        LEDGER.append(entry)

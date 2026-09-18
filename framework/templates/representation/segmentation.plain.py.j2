@@ -17,6 +17,8 @@ from __future__ import annotations
 import hashlib
 from typing import Any
 
+from app.shapes import documents_of
+
 # Sized for retrieval, not for reading: long enough to carry an answer,
 # short enough that a ranker can tell chunks apart.
 WINDOW = 1200
@@ -38,9 +40,11 @@ class {{ class_name }}:
 
     def run(self, payload: dict[str, Any]) -> dict[str, Any]:
         chunks = []
-        for document in payload.get("documents", []):
+        # What perception read, or the raw documents when nothing read them.
+        units = payload.get("records") or documents_of(payload)
+        for document in units:
             text = document.get("text", "")
-            source = document.get("id", "unknown")
+            source = str(document.get("id", "unknown"))
             start = 0
             while start < len(text):
                 end = min(start + self.window, len(text))
@@ -60,8 +64,9 @@ class {{ class_name }}:
                     break
                 start = end - self.overlap
         return {
+            **payload,
             "chunks": chunks,
-            "documents": len(payload.get("documents", [])),
+            "document_count": len(units),
             # The number an index is sized from, and the denominator any
             # retrieval-quality measurement divides by.
             "chunk_count": len(chunks),

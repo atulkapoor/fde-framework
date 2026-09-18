@@ -100,7 +100,7 @@ else that looks like registry knowledge in `src/` is a bug — report it.
 
 | Artifact | What it is |
 |---|---|
-| `app/` | Components (implementations or honest scaffolds), pipeline in topological order, fail-closed approval gates and critics, boundary check imported by the pipeline |
+| `app/` | Components (implementations or honest scaffolds) reading and writing one envelope (`shapes.py`), the pipeline in phase order with an ingest path where retrieval exists, fail-closed approval gates and critics, a boundary that validates every outward URL at import, the HTTP edge (`service.py`), and a durable ledger (`ledger.py`) |
 | `evals/` | Golden/edge/adversarial sets from the client's own pairs, a harness CI can gate on, recall\@K of the retrieval layer where one answers ranked queries |
 | `tests/` | The deliverable's own model-free smoke: the contract exists, the fence holds at import, the exam refuses to be empty |
 | `deploy/` | Assets for the chosen substrate and provisioner — including the full install path the unit's demands imply — TEARDOWN.md covering both |
@@ -121,6 +121,8 @@ else that looks like registry knowledge in `src/` is a bug — report it.
 - Client material never enters the repository (CI-enforced, history included).
 - Every emission meets the operational contract: env vars documented,
   the unit's demands creatable from what ships, a model-free CI lane, a
-  passing smoke on a fresh emission, lint-clean code, a payload-only
-  pipeline (`tests/test_acceptance.py` — a quality finding lands there
-  as a check before it lands as a fix).
+  passing smoke on a fresh emission, lint-clean code, a payload path that
+  composes and refuses garbage, a boundary that refuses outside
+  endpoints, a ledger that survives restart, a service that carries a
+  request id on every answer (`tests/test_acceptance.py` — a quality
+  finding lands there as a check before it lands as a fix).

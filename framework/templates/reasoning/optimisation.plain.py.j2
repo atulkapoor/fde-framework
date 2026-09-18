@@ -45,10 +45,18 @@ class {{ class_name }}:
             )
 
     def run(self, payload: dict[str, Any]) -> dict[str, Any]:
-        decision = payload["decision"]
+        decision = payload.get("decision")
+        if decision is None and isinstance(payload.get("plan"), dict):
+            decision = payload["plan"].get("decision")
+        if decision is None:
+            raise NotImplementedError(
+                "no decision to check: an upstream step (planning, or a rule "
+                "you write here) must put a candidate under payload['decision']"
+            )
         constraints = payload.get("constraints", [])
         self.check(decision, constraints)
         return {
+            **payload,
             "decision": decision,
             "feasible": True,
             "constraints_checked": [c["name"] for c in constraints],

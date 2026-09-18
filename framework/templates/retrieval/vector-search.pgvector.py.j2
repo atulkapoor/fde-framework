@@ -22,6 +22,8 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
+from app.shapes import require
+
 # Rebuilt after bulk load rather than maintained during it. Lists is a tuning
 # knob against recall; start near the square root of the row count.
 INDEX_SQL = """
@@ -96,5 +98,7 @@ class {{ class_name }}:
                 for n, row in enumerate(cursor.fetchall())
             ]
 
-    def run(self, payload: dict[str, Any]) -> Any:
-        return self.retrieve(payload["query"], k=payload.get("k", 5))
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Envelope in, envelope out: `query` -> `retrieved`."""
+        query = require(payload, "query", str, non_empty=True)
+        return {**payload, "retrieved": self.retrieve(query, k=payload.get("k", 5))}

@@ -155,11 +155,15 @@ def test_approval_gates_and_critics_survive_into_the_pipeline(reg, tmp_path):
     assert (tmp_path / "app" / "controls.py").exists()
 
 
-def test_the_gate_carries_the_idempotency_key(reg, tmp_path):
+def test_mutative_builds_carry_a_durable_ledger_not_a_static_key(reg, tmp_path):
     """The key matters more than the gate: a gate stops the wrong thing once,
-    a key means doing it twice cannot charge twice."""
+    a key means doing it twice cannot charge twice. A build-time constant
+    cannot be a per-action key (every deployment from one profile shared
+    it); keys are derived from the action and reserved in the ledger."""
     emit(architect(profile(**MUTATIVE), reg), tmp_path)
-    assert "idempotency_key=" in (tmp_path / "app" / "pipeline.py").read_text()
+    assert "idempotency_key=" not in (tmp_path / "app" / "pipeline.py").read_text()
+    assert (tmp_path / "app" / "ledger.py").exists()
+    assert "ledger" in (tmp_path / "ARCHITECTURE.md").read_text()
 
 
 def test_the_controls_fail_closed_until_wired(reg, tmp_path):
@@ -168,7 +172,8 @@ def test_the_controls_fail_closed_until_wired(reg, tmp_path):
     emit(architect(profile(**MUTATIVE), reg), tmp_path)
     result = subprocess.run(
         [sys.executable, "-c",
-         "from app.controls import ApprovalGate\nApprovalGate('x').run({})"],
+         "from app.controls import ApprovalGate\n"
+         "ApprovalGate('x').run({'tool': 'x', 'arguments': {}})"],
         cwd=tmp_path, capture_output=True, text=True,
     )
     assert result.returncode != 0
@@ -230,7 +235,10 @@ def test_the_emitted_evaluation_gate_can_fail(reg, tmp_path):
         [sys.executable, "evals/harness.py"], cwd=out, capture_output=True, text=True,
     )
     assert result.returncode == 1
-    assert "not yet implemented" in result.stderr or "errored" in result.stderr
+    # A scaffold errors, or composes into a wrong answer -- either way the
+    # gate is red, and says which.
+    assert ("not yet implemented" in result.stderr or "errored" in result.stderr
+            or "every golden case failed" in result.stderr), result.stderr
 
 
 def test_an_empty_golden_set_is_a_red_build(reg, tmp_path):
@@ -818,177 +826,175 @@ def test_the_judge_rubric_is_discrete_and_noise_tolerant(reg, tmp_path):
     assert parse("") == 0.0 and parse("I cannot grade this") == 0.0
 
 
+STUB_PIPELINE = """
+from app.contract import RefusedInput
+
+
+def load_corpus(directory=None):
+    return 0
+
+
+def run(raw, *, request_id=None, principal=None):
+    if raw is None:
+        raise RefusedInput("empty payload")
+    if raw == "boom":
+        raise RuntimeError("the implementation is broken in a way the caller must not see")
+    return {"echo": raw, "seen_by": principal["subject"]}
+
+
+if __name__ == "__main__":
+    from app.service import main
+
+    raise SystemExit(main())
+"""
+
+
+def _boot(out, env):
+    """Start the emitted service on a free port; return (proc, base_url)."""
+    import socket
+    import time
+    import urllib.request
+
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "app.pipeline"], cwd=out,
+        env={"PATH": "/usr/bin", "PORT": str(port), **env},
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+    )
+    base = f"http://127.0.0.1:{port}"
+    for _ in range(60):
+        if proc.poll() is not None:
+            raise AssertionError(f"service exited {proc.returncode}: {proc.stdout.read()[:800]}")
+        try:
+            urllib.request.urlopen(base + "/health", timeout=1)
+            return proc, base
+        except OSError:
+            time.sleep(0.1)
+    proc.kill()
+    raise AssertionError(f"service never came up: {proc.stdout.read()[:800]}")
+
+
+def _post(base, body, headers=None, path="/", token="t0ken"):
+    import json as jsonlib
+    import urllib.error
+    import urllib.request
+
+    req = urllib.request.Request(
+        base + path, data=body, method="POST",
+        headers={"Content-Type": "application/json",
+                 **({"Authorization": f"Bearer {token}"} if token else {}),
+                 **(headers or {})})
+    try:
+        with urllib.request.urlopen(req, timeout=5) as r:
+            return r.status, jsonlib.loads(r.read())
+    except urllib.error.HTTPError as e:
+        return e.code, jsonlib.loads(e.read())
+
+
 def test_the_deployment_entrypoint_actually_serves(reg, tmp_path):
     """The systemd unit runs `python -m app.pipeline`. A module that
     defines functions and exits cleanly is a service that dies silently
     on its first start -- found by asking 'has anyone deployed the
-    deliverable?' and getting no for an answer. The emitted pipeline is
-    now the service: /health answers, POST / runs the pipeline, and a
-    refusal is a 422 with the reason."""
-    import json as jsonlib
-    import time
-    import urllib.request
-
+    deliverable?' and getting no for an answer. The emitted edge is
+    app/service.py: /health answers, POST / runs the pipeline as the
+    configured principal, and a refusal is a 422 with the reason."""
     out = tmp_path / "p"
     emit(architect(profile(**COMPLETE), reg), out)
-    (out / "app" / "pipeline_impl_patch.py").write_text("")  # no-op marker
-    # Stub the pipeline so the service can answer without an
-    # implementation: a second run() shadows the real one, inserted just
-    # before the service block (anything appended after it would never
-    # execute -- serve_forever blocks). The marker is asserted so this
-    # stub can never silently no-op again.
-    source = (out / "app" / "pipeline.py").read_text()
-    marker = "# The deployment runs"
-    assert marker in source, "service-block marker moved; update this stub"
-    stub = (
-        "def run(payload):\n"
-        "    if payload is None:\n"
-        "        raise RefusedInput('empty payload')\n"
-        "    return {'echo': payload}\n\n\n"
-    )
-    (out / "app" / "pipeline.py").write_text(
-        source.replace(marker, stub + marker, 1))
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "app.pipeline"], cwd=out,
-        env={"PATH": "/usr/bin", "PORT": "18923"},
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-    )
+    (out / "app" / "pipeline.py").write_text(STUB_PIPELINE)
+    proc, base = _boot(out, {"AUTH_TOKEN": "t0ken", "SERVICE_SUBJECT": "ops",
+                             "LLM_ENDPOINT": "http://127.0.0.1:9"})
     try:
-        for _ in range(50):
-            try:
-                health = urllib.request.urlopen(
-                    "http://127.0.0.1:18923/health", timeout=1).read()
-                break
-            except OSError:
-                time.sleep(0.1)
-        else:
-            raise AssertionError(f"service never came up: {proc.stdout.read()[:400]}")
-        assert jsonlib.loads(health)["status"] == "ok"
-
-        req = urllib.request.Request(
-            "http://127.0.0.1:18923/", data=b'{"x": 1}',
-            headers={"Content-Type": "application/json"})
-        body = jsonlib.loads(urllib.request.urlopen(req, timeout=2).read())
-        assert body["result"] == {"echo": {"x": 1}}
-
-        refuse = urllib.request.Request(
-            "http://127.0.0.1:18923/", data=b"null",
-            headers={"Content-Type": "application/json"})
-        try:
-            urllib.request.urlopen(refuse, timeout=2)
-            raise AssertionError("a refusal must be a 422, not a 200")
-        except urllib.error.HTTPError as e:
-            assert e.code == 422
-            assert "refused" in e.read().decode()
+        code, body = _post(base, b'{"x": 1}')
+        assert code == 200 and body["result"] == {"echo": {"x": 1}, "seen_by": "ops"}, body
+        code, body = _post(base, b"null")
+        assert code == 422 and "refused" in body, body
+        code, body = _post(base, b"null", token=None)
+        assert code == 401, body
     finally:
         proc.terminate()
-        proc.wait(timeout=5)
+        assert proc.wait(timeout=20) == 0
 
 
 def test_the_service_answers_500_not_a_dropped_connection(reg, tmp_path):
     """A fresh build's first POST once got curl: (52) empty reply -- the
     unwired gate's RuntimeError killed the connection with no status. Every
-    failure now has a shape: 500 with the exception NAME, never a
-    traceback, never silence. Plus the parsing edges the audit dropped
-    connections on."""
-    import json as jsonlib
-    import time
-    import urllib.error
-    import urllib.request
-
+    failure now has a shape: 500 with the exception NAME, never its text,
+    never a traceback, never silence. Plus the framing edges the audits
+    dropped connections or smuggled requests on."""
     out = tmp_path / "p"
     emit(architect(profile(**COMPLETE), reg), out)
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "app.pipeline"], cwd=out,
-        env={"PATH": "/usr/bin", "PORT": "18931"},
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-    )
+    (out / "app" / "pipeline.py").write_text(STUB_PIPELINE)
+    proc, base = _boot(out, {"AUTH_TOKEN": "t0ken", "LLM_ENDPOINT": "http://127.0.0.1:9"})
     try:
-        for _ in range(50):
-            try:
-                urllib.request.urlopen("http://127.0.0.1:18931/health", timeout=1)
-                break
-            except OSError:
-                time.sleep(0.1)
-        else:
-            raise AssertionError(proc.stdout.read()[:300])
+        code, body = _post(base, b'"boom"')
+        assert code == 500 and body["error"] == "RuntimeError", body
+        assert "detail" not in body and "broken" not in str(body), body
 
-        def post(body, headers=None, path="/"):
-            req = urllib.request.Request(
-                f"http://127.0.0.1:18931{path}", data=body,
-                headers={"Content-Type": "application/json", **(headers or {})})
-            try:
-                resp = urllib.request.urlopen(req, timeout=3)
-                return resp.status, jsonlib.loads(resp.read())
-            except urllib.error.HTTPError as e:
-                return e.code, jsonlib.loads(e.read())
-
-        # unwired gate -> 500 with the exception name, not a dropped socket
-        code, body = post(b'{"doc": "hello"}')
-        assert code == 500 and "error" in body, (code, body)
-
-        code, body = post(b"x" * 100, path="/nowhere")
+        code, body = _post(base, b"x" * 100, path="/nowhere")
         assert code == 404
-        code, body = post(b"{}" , headers={"Content-Length": "zzz"})
+        code, body = _post(base, b"{}", headers={"Content-Length": "zzz"})
         assert code == 400
-        big = b"x" * (11 * 1024 * 1024)
+        code, body = _post(base, b"{}", headers={"Content-Length": "1_0"})
+        assert code == 400
+        code, body = _post(base, b"{}", headers={"Transfer-Encoding": "chunked"})
+        assert code == 501
+        code, body = _post(base, b"[" * 20000)
+        assert code == 400, (code, body)
+        big = b"x" * (2 * 1024 * 1024)
         try:
-            code, body = post(big)
+            code, body = _post(base, big)
             assert code == 413
-        except urllib.error.URLError:
+        except OSError:
             pass  # server rejected and closed before reading -- also correct
     finally:
         proc.terminate()
-        proc.wait(timeout=5)
+        assert proc.wait(timeout=20) == 0
 
 
 def test_the_service_binds_loopback_unless_told_otherwise(reg, tmp_path):
     out = tmp_path / "p"
     emit(architect(profile(**COMPLETE), reg), out)
-    body = (out / "app" / "pipeline.py").read_text()
+    body = (out / "app" / "service.py").read_text()
     assert '"BIND", "127.0.0.1"' in body
     assert "ThreadingHTTPServer" in body
 
 
 def test_ready_reports_the_missing_model_health_stays_liveness(reg, tmp_path):
     """/health said ok with the model down and misconfiguration was
-    discovered by the first user. /ready runs the preflight; a deploy
-    gates on it."""
+    discovered by the first user. Configuration that is WRONG refuses the
+    boot with one fatal line (exit 78); a dependency that is DOWN boots and
+    /ready says so, so a deploy gates on it."""
     import json as jsonlib
-    import time
     import urllib.error
     import urllib.request
 
     out = tmp_path / "p"
     emit(architect(profile(**FREEFORM), reg), out)  # freeform: needs a model
-    assert (out / "deploy" / "env.example").exists()
     assert "LLM_ENDPOINT" in (out / "deploy" / "env.example").read_text()
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "app.pipeline"], cwd=out,
-        env={"PATH": "/usr/bin", "PORT": "18941"},
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+    (out / "app" / "pipeline.py").write_text(STUB_PIPELINE)
+
+    dead = subprocess.run(
+        [sys.executable, "-m", "app.pipeline"], cwd=out, capture_output=True, text=True,
+        env={"PATH": "/usr/bin", "PORT": "18999", "AUTH_TOKEN": "t0ken"}, timeout=30,
     )
+    assert dead.returncode == 78 and "LLM_ENDPOINT" in dead.stderr, dead.stderr[-400:]
+
+    proc, base = _boot(out, {"AUTH_TOKEN": "t0ken", "LLM_ENDPOINT": "http://127.0.0.1:9"})
     try:
-        for _ in range(50):
-            try:
-                health = urllib.request.urlopen(
-                    "http://127.0.0.1:18941/health", timeout=1)
-                break
-            except OSError:
-                time.sleep(0.1)
-        else:
-            raise AssertionError(proc.stderr.read()[:300])
-        assert health.status == 200
+        assert urllib.request.urlopen(base + "/health", timeout=3).status == 200
         try:
-            urllib.request.urlopen("http://127.0.0.1:18941/ready", timeout=3)
-            raise AssertionError("/ready must 503 with no model configured")
+            urllib.request.urlopen(base + "/ready", timeout=5)
+            raise AssertionError("/ready must 503 with the model unreachable")
         except urllib.error.HTTPError as e:
             assert e.code == 503
             body = jsonlib.loads(e.read())
-            assert "LLM_ENDPOINT" in " ".join(body["problems"])
+            assert "unreachable" in " ".join(body["problems"]), body
     finally:
         proc.terminate()
-        proc.wait(timeout=5)
+        assert proc.wait(timeout=20) == 0
 
 
 def test_the_emitted_project_ships_its_own_hygiene(reg, tmp_path):

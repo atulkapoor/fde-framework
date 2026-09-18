@@ -21,6 +21,8 @@ import math
 from collections.abc import Callable
 from typing import Any
 
+from app.shapes import require
+
 
 class {{ class_name }}:
     """{{ interface }}, as {{ approach }}."""
@@ -62,8 +64,10 @@ class {{ class_name }}:
             candidates = self.rerank(query, candidates)[:k]
         return [{**hit, "rank": n + 1} for n, hit in enumerate(candidates[:k])]
 
-    def run(self, payload: dict[str, Any]) -> Any:
-        return self.retrieve(payload["query"], k=payload.get("k", 5))
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Envelope in, envelope out: `query` -> `retrieved`."""
+        query = require(payload, "query", str, non_empty=True)
+        return {**payload, "retrieved": self.retrieve(query, k=payload.get("k", 5))}
 
     @staticmethod
     def _cosine(a: list[float], b: list[float]) -> float:

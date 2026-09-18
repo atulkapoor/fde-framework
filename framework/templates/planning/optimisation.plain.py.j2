@@ -57,12 +57,15 @@ class {{ class_name }}:
                 )
 
         return {
-            "assignment": assignment,
-            "remaining": capacity,
-            "feasible": True,
-            # Said plainly rather than implied. Feasible is a proof; optimal is
-            # a claim this method cannot make.
-            "optimal": False,
+            **payload,
+            "plan": {
+                "assignment": assignment,
+                "remaining": capacity,
+                "feasible": True,
+                # Said plainly rather than implied. Feasible is a proof;
+                # optimal is a claim this method cannot make.
+                "optimal": False,
+            },
         }
 
     @staticmethod

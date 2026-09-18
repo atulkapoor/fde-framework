@@ -14,6 +14,7 @@ from __future__ import annotations
 from collections.abc import Callable
 
 from app.contract import RefusedInput
+from app.shapes import require
 
 interface = "{{ interface }}"
 approach = "{{ approach }}"
@@ -37,7 +38,12 @@ adjacency: dict[str, list[dict]] = {}
 
 
 class {{ class_name }}:
-    def run(self, query: str, top_k: int = TOP_K) -> list[dict]:
+    def run(self, payload: dict) -> dict:
+        """Envelope in, envelope out: `query` -> `retrieved`."""
+        query = require(payload, "query", str, non_empty=True)
+        return {**payload, "retrieved": self.retrieve(query, top_k=payload.get("k", TOP_K))}
+
+    def retrieve(self, query: str, top_k: int = TOP_K) -> list[dict]:
         if retrieve is None or rerank is None:
             raise RefusedInput(
                 "wire retrieve(query, k) and rerank(query, text) -- an "

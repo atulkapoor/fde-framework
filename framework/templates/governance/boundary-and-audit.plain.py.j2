@@ -78,23 +78,31 @@ class {{ class_name }}:
                 )
             return {**self._outcomes[key], "duplicate": True}
 
-        if not reversible and not action.get("approved_by"):
+        # An irreversible action runs unattended only once it has EARNED
+        # that (may_run_unattended); otherwise it needs a recorded approver.
+        # The earlier ordering made the autonomy machinery unreachable.
+        if not reversible and not self.may_run_unattended(name) \
+                and not action.get("approved_by"):
             raise PermissionError(
-                f"{name} cannot be taken back, and no approval was recorded"
+                f"{name} cannot be taken back, has not earned autonomy, and no "
+                f"approval was recorded"
             )
-        if not reversible and not self.may_run_unattended(name):
-            if not action.get("approved_by"):
-                raise PermissionError(f"{name} requires approval")
 
-        outcome = {"action": name, "key": key, "duplicate": False, "performed": True}
+        # This records that the action was AUTHORISED under this key; the
+        # step that performs it reports its own outcome.
+        outcome = {"action": name, "key": key, "duplicate": False, "authorised": True}
         self._outcomes[key] = outcome
         self._payloads[key] = self._fingerprint(action)
         return outcome
 
     # -- earning autonomy -------------------------------------------------
 
-    def record_approval(self, action: str, edited: bool, seconds: float = 30.0) -> None:
-        """One human decision, kept so autonomy can be argued from evidence."""
+    def record_approval(self, action: str, edited: bool, seconds: float) -> None:
+        """One human decision, kept so autonomy can be argued from evidence.
+
+        `seconds` is how long the reviewer took, measured -- never defaulted,
+        because a default of thirty seconds silently passes the check whose
+        whole point is catching approvals faster than reading."""
         self._approvals[action].append({"edited": edited, "seconds": seconds})
 
     def may_run_unattended(self, action: str) -> bool:

@@ -35,7 +35,7 @@ def write_deploy(architecture, out: Path) -> None:
     air_gapped = architecture.topology == "air-gapped"
 
     if substrate == "systemd-unit":
-        _systemd(deploy)
+        _systemd(deploy, boundary=bool(architecture.graph.sensitive_nodes()))
     elif substrate == "compose":
         _container(out, deploy, air_gapped)
         _compose(deploy)
@@ -78,8 +78,18 @@ def _unemitted(deploy: Path, component: str, approach: str) -> None:
 # --- substrate -----------------------------------------------------------
 
 
-def _systemd(deploy: Path) -> None:
+def _systemd(deploy: Path, boundary: bool = False) -> None:
     (deploy / "systemd").mkdir(exist_ok=True)
+    # The egress fence the kernel enforces: on a build whose data may not
+    # leave, the process can reach loopback and private ranges and nothing
+    # else -- app/boundary.py checks the URLs, this checks the packets.
+    egress = (
+        "# Data may not leave: the kernel allows loopback and private ranges\n"
+        "# only. Add the model server's address here if it lives elsewhere.\n"
+        "IPAddressDeny=any\n"
+        "IPAddressAllow=localhost 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 fc00::/7\n"
+        if boundary else ""
+    )
     (deploy / "systemd" / "app.service").write_text(
         "# Rung zero, and frequently the right answer rather than the lesser one.\n"
         "# Understood by anyone who has administered a Linux box, restarts on\n"
@@ -88,24 +98,59 @@ def _systemd(deploy: Path) -> None:
         "Description=Generated application\n"
         "After=network-online.target\n"
         "Wants=network-online.target\n\n"
+        "# A crash loop is a signal, not a lifestyle: five restarts in two\n"
+        "# minutes stops the unit so the journal can be read in peace.\n"
+        "StartLimitIntervalSec=120\n"
+        "StartLimitBurst=5\n\n"
         "[Service]\n"
         "Type=simple\n"
         "User=app\n"
-        "WorkingDirectory=/opt/app\n"
+        "# Releases live side by side; `current` is a symlink, which is what\n"
+        "# makes ops/rollback.md one atomic command instead of a re-install.\n"
+        "WorkingDirectory=/opt/app/current\n"
         "# One configuration story: defaults here, overrides in the env\n"
-        "# file. Unbuffered stdout so journalctl shows the truth at 3am.\n"
+        "# file. Unbuffered stdout so journalctl shows the truth at 3am. The\n"
+        "# env file is required: a service that boots without its\n"
+        "# configuration is a service serving traffic misconfigured.\n"
         "Environment=PYTHONUNBUFFERED=1\n"
         "Environment=STATE_DIR=/var/lib/app\n"
-        "EnvironmentFile=-/etc/app/env\n"
-        "ExecStart=/opt/app/.venv/bin/python -m app.pipeline\n"
+        "EnvironmentFile=/etc/app/env\n"
+        "ExecStart=/opt/app/current/.venv/bin/python -m app.pipeline\n"
         "Restart=on-failure\n"
         "RestartSec=5\n"
+        "# Drain: SIGTERM lets in-flight requests finish; the kill comes later.\n"
+        "KillSignal=SIGTERM\n"
+        "TimeoutStopSec=45\n"
         "# Least privilege costs nothing here and is awkward to add later.\n"
+        "# StateDirectory creates /var/lib/app owned by the service user.\n"
+        "StateDirectory=app\n"
         "NoNewPrivileges=true\n"
         "PrivateTmp=true\n"
+        "PrivateDevices=true\n"
         "ProtectSystem=strict\n"
-        "ReadWritePaths=/var/lib/app\n\n"
-        "[Install]\n"
+        "ProtectHome=true\n"
+        "ProtectKernelTunables=true\n"
+        "ProtectKernelModules=true\n"
+        "ProtectKernelLogs=true\n"
+        "ProtectControlGroups=true\n"
+        "ProtectClock=true\n"
+        "ProtectHostname=true\n"
+        "RestrictNamespaces=true\n"
+        "RestrictRealtime=true\n"
+        "RestrictSUIDSGID=true\n"
+        "LockPersonality=true\n"
+        "RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX\n"
+        "SystemCallFilter=@system-service\n"
+        "SystemCallArchitectures=native\n"
+        "CapabilityBoundingSet=\n"
+        "UMask=0077\n"
+        "# Resource ceilings: a thread-per-connection server without them is\n"
+        "# a denial of service one slow client away.\n"
+        "TasksMax=512\n"
+        "MemoryMax=2G\n"
+        "LimitNOFILE=4096\n"
+        f"{egress}"
+        "\n[Install]\n"
         "WantedBy=multi-user.target\n"
     )
 
@@ -232,11 +277,11 @@ def _ansible(deploy: Path, substrate: str | None = None) -> None:
     # a playbook copying deploy/systemd/ beside a compose substrate fails on
     # its first task, against a file this emitter never wrote.
     unit_tasks = (
-        "    - name: State directory the unit's ReadWritePaths= names\n"
+        "    - name: Point `current` at this release (what the unit runs; what rollback moves)\n"
         "      ansible.builtin.file:\n"
-        "        path: /var/lib/app\n"
-        "        state: directory\n"
-        "        owner: app\n"
+        "        src: '/opt/app/releases/{{ release }}'\n"
+        "        dest: /opt/app/current\n"
+        "        state: link\n"
         "    - name: Environment file the unit reads (never overwrites an edited one)\n"
         "      ansible.builtin.copy:\n"
         "        src: ../env.example\n"
@@ -266,22 +311,25 @@ def _ansible(deploy: Path, substrate: str | None = None) -> None:
         "- name: Deploy the application\n"
         "  hosts: app\n"
         "  become: true\n"
+        "  vars:\n"
+        "    release: \"{{ lookup('pipe', 'date +%Y%m%d%H%M%S') }}\"\n"
         "  tasks:\n"
         "    - name: Create the service account\n"
         "      ansible.builtin.user:\n"
         "        name: app\n"
         "        system: true\n"
+        "        shell: /usr/sbin/nologin\n"
         "        home: /opt/app\n"
-        "    - name: Stage the project (the package, not just the app dir)\n"
+        "    - name: Stage the release (the package, not the working tree)\n"
         "      ansible.builtin.copy:\n"
         "        src: '../../{{ item }}'\n"
-        "        dest: /opt/app/\n"
+        "        dest: '/opt/app/releases/{{ release }}/'\n"
         "        owner: app\n"
         "      loop: [app, evals, pyproject.toml]\n"
         "    - name: Interpreter the unit's ExecStart= names\n"
         "      ansible.builtin.pip:\n"
-        "        name: /opt/app\n"
-        "        virtualenv: /opt/app/.venv\n"
+        "        name: '/opt/app/releases/{{ release }}'\n"
+        "        virtualenv: '/opt/app/releases/{{ release }}/.venv'\n"
         "        virtualenv_command: python3 -m venv\n"
         f"{unit_tasks}"
     )
@@ -373,16 +421,25 @@ def _install_section(substrate: str | None, provisioner: str | None) -> str:
         "the user, the interpreter path, the writable state dir, the env\n"
         "file. Run as root on the target host, from this project's root:\n\n"
         "```bash\n"
-        "useradd --system --home /opt/app app     # the unit's User=\n"
-        "mkdir -p /opt/app /var/lib/app\n"
-        "chown app /var/lib/app                   # ReadWritePaths= must be writable\n"
-        "rsync -a --exclude .git ./ /opt/app/     # stage the project\n"
-        "python3 -m venv /opt/app/.venv           # ExecStart's interpreter\n"
-        "/opt/app/.venv/bin/pip install /opt/app\n"
-        "install -D -m 640 deploy/env.example /etc/app/env    # then edit it\n"
+        "useradd --system --shell /usr/sbin/nologin --home /opt/app app   # the unit's User=\n"
+        "REL=/opt/app/releases/$(date +%Y%m%d%H%M%S)   # releases side by side\n"
+        "mkdir -p \"$REL\"\n"
+        "# Stage the package, not the working tree: no tests, no CI, no .env.\n"
+        "rsync -a --exclude .git --exclude .venv --exclude tests --exclude .github \\\n"
+        "      --exclude '.*' app evals pyproject.toml \"$REL/\"\n"
+        "python3 -m venv \"$REL/.venv\"                  # ExecStart's interpreter\n"
+        "\"$REL/.venv/bin/pip\" install \"$REL\"\n"
+        "ln -sfn \"$REL\" /opt/app/current               # the unit runs `current`\n"
+        "install -D -m 640 -o root -g app deploy/env.example /etc/app/env   # then EDIT it\n"
         "install -m 644 deploy/systemd/app.service /etc/systemd/system/app.service\n"
         "systemctl daemon-reload && systemctl enable --now app\n"
         "```\n\n"
+        "Before `enable --now`, edit `/etc/app/env`: set AUTH_TOKEN (the\n"
+        "service refuses every outward call without it), point the model\n"
+        "endpoint at a host inside the network, and never set\n"
+        "ANTHROPIC_API_KEY on a build whose data may not leave -- the boundary\n"
+        "refuses to import with it set. The service binds loopback; exposing\n"
+        "it means an authenticating, rate-limiting proxy in front, not BIND.\n\n"
         "Then prove it:\n\n"
         "```bash\n"
         "curl -s localhost:8080/health   # liveness: the process answers\n"
@@ -455,7 +512,7 @@ def _write_env_example(architecture, deploy: Path) -> None:
         "PORT=8080",
         "# Loopback by default; exposing the port is a decision made here.",
         "BIND=127.0.0.1",
-        "MAX_BODY_BYTES=10485760",
+        "MAX_BODY_BYTES=1048576",
         "# Writable state (ledgers, queues). Must match ReadWritePaths in",
         "# the unit.",
         "STATE_DIR=/var/lib/app",
@@ -474,8 +531,67 @@ def _write_env_example(architecture, deploy: Path) -> None:
         lines += [
             "",
             "# This build does not call a model. The service's /ready preflight",
-            "# reads LLM_ENDPOINT only in builds that do; here unset is correct.",
+            "# reads these only in builds that do; here unset is correct.",
             "# LLM_ENDPOINT=",
+            "# LLM_MODEL=",
+        ]
+    lines += [
+        "",
+        "# Identity at the edge. With AUTH_TOKEN set, POST / needs",
+        "# `Authorization: Bearer <token>`, and every outward call is made",
+        "# as SERVICE_SUBJECT holding GRANTED_SCOPES. Unset, the service is",
+        "# anonymous and every tool call is refused -- fail closed.",
+        "AUTH_TOKEN=",
+        "SERVICE_SUBJECT=",
+        "GRANTED_SCOPES=",
+        "# Concurrent requests in flight; the rest get a 503 and retry.",
+        "WORKERS=8",
+        "# Exception text in the journal (never in a response). Off by",
+        "# default: on a build with a data boundary, the text can carry data.",
+        "LOG_DETAIL=0",
+    ]
+    if "retrieval" in architecture.decisions.decided():
+        lines += [
+            "",
+            "# The documents to answer from, ingested at boot: .txt/.md files,",
+            "# .json lists of {id, text}, .jsonl of the same. Empty = not ready.",
+            "CORPUS_DIR=/var/lib/app/corpus",
+        ]
+    if architecture.graph.sensitive_nodes():
+        lines += [
+            "",
+            "# Data may not leave. Every endpoint above must resolve to loopback,",
+            "# a private range, or a host named here -- app/boundary.py refuses",
+            "# to import otherwise. Comma-separated.",
+            "BOUNDARY_ALLOWED_HOSTS=",
+        ]
+    evaluation = architecture.decisions.get("evaluation")
+    if evaluation is not None and evaluation.approach == "judged":
+        lines += [
+            "",
+            "# The judge should not be the author. Point these at a different",
+            "# model (or endpoint) than the one the system answers with.",
+            "JUDGE_ENDPOINT=",
+            "JUDGE_MODEL=",
+        ]
+    else:
+        lines += [
+            "",
+            "# Read by the evaluation harness only when the evaluation is judged;",
+            "# this build's is not, so these stay unset.",
+            "# JUDGE_ENDPOINT=",
+            "# JUDGE_MODEL=",
+        ]
+    memory = architecture.realizations.get("memory")
+    if memory is not None and memory.stack == "supermemory":
+        lines += [
+            "",
+            "# This build keeps memory in the supermemory engine. The local",
+            "# binary's default; the hosted host is refused behind a boundary.",
+            "SUPERMEMORY_ENDPOINT=http://localhost:6767",
+            "# Printed by the binary on first boot (sm_...).",
+            "SUPERMEMORY_API_KEY=",
+            "SUPERMEMORY_TIMEOUT=10",
         ]
     (deploy / "env.example").write_text("\n".join(lines) + "\n")
 

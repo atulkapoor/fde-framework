@@ -143,30 +143,38 @@ def test_recall_below_the_threshold_fails_and_says_where_to_look(
 CASE = json.dumps({"id": "c1", "query": "alpha", "relevant": ["doc-1"]}) + "\n"
 
 
-def test_a_wired_module_level_instance_is_used_not_a_fresh_one(
+def test_the_deployed_retriever_is_measured_after_the_corpus_loads(
     reg, tmp_path_factory
 ):
-    """Deployments wire state (an index, a connection) into an instance
-    once. Constructing a fresh instance per call measured an empty
-    retriever and blamed the index -- the exact misdiagnosis the walk
-    exists to prevent."""
+    """Deployments wire state (an index) into ONE instance: the pipeline's
+    RETRIEVER, filled by load_corpus() from CORPUS_DIR. Constructing a
+    fresh instance per call measured an empty retriever and blamed the
+    index -- the exact misdiagnosis the walk exists to prevent. The eval
+    now measures the same instance the service answers from, filled the
+    same way, and a hit on any chunk counts for its document."""
+    import json as jsonlib
+
     out = build(reg, tmp_path_factory.mktemp("instance"))
-    (out / "evals" / "retrieval_cases.jsonl").write_text(CASE)
-    (out / "app" / "components" / "retrieval.py").write_text(
-        "class Retrieval:\n"
-        "    def __init__(self):\n"
-        "        self.docs = []\n"
-        "    def index(self, docs):\n"
-        "        self.docs = docs\n"
-        "    def retrieve(self, query, k):\n"
-        "        return self.docs[:k]\n"
-        "\n"
-        "retriever = Retrieval()\n"
-        "retriever.index([{'id': 'doc-1'}])\n"
+    corpus = out / "corpus"
+    corpus.mkdir()
+    (corpus / "docs.json").write_text(jsonlib.dumps([
+        {"id": "doc-1", "text": "alpha beta gamma"},
+        {"id": "doc-2", "text": "delta epsilon"},
+    ]))
+    (out / "evals" / "retrieval_cases.jsonl").write_text(
+        jsonlib.dumps({"id": "c1", "query": "alpha", "relevant": ["doc-1"]}) + "\n"
     )
-    result = run_eval(out)
+    result = subprocess.run(
+        [sys.executable, "evals/retrieval.py"], cwd=out, capture_output=True,
+        text=True, env={"PATH": "/usr/bin", "CORPUS_DIR": str(corpus)},
+    )
     assert result.returncode == 0, result.stderr
     assert "100.0%" in result.stdout
+    empty = subprocess.run(
+        [sys.executable, "evals/retrieval.py"], cwd=out, capture_output=True,
+        text=True, env={"PATH": "/usr/bin"},
+    )
+    assert empty.returncode != 0  # no corpus: zero recall, truthfully red
 
 
 def test_a_class_run_shape_is_called_with_query_and_top_k(

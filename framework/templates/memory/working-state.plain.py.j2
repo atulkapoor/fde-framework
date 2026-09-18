@@ -43,6 +43,9 @@ class {{ class_name }}:
         """Wipe it. Nothing survives unless somebody decided it should."""
         self._sessions.pop(session, None)
 
-    def run(self, payload: dict[str, Any]) -> Any:
-        self.note(payload["session"], payload.get("observation"))
-        return self.recall(payload["session"])
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Envelope in, envelope out: this session's working state under `memory`."""
+        session = str(payload.get("session") or payload.get("request_id") or "local")
+        if payload.get("observation") is not None:
+            self.note(session, payload["observation"])
+        return {**payload, "memory": self.recall(session)}
