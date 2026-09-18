@@ -114,3 +114,28 @@ def test_unverified_pairs_are_named_not_silently_mined(tmp_path):
     result = runner.invoke(app, ["samples", str(root), "--file", str(pairs)])
     assert "6 pair(s) carry no `verified: true`" in result.output
     assert "cannot be ground truth" in result.output
+
+
+def test_a_replaced_holdout_is_announced_with_both_digests(tmp_path):
+    """Re-running samples with different pairs draws a different holdout,
+    and every implement run scored against the old one is silently retired
+    unless the command says so."""
+    root, pairs = engagement(tmp_path)
+
+    def batch(prefix, n):
+        return [{"id": f"{prefix}{i}", "input": f"Total due: {prefix} {i}", "verified": True,
+                 "layout": "boxed", "output": {"gains": float(i), "account": f"****{i:04d}"}}
+                for i in range(n)]
+
+    pairs.write_text("\n".join(json.dumps(p) for p in [*PAIRS, *batch("n", 8)]))
+    first = runner.invoke(app, ["samples", str(root), "--file", str(pairs)])
+    assert first.exit_code == 0 and "holdout replaced" not in first.output
+    assert (root / "artifacts" / "holdout.jsonl").exists()
+    again = runner.invoke(app, ["samples", str(root), "--file", str(pairs)])
+    assert "holdout replaced" not in again.output  # same pairs, same holdout
+
+    pairs.write_text("\n".join(json.dumps(p) for p in [*PAIRS, *batch("n", 8), *batch("m", 8)]))
+    changed = runner.invoke(app, ["samples", str(root), "--file", str(pairs)])
+    assert changed.exit_code == 0
+    assert "holdout replaced" in changed.output
+    assert "sha256" in changed.output

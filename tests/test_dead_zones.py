@@ -233,8 +233,26 @@ def test_planning_keeps_optimisation_regardless_of_reasoning_labels(reg):
     disposition share an algorithm family and nothing else."""
     decision = decide_component("planning", {
         "output_shape": "decision", "labelled_count": 12_000,
+        "input_format": "structured_data",
     }, reg)
     assert decision.approach == "optimisation"
+
+
+def test_a_decision_read_off_text_is_not_an_allocation(reg):
+    """A hundred and twenty complaints once reached a constraint solver
+    with nothing to optimise; the plan for a text decision is read,
+    decide, act, and the reasoning is the labelled history."""
+    profile = {"output_shape": "decision", "input_format": "text",
+               "labelled_count": 120}
+    assert decide_component("planning", profile, reg).approach == "fixed-sequence"
+    assert decide_component("reasoning", profile, reg).approach == "labelled-decision"
+
+
+def test_an_unanswered_input_format_does_not_buy_a_solver(reg):
+    """Optimisation is reached for when the input is known to be an
+    allocation; unknown is not structured-because-nobody-said."""
+    decision = decide_component("planning", {"output_shape": "decision"}, reg)
+    assert decision.approach == "fixed-sequence"
 
 
 def test_voice_input_reaches_a_transcriber(reg):

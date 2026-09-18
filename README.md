@@ -58,7 +58,7 @@ access — no build. The remedies ship with every gate.*
 | **Discovery that compounds** | Prose, PDFs, sample pairs, a role-scoped interview and a hardware scan all feed one profile — provenance decides conflicts, never arrival order, and disagreement between people is surfaced as a finding |
 | **Gates before building** | Seven checks with remedies; verified data access cannot be waived, and every waiver ships in the project's `RISKS.md` with its reason |
 | **Decisions with receipts** | Simplest applicable approach per component, cited evidence, named rejected alternatives — and `fde override` records your call and honours it on every later run |
-| **A real project out** | Pipeline in topological order — multi-modal inputs fan out one perception path per modality — fail-closed approval gates and critics, an eval harness CI can gate on — recall@K for the retrieval layer alone where one exists — deploy assets for the substrate that was actually earned, a runbook with a diagnosis walk, SLOs carrying the captured baseline, teardown |
+| **A real project out** | Pipeline in topological order — multi-modal inputs fan out one perception path per modality — fail-closed approval gates and critics, an eval harness CI can gate on — recall@K for the retrieval layer alone where one exists — deploy assets for the substrate that was actually earned, a runbook with a diagnosis walk, SLOs carrying the captured baseline, teardown A decision read off labelled text ships a fitted classifier that must beat the majority; a fine-tuning decision ships its data path -- recorded split, LoRA recipe, before/after on the holdout. |
 | **Deterministic by design** | The decision path never calls an LLM: same profile, byte-identical project — a diff between builds means a decision changed. Model assistance exists only as opt-in commands, and the boundary doctrine governs them |
 | **Jurisdiction as data** | Locale packs preset answers at the weakest provenance and attach dated compliance obligations to the build; they can never change how decisions are made |
 | **Self-evolution, honestly** | Overrides, trigger calibration and anonymised cases are captured per engagement; the corpus grows only through human-reviewed ingestion |
@@ -109,15 +109,21 @@ loop, and then the calibration gate **refusing its own judge** exactly as
 the prediction published beforehand said it would (73.7% agreement,
 refused; the judge's 89.5% was 26 points of flattery over the hand-graded
 63.2%). Six of this framework's releases (0.1.6–0.1.11) shipped from what
-these runs found.
+these runs found -- and after five independent audit passes reshaped the
+emitter (0.1.17–0.1.21), the complaints engagement was built and implemented
+again on 0.1.21: green in round 2, holdout 76.7% against the original's
+63.3%, the run committed beside the original for comparison. A sixth pass,
+widened to the exam, the components and the fine-tuning path, signed off
+the freeform shape with conditions and refused the decision shape for
+reasons that were the generator's; 0.1.22 answers each as a check first.
 
 **Built**: the pipeline exists end to end — intake (prose, documents, sample
 pairs, role-scoped interview, hardware scan) → fact log with provenance →
 permutation space → seven gates → decide → architect → build (code, evals,
 deploy and ops assets, `RISKS.md`, `COMPLIANCE.md`) → retro and case
 capture. Overrides are honoured on the next run, trigger observations feed
-calibration, and a reviewed case can enter the corpus. 890+ tests; four
-fresh-eyes review rounds, every finding resolved and the fix pinned as a
+calibration, and a reviewed case can enter the corpus. 1080+ tests; six
+fresh-eyes audit passes, every finding resolved and the fix pinned as a
 regression test; CI gates on the suite, lint, and a sanitisation scan of
 the tree *and its history*; the evidence corpus is anchored to publicly
 documented production deployments; every decision is reproducible from its
@@ -256,12 +262,14 @@ project/
 ├── evals/                # golden / edge / adversarial sets from the client's own pairs
 │   ├── harness.py        #   fails CI until implemented; judge-based when the evaluation decided judged
 │   ├── retrieval.py      #   recall@10/50 of the retrieval layer alone — when retrieval answers ranked queries
-│   ├── acceptance.md     #   blind UAT protocol for the client's own judges
+│   ├── acceptance.md     #   blind UAT protocol for the client's own judges, with the exam record
+│   ├── manifest.json     #   split seed, holdout share, SHA-256 of every eval file and the holdout
 │   └── load.py           #   p95 against the stated budget (when one was stated)
 │   ├── shapes.py         #   the one envelope every step reads and writes; refusals at the door
 │   ├── service.py        #   the HTTP edge: identity, request ids, framing, readiness, drain
 │   └── ledger.py         #   append-only audit + idempotency keys under STATE_DIR — when anything is outward
 ├── tests/                # the deliverable's own model-free smoke: contract, fence, empty-exam refusal
+├── train/                # when fine-tuning was decided: recorded split, LoRA recipe, before/after on the holdout
 ├── deploy/               # the substrate that was earned, its full install path, + TEARDOWN.md for all of it
 ├── ops/                  # runbook (first-five-minutes commands up top), diagnosis walk, SLOs, rollback
 ├── ARCHITECTURE.md       # scope read-out, decisions, tools & alternatives, agent posture
@@ -285,12 +293,16 @@ still answers, compaction cannot drop a live key, every eval entry point
 honours the boundary, an oversized corpus refuses the boot with one line,
 readiness degrades rather than denies on a stray file, and the service
 carries a request id on every answer, a truncated query is never a silent
-miss, and two processes cannot both reserve one key -- and the deliverable
-ships its own edge tests, which its CI runs. Five independent audit passes
-took it from "every request 500s" to a conditional sign-off. A quality
-finding lands
-there as a check before it lands anywhere as a fix
-([`tests/test_acceptance.py`](tests/test_acceptance.py)).
+miss, two processes cannot both reserve one key, a decision read off
+labelled text ships a classifier that beats the majority on its own exam
+while a constant answer is red, the exam carries steering probes and
+records its own split, an uncalibrated judge is red until asked for by
+name, and a fact learned from a person is marked asserted rather than
+established -- and the deliverable ships its own edge tests, which its CI
+runs. Six independent audit passes took it from "every request 500s" to a
+sign-off with conditions. A quality finding lands there as a check before
+it lands anywhere as a fix ([`tests/test_acceptance.py`](tests/test_acceptance.py),
+[`tests/test_finetune.py`](tests/test_finetune.py)).
 
 ## The full lifecycle, copy-paste
 
@@ -552,7 +564,7 @@ Set up as in [Install → from source](#install) (python3.11+), then:
 
 ```bash
 .venv/bin/pip install -e ".[dev,documents]"
-.venv/bin/pytest -q          # 890+ tests, < 60s
+.venv/bin/pytest -q          # 1080+ tests, ~ 60s
 .venv/bin/ruff check src tests
 ```
 

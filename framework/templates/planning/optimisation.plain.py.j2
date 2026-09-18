@@ -19,8 +19,12 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.contract import RefusedInput
+from app.shapes import require
 
-class Infeasible(ValueError):
+
+class Infeasible(RefusedInput):
+    # A refusal, not a server fault: nothing fits, and saying so is the answer.
     """No assignment satisfies these constraints.
 
     Reported rather than approximated. An answer that quietly breaks a hard
@@ -37,9 +41,21 @@ class {{ class_name }}:
     stack = "{{ stack }}"
 
     def run(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Assign items to resources without exceeding capacity."""
-        items = payload.get("items", [])
-        capacity = dict(payload.get("capacity", {}))
+        """Assign items to resources without exceeding capacity. A request
+        with nothing to assign passes untouched; a malformed one is refused
+        at the door, never a 500 three steps in."""
+        if "items" not in payload and "capacity" not in payload:
+            return payload
+        items = require(payload, "items", list)
+        capacity = dict(require(payload, "capacity", dict))
+        for position, item in enumerate(items):
+            if not isinstance(item, dict) or "id" not in item:
+                raise RefusedInput(f"items[{position}] needs an object with an 'id'")
+            if not isinstance(item.get("size", 1), (int, float)):
+                raise RefusedInput(f"items[{position}].size must be a number")
+        for resource, remaining in capacity.items():
+            if not isinstance(remaining, (int, float)):
+                raise RefusedInput(f"capacity[{resource!r}] must be a number")
         assignment: dict[str, str] = {}
 
         for item in sorted(items, key=lambda i: -i.get("size", 1)):

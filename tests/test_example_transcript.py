@@ -105,7 +105,7 @@ def test_the_policy_qa_walkthrough_reproduces_its_transcript(tmp_path, monkeypat
     build = runner.invoke(app, ["build", "helpdesk", "--out",
                                 str(tmp_path / "project"),
                                 "--registry", str(REPO / "framework")])
-    assert "evals: 2 golden, 0 edge, 2 adversarial" in build.output
+    assert "evals: 2 golden, 0 edge, 11 adversarial" in build.output
     assert (tmp_path / "project" / "evals" / "retrieval.py").exists()
 
 
@@ -139,5 +139,5 @@ def test_the_support_triage_walkthrough_reproduces_its_transcript(tmp_path, monk
                                 "--registry", str(REPO / "framework")])
     assert "wrote" in build.output
     architecture_doc = (tmp_path / "project" / "ARCHITECTURE.md").read_text()
-    assert "`model-planner` -- optimisation is simpler and applies here" in architecture_doc
+    assert "`model-planner` -- fixed-sequence is simpler and applies here" in architecture_doc
     assert "idempotency key" in architecture_doc

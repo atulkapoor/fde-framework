@@ -4,7 +4,11 @@ name: Optimisation
 complexity: 1
 components: [planning]
 applies_when: [output_shape == decision]
-avoid_when: [output_shape == freeform, output_shape == structured, output_shape == classification]
+avoid_when:
+  - output_shape == freeform
+  - output_shape == structured
+  - output_shape == classification
+  - input_format == text
 evidence: {case_ids: [route-planning], confidence: high, last_verified: 2026-08-21}
 ---
 Constraint solvers and mathematical programming.
@@ -17,3 +21,8 @@ constraint, and will not tell you it did.
 
 The two combine well -- predict demand, then optimise against it -- but the
 prediction is not the decision.
+
+A narrative is not an allocation either: a decision read off free text
+with a labelled history belongs to labelled-decision, however few the
+labels -- a solver given a hundred and twenty complaints once had
+nothing to optimise and the deliverable had no path from text to label.

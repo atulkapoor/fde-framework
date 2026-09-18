@@ -355,10 +355,24 @@ def _manual_runbook(deploy: Path) -> None:
         "artefact is the list of steps a person follows, written down once\n"
         "instead of re-derived per environment.\n\n"
         "Fill in each step as it is learned. A runbook nobody updates is a\n"
-        "runbook that lies.\n\n"
-        "## Request\n\n1. _who to ask, and for what_\n\n"
-        "## Verify\n\n1. _what proves the environment is usable_\n\n"
-        "## Hand back\n\n1. _how this environment is returned or destroyed_\n"
+        "runbook that lies. What is already known is filled in.\n\n"
+        "## Request\n\n"
+        "1. One Linux host inside the network the data may not leave (the unit\n"
+        "   pins egress to loopback and private ranges); python3 >= 3.10, systemd,\n"
+        "   rsync. 2 GB of memory for the service at the shipped ceilings; see\n"
+        "   ARCHITECTURE.md for the sizing arithmetic when the corpus is larger.\n"
+        "2. A service account `app` (nologin) and the paths the unit names:\n"
+        "   /opt/app/releases, /var/lib/app (StateDirectory creates it), /etc/app/env.\n"
+        "3. Reachability to the model endpoint named in /etc/app/env, and nothing\n"
+        "   else outward. _Who approves the host and the firewall rule: fill in._\n\n"
+        "## Verify\n\n"
+        "1. `systemctl status app` running; `curl -s localhost:8080/ready` answers\n"
+        "   200 -- a 503 names what is missing; `journalctl -u app -n 20` shows\n"
+        "   one JSON line per request.\n"
+        "2. `python -m pytest -q tests/` green in the release directory.\n\n"
+        "## Hand back\n\n"
+        "1. `deploy/TEARDOWN.md`, in order. The ledger under /var/lib/app is the\n"
+        "   record of every outward call: it is handed to the client, not deleted.\n"
     )
 
 
@@ -536,6 +550,8 @@ def _write_env_example(architecture, deploy: Path) -> None:
             "LLM_MODEL=set-me",
             "LLM_TIMEOUT=120",
             "LLM_MAX_TOKENS=512",
+            "# Only when the local endpoint sits behind an auth proxy (vLLM --api-key).",
+            "LLM_API_KEY=",
         ]
     else:
         lines += [
@@ -544,6 +560,7 @@ def _write_env_example(architecture, deploy: Path) -> None:
             "# reads these only in builds that do; here unset is correct.",
             "# LLM_ENDPOINT=",
             "# LLM_MODEL=",
+            "# LLM_API_KEY=",
         ]
     lines += [
         "",
@@ -606,6 +623,17 @@ def _write_env_example(architecture, deploy: Path) -> None:
             "# this build's is not, so these stay unset.",
             "# JUDGE_ENDPOINT=",
             "# JUDGE_MODEL=",
+        ]
+    from fde.training import trained_components
+
+    if trained_components(architecture):
+        lines += [
+            "",
+            "# This build answers through a fine-tuned adapter. The version",
+            "# train/lora.py printed, as the endpoint serves it (vLLM",
+            "# --lora-modules <version>=<dir>). Unset, the component refuses:",
+            "# the base model does not answer in the adapter's place.",
+            "FINETUNED_MODEL=",
         ]
     memory = architecture.realizations.get("memory")
     if memory is not None and memory.stack == "supermemory":

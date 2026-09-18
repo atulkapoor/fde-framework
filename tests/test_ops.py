@@ -175,3 +175,27 @@ def test_ci_runs_the_adversarial_layer_too(project):
     """Scoring well on golden and badly on adversarial is not a good system.
     It is one nobody has attacked."""
     assert "adversarial" in (project / ".github" / "workflows" / "ci.yml").read_text()
+
+
+def test_a_baseline_figure_that_calls_itself_a_scenario_is_marked_stated(reg, tmp_path):
+    """A captured baseline whose definition says estimate or scenario is a
+    number somebody said; the SLO page must not present it as measured."""
+    from fde.ops import write_ops
+
+    p = Profile()
+    p.ingest([Fact(k, v, Provenance.ARTIFACT) for k, v in dict(
+        output_shape="structured", input_format="documents", corpus_size=1_000,
+        data_residency="cannot_leave", hosting="on-prem", external_systems=0,
+        human_waiting="no", query_pattern="lookup", labelled_count=100,
+    ).items()])
+    out = tmp_path / "p"
+    write_ops(architect(p, reg), out, reg, baseline={
+        "volume": {"value": 2600, "unit": "items/month",
+                   "definition": "items entering triage (scenario figure)"},
+        "error_rate": {"value": 0.04, "unit": "share",
+                       "definition": "measured on a 200-item sample, March"},
+    })
+    slo = (out / "ops" / "slo.md").read_text()
+    assert "**stated, not measured**" in slo
+    assert "1 of these figures are stated" in slo
+    assert "0.04 share (measured on a 200-item sample, March)\n" in slo

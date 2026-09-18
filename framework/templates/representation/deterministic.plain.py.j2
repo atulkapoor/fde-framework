@@ -43,21 +43,25 @@ class {{ class_name }}:
         self,
         synonyms: dict[str, list[str]] | None = None,
         validators: dict[str, Callable[[str], bool]] | None = None,
+        contract: list[str] | None = None,
     ) -> None:
         # The entity master. Grows from what the corpus actually contains, and
         # every addition is a decision somebody made rather than a guess a model
         # made silently.
         self.synonyms = {k: [normalise(s) for s in v] for k, v in (synonyms or {}).items()}
         self.validators = validators or {}
+        self.contract = list(contract or [])
 
     def run(self, payload: dict[str, Any]) -> dict[str, Any]:
-        contract = payload.get("contract", [])
+        # The contract comes from configuration, never from a request body.
+        contract = list(self.contract)
         records = [self._map(r, contract) for r in require(payload, "records", list)]
         complete = [r for r in records if not r["unmapped"] and not r["rejected"]]
         return {
             **payload,
             "records": records,
-            "mapped_share": len(complete) / (len(records) or 1),
+            # None, not a vacuous 100%, when there was nothing to map to.
+            "mapped_share": (len(complete) / len(records)) if contract and records else None,
             # Records the rules could not finish. The same set is worth a
             # human's attention and worth adding to the entity master.
             "needs_attention": [r["id"] for r in records if r["unmapped"] or r["rejected"]],
@@ -86,7 +90,9 @@ class {{ class_name }}:
 
             mapped[field] = value
 
-        return {"id": record.get("id"), "mapped": mapped,
+        # The text rides along: a later step that decides from it must not
+        # find that the mapper threw it away.
+        return {"id": record.get("id"), "text": record.get("text"), "mapped": mapped,
                 "unmapped": unmapped, "rejected": rejected}
 
     def _find(self, field: str, source: dict[str, Any]) -> Any:

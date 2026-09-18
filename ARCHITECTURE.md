@@ -51,6 +51,7 @@ intake ──> fact log ──> permutation space ──> gates ──> decide �
 | `emit.py` | Writes the project; validates everything before writing anything |
 | `deploy.py` | Substrate + provisioner assets, TEARDOWN for both |
 | `ops.py` | Runbook, diagnosis walk, SLOs, rollback, CI workflow |
+| `training.py` | The fine-tuning data path emitted beside a finetune decision: recorded split, LoRA recipe, before/after on the holdout |
 | `scan.py` | Hardware detection; only a successful measurement earns DETECTED |
 | `costing.py` | Dated fleet sizing; naive figure beside the real one |
 | `evolution.py` | Overrides, trigger calibration, case emission |
@@ -105,6 +106,7 @@ else that looks like registry knowledge in `src/` is a bug — report it.
 | `tests/` | The deliverable's own model-free smoke: the contract exists, the fence holds at import, the exam refuses to be empty |
 | `deploy/` | Assets for the chosen substrate and provisioner — including the full install path the unit's demands imply — TEARDOWN.md covering both |
 | `ops/` | Runbook opening with the operator's first five minutes, keyed to the failure taxonomy, a diagnosis walk (definitions first, model last), SLOs from stated budgets, the captured baseline, rollback |
+| `train/` | Present beside a fine-tuning decision: a seeded, stratified, de-duplicated split with every digest recorded, the LoRA recipe that refuses changed data and names the adapter by what went into it, the before/after comparison on the holdout the split held back |
 | `ARCHITECTURE.md` | Scope read-out by axis, decisions, tools and in-topology alternatives, agent posture, rejected alternatives, undecided and unrealizable components |
 | `RISKS.md` | Every waived gate with its reason, every overridden recommendation |
 | `COMPLIANCE.md` | The applied locale's obligations, dated, with verification notes |

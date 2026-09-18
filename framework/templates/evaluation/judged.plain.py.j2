@@ -55,7 +55,9 @@ class {{ class_name }}:
 
     def calibrate(self, graded: list[dict[str, Any]]) -> dict[str, Any]:
         """Compare the judge against people who already scored the same items."""
-        agreed = sum(1 for g in graded if abs(g["judge"] - g["human"]) <= g.get("tolerance", 0.2))
+        # Discrete verdicts agree or they do not -- the same rule as
+        # evals/calibrate.py, so there is one definition of "calibrated".
+        agreed = sum(1 for g in graded if g["judge"] == g["human"])
         self.agreement = agreed / (len(graded) or 1)
         return {
             "agreement": self.agreement,

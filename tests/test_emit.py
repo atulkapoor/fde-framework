@@ -6,6 +6,7 @@ rather than described in the documentation, and that anything the framework
 could not decide is loud rather than absent.
 """
 
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -602,9 +603,11 @@ def _raw(text):
                 out[label] = float(match.group().replace(",", ""))
     return out
 
-STEP = representation.Representation(synonyms=SYNONYMS)
+STEP = representation.Representation(synonyms=SYNONYMS, contract=CONTRACT)
 
 def run(payload):
+    from app.shapes import envelope
+    payload = envelope(payload)["input"]  # the contract's refusals, scrubbed input
     if isinstance(payload, str):
         if not payload.strip():
             raise RefusedInput("an empty document holds no fields to extract")
@@ -738,8 +741,10 @@ def test_a_judged_harness_scores_against_a_local_judge(reg, tmp_path):
     emit(architect(profile(**FREEFORM), reg), out, pairs_path=pairs)
 
     (out / "app" / "pipeline.py").write_text(
-        "from app.contract import RefusedInput\n\n\n"
+        "from app.contract import RefusedInput\n"
+        "from app.shapes import envelope\n\n\n"
         "def run(payload):\n"
+        "    payload = envelope(payload)['input']\n"
         "    if isinstance(payload, str) and not payload.strip():\n"
         "        raise RefusedInput('empty question')\n"
         "    return 'A paraphrased but faithful answer.'\n"
@@ -763,7 +768,7 @@ def test_a_judged_harness_scores_against_a_local_judge(reg, tmp_path):
     threading.Thread(target=server.serve_forever, daemon=True).start()
     try:
         result = subprocess.run(
-            [sys.executable, "evals/harness.py", "--min-score", "0.5"],
+            [sys.executable, "evals/harness.py", "--min-score", "0.5", "--allow-uncalibrated"],
             cwd=out, capture_output=True, text=True,
             env={"PATH": "/usr/bin",
                  "LLM_ENDPOINT": f"http://127.0.0.1:{server.server_port}",
@@ -775,8 +780,70 @@ def test_a_judged_harness_scores_against_a_local_judge(reg, tmp_path):
         )
         assert result.returncode == 0, result.stdout + result.stderr
         assert "100.0%" in result.stdout
+        # The same run without asking for a provisional score by name is
+        # red: an uncalibrated judge's number is not a passing grade.
+        strict = subprocess.run(
+            [sys.executable, "evals/harness.py", "--min-score", "0.5"],
+            cwd=out, capture_output=True, text=True,
+            env={"PATH": "/usr/bin",
+                 "LLM_ENDPOINT": f"http://127.0.0.1:{server.server_port}",
+                 "JUDGE_ENDPOINT": f"http://127.0.0.1:{server.server_port}",
+                 "JUDGE_MODEL": "judge-stub"},
+        )
+        assert strict.returncode == 1
+        assert "no judge calibration on record" in strict.stderr
     finally:
         server.shutdown()
+
+
+def test_a_verdict_line_outranks_the_rationale_around_it(reg, tmp_path):
+    """Small judges explain themselves; the explanation says 'incorrect'
+    about a detail and the verdict line says correct. The line that labels
+    itself a verdict wins, wherever it sits."""
+    out = tmp_path / "p"
+    emit(architect(profile(**FREEFORM), reg), out)
+    result = subprocess.run([sys.executable, "-c", """
+import importlib.util
+spec = importlib.util.spec_from_file_location("harness", "evals/harness.py")
+h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
+assert h.parse_verdict("Verdict: correct\\nOne phrase is incorrect in tone.") == 1.0
+assert h.parse_verdict("The tone is incorrect in places.\\nGrade: partial") == 0.5
+assert h.parse_verdict("Overall this is not correct.") == 0.0
+assert h.parse_verdict("incorrect\\ncorrect") == 0.0
+print("ok")
+"""], cwd=out, capture_output=True, text=True, env={"PATH": "/usr/bin"})
+    assert result.returncode == 0, result.stderr
+
+
+def test_a_fact_learned_from_a_person_is_marked_as_asserted(reg, tmp_path):
+    """Residency and hosting decide the governance and the boundary. Stated
+    in an interview they are asserted, not established, and RISKS.md says
+    so; read off the client's own document they stand."""
+    said = tmp_path / "said"
+    p = Profile()
+    p.ingest([Fact(k, v, Provenance.INTERVIEW) for k, v in OPEN.items()])
+    emit(architect(p, reg), said, registry=reg)
+    risks = said.joinpath("RISKS.md").read_text()
+    assert "## Facts this design stands on" in risks
+    assert "`data_residency = may_leave` -- interview -- asserted, not established" in risks
+
+    written = tmp_path / "written"
+    emit(architect(profile(**OPEN), reg), written, registry=reg)
+    risks = written.joinpath("RISKS.md").read_text()
+    assert "`data_residency = may_leave` -- artifact\n" in risks
+    assert "-- artifact -- asserted" not in risks
+
+
+def test_the_readme_says_what_ci_does_and_risks_names_the_advisory_modules(reg, tmp_path):
+    out = tmp_path / "p"
+    emit(architect(profile(**OPEN), reg), out, registry=reg)
+    readme = out.joinpath("README.md").read_text()
+    assert "## What CI does and does not do" in readme
+    assert "red on purpose" in readme
+    risks = out.joinpath("RISKS.md").read_text()
+    if "## Decided, emitted, not on the payload path" in risks:
+        listed = re.findall(r"^- `(\w+)`$", risks.split("not on the payload path", 1)[1], re.M)
+        assert listed, "the advisory section names nothing"
 
 
 def test_an_unconfigured_judge_is_a_clear_red(reg, tmp_path):

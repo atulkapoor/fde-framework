@@ -30,21 +30,21 @@ fde security-review triage --note "client infosec reviewed tool scopes and egres
 fde waive triage client_readiness --reason "triage lead named as eval owner, confirms Thursday"
 
 fde architect triage
-# topology customer-vpc   [86235323d95a908d]
+# topology customer-vpc   [74a1b3d849c01c57]
 #   deployment       systemd-unit via plain-python
 #   evaluation       labelled-metrics via plain-python
 #   governance       audit-only via plain-python
 #   integration      governed-tools via plain-python
 #   observability    traced via plain-python
 #   perception       text-extraction via plain-python
-#   planning         optimisation via plain-python
+#   planning         fixed-sequence via plain-python
 #   provisioning     manual-runbook via plain-python
-#   reasoning        optimisation-reasoning via plain-python
+#   reasoning        labelled-decision via plain-python
 #   representation   deterministic via plain-python
 
 fde build triage --out project
 # wrote project
-# evals: 2 golden, 0 edge, 2 adversarial
+# evals: 2 golden, 0 edge, 11 adversarial
 # next: fde implement project --holdout engagements/triage/artifacts/holdout.jsonl
 ```
 
@@ -56,9 +56,14 @@ still reads:
 
 ```
 **planning**
-- `fixed-sequence` -- ruled out by output_shape == decision
-- `model-planner` -- optimisation is simpler and applies here
+- `optimisation` -- ruled out by input_format == text
+- `model-planner` -- fixed-sequence is simpler and applies here
 ```
+
+The plan for a decision read off free text is read, decide, act -- a fixed
+sequence -- and the decision itself is made by `labelled-decision`, fitted
+on the client's labelled history. A constraint solver was ruled out on the
+record too: a complaint is not an allocation.
 
 A model-driven planner is in the corpus (with a LangGraph realization
 ready), and it is reachable — when the facts demand it, or by

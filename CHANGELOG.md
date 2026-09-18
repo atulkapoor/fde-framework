@@ -5,6 +5,73 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.22] — 2026-09-18
+
+The sixth pass, widened past the edge to the exam, the components and the
+fine-tuning path, signed off the freeform shape with conditions and
+refused the decision shape for reasons that were the generator's. This
+release answers each as a check first.
+
+- **A decision read off labelled text ships a classifier, not a solver.**
+  A hundred and twenty complaints once reached a constraint solver with
+  nothing to optimise and a planning step that 500'd on caller input. A
+  new `labelled-decision` approach applies to a decision over text with a
+  labelled history: the emitted component names the client's labels,
+  fits token log-odds on the golden set at import, decides with a
+  per-label score, and refuses to exist without labels rather than
+  scaffold. Optimisation is ruled out for text input on the record; the
+  plan for a text decision is a fixed sequence. The optimisation planner
+  validates every caller key and its `Infeasible` is a refusal (4xx).
+- **A constant answer is not a passing grade.** The harness computes
+  per-class precision, recall, F1, the confusion and the majority rate
+  for any decision task, and the golden layer is red when the score does
+  not beat the majority. A label is its label whichever way it is
+  written -- a classifier right on every case once scored 0.0% because
+  the pairs said `{"decision": "refund"}` and the pipeline said `refund`.
+- **The exam steers.** Two probes join the adversarial floor: the other
+  case's input steered toward this case's answer, and this case's input
+  steered toward the other's -- each graded against the original label,
+  so a system that follows the injection fails both and a constant
+  answer fails one. Empty, whitespace, oversized, wrong-type and
+  control-character probes join for string inputs; edges are derived
+  from the data when no pair is tagged.
+- **The exam record.** `evals/manifest.json` and the acceptance
+  protocol carry the split seed, the holdout share and the SHA-256 of
+  every eval file and of the engagement's holdout; `fde implement` names
+  a holdout that is not the recorded one, and `fde samples` announces a
+  replaced holdout with both digests. 36 verified pairs once went missing
+  between the split and the shipped holdout and nothing could say so.
+- **An uncalibrated judge is red until asked for by name.** The judged
+  harness refuses to pass without a calibration record unless
+  `--allow-uncalibrated` asks for a provisional score; `fde implement`
+  passes it and marks the report provisional. A line that labels itself
+  a verdict outranks the rationale around it. The same-model judge is
+  refused. `field_coverage` is no longer advertised where it is never
+  computed.
+- **The fine-tuning path is a path, not a sketch.** A finetune decision
+  now emits `train/`: a seeded, stratified, de-duplicated split with
+  every digest recorded (`prepare.py`), a LoRA recipe on `peft` that
+  refuses data whose digest changed and names the adapter by what went
+  into it (`lora.py`), a before/after comparison on the holdout the
+  split held back through the deliverable's own harness (`compare.py`),
+  and model-free tests of all three that the deliverable's CI runs. The
+  serving side answers through `FINETUNED_MODEL` in the exact prompt
+  shape the recipe imports, and refuses without an adapter -- it no
+  longer returns a data split as an answer. `peft` joins the stacks.
+- **Facts this design stands on.** RISKS.md lists the boundary-bearing
+  dimensions with their provenance; a residency learned in an interview
+  is marked asserted, not established. A baseline figure whose
+  definition calls itself an estimate or a scenario is marked stated,
+  not measured, on the SLO page.
+- Also: the deterministic mapper takes its contract from configuration
+  and preserves the text it was given; `mapped_share` is `None` rather
+  than a vacuous 100% when there is nothing to map; the fixed-sequence
+  and optimisation planners return the envelope; the sample assessment
+  warns on exact duplicates, conflicting labels and a truncation
+  cluster; `LLM_API_KEY` is documented; the labelled-decision and
+  fine-tuning realisations are pinned in `tests/test_acceptance.py` and
+  `tests/test_finetune.py`.
+
 ## [0.1.21] — 2026-09-18
 
 The fifth-pass audit returned the first sign-off, with conditions. Two

@@ -57,7 +57,7 @@ fde architect engagements/acme
 
 fde build engagements/acme --out project
 # wrote project
-# evals: 3 golden, 0 edge, 2 adversarial
+# evals: 2 golden, 0 edge, 8 adversarial
 # next: fde implement project --holdout engagements/acme/artifacts/holdout.jsonl
 ```
 

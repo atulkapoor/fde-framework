@@ -60,8 +60,8 @@ def test_a_field_it_cannot_map_is_reported_not_invented(extraction):
     refusal, because nothing downstream can tell it is wrong."""
     result = run_in(extraction, """
 from app.components.representation import Representation
-out = Representation().run({"records": [{"id": "1", "raw": {"Acct No": "GB29-1234"}}],
-                            "contract": ["account", "total"]})
+out = Representation(contract=["account", "total"]).run(
+    {"records": [{"id": "1", "raw": {"Acct No": "GB29-1234"}}]})
 assert "total" in out["records"][0]["unmapped"]
 assert "total" not in out["records"][0]["mapped"]
 print("ok")
@@ -72,9 +72,9 @@ print("ok")
 def test_a_known_synonym_maps(extraction):
     result = run_in(extraction, """
 from app.components.representation import Representation
-r = Representation(synonyms={"account": ["acct no", "account number"]})
-out = r.run({"records": [{"id": "1", "raw": {"Acct No": "GB29-1234"}}],
-             "contract": ["account"]})
+r = Representation(synonyms={"account": ["acct no", "account number"]},
+                   contract=["account"])
+out = r.run({"records": [{"id": "1", "raw": {"Acct No": "GB29-1234"}}]})
 assert out["records"][0]["mapped"]["account"] == "GB29-1234"
 print("ok")
 """)
@@ -86,9 +86,9 @@ def test_a_value_failing_its_validator_is_rejected_not_coerced(extraction):
     result = run_in(extraction, """
 from app.components.representation import Representation
 r = Representation(synonyms={"total": ["amount"]},
-                   validators={"total": lambda v: v.replace(",", "").isdigit()})
-out = r.run({"records": [{"id": "1", "raw": {"Amount": "four thousand"}}],
-             "contract": ["total"]})
+                   validators={"total": lambda v: v.replace(",", "").isdigit()},
+                   contract=["total"])
+out = r.run({"records": [{"id": "1", "raw": {"Amount": "four thousand"}}]})
 assert out["records"][0]["rejected"]["total"]
 print("ok")
 """)
@@ -98,10 +98,9 @@ print("ok")
 def test_the_batch_reports_how_much_it_could_map(extraction):
     result = run_in(extraction, """
 from app.components.representation import Representation
-r = Representation(synonyms={"account": ["acct no"]})
+r = Representation(synonyms={"account": ["acct no"]}, contract=["account"])
 out = r.run({"records": [{"id": "1", "raw": {"Acct No": "X"}},
-                         {"id": "2", "raw": {"Mystery": "Y"}}],
-             "contract": ["account"]})
+                         {"id": "2", "raw": {"Mystery": "Y"}}]})
 assert out["mapped_share"] == 0.5
 print("ok")
 """)
@@ -195,5 +194,42 @@ a.explain("c", outcome="declined", drivers=[("balance", -0.9), ("tenure", 0.2)])
 said = a.narrate("c")
 assert "balance" in said and "against" in said
 print(said)
+""")
+    assert result.returncode == 0, result.stderr
+
+
+# --- an allocation under constraints: refused at the door, never a 500 ----
+
+
+@pytest.fixture(scope="module")
+def allocation(reg, tmp_path_factory):
+    return project(
+        reg, tmp_path_factory.mktemp("alloc"),
+        output_shape="decision", input_format="structured_data", query_pattern="lookup",
+        corpus_size=5_000, labelled_count=0, data_residency="cannot_leave",
+        hosting="on-prem", external_systems=1, human_waiting="no", latency_budget_ms=200,
+    )
+
+
+def test_malformed_allocation_input_is_a_refusal_not_a_traceback(allocation):
+    """items as strings, an item without an id, a capacity that is a string,
+    an infeasible ask -- each was a 500 three steps in; each is a refusal
+    the edge turns into a 4xx, and Infeasible is one of them."""
+    result = run_in(allocation, """
+from app.components.planning import Infeasible, Planning
+from app.contract import RefusedInput
+assert issubclass(Infeasible, RefusedInput)
+for bad in ({"items": ["x"], "capacity": {}},
+            {"items": [{"size": 5}], "capacity": {}},
+            {"items": [{"id": "a"}], "capacity": "str"},
+            {"items": [{"id": "a", "size": "big"}], "capacity": {"r": 1}}):
+    try:
+        Planning().run(bad)
+    except RefusedInput:
+        continue
+    raise SystemExit("accepted " + repr(bad))
+untouched = Planning().run({"text": "nothing to allocate"})
+assert untouched == {"text": "nothing to allocate"}
+print("ok")
 """)
     assert result.returncode == 0, result.stderr

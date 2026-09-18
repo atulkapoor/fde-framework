@@ -4,6 +4,7 @@ component: representation
 approach: finetune
 realizations:
   - {stack: plain-python, template: representation/finetune.plain.py.j2, provides: Mapper}
+  - {stack: peft, template: representation/finetune.plain.py.j2, provides: Mapper}
 evidence: {case_ids: [structured-extraction], confidence: medium, last_verified: 2026-08-21}
 ---
 Implements finetune for representation, satisfying Mapper.

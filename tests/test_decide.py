@@ -47,7 +47,8 @@ CHURN = values(output_shape="classification", corpus_size=2_000_000,
                labelled_count=50_000, interpretability_required=True,
                latency_budget_ms=10)
 STUDIO = values(output_shape="freeform", hosting="air-gapped", human_waiting="no")
-ROUTE = values(output_shape="decision", latency_budget_ms=200)
+ROUTE = values(output_shape="decision", input_format="structured_data",
+               latency_budget_ms=200)
 
 
 # --- the right answer, not the fashionable one ---------------------------

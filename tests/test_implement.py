@@ -234,6 +234,38 @@ def test_a_real_implementation_passes_the_holdout(tmp_path):
     assert "holdout: green" in report.rounds[-1].check_tail
 
 
+def test_a_holdout_that_is_not_the_recorded_one_is_named_as_such(tmp_path):
+    """36 verified pairs once went missing between the split and the file
+    handed to this check, and nothing said so. The build records the
+    holdout's digest; a green against a different file says which."""
+    import hashlib
+    import json
+
+    project = toy_project(tmp_path)
+    (project / "evals" / "harness.py").write_text(
+        "import argparse\np = argparse.ArgumentParser()\n"
+        "p.add_argument('--min-score', type=float, default=0.0)\n"
+        "p.add_argument('--cases', default=None)\np.parse_args()\n"
+    )
+    holdout = tmp_path / "holdout.jsonl"
+    holdout.write_text('{"id": "h", "input": "q9", "output": "A9"}\n')
+    recorded = hashlib.sha256(b"a different holdout\n").hexdigest()
+    (project / "evals" / "manifest.json").write_text(json.dumps(
+        {"holdout": {"sha256": recorded, "cases": 1}}))
+
+    report = run_loop(project, invoke_agent=lambda prompt: True, max_rounds=2,
+                      holdout=holdout)
+    assert report.done
+    assert "NOT the file recorded at build" in report.rounds[-1].check_tail
+
+    (project / "evals" / "manifest.json").write_text(json.dumps(
+        {"holdout": {"sha256": hashlib.sha256(holdout.read_bytes()).hexdigest(),
+                     "cases": 1}}))
+    report = run_loop(project, invoke_agent=lambda prompt: True, max_rounds=2,
+                      holdout=holdout)
+    assert "the file the build recorded" in report.rounds[-1].check_tail
+
+
 def test_the_interpreters_bytecode_cache_is_not_a_planted_file(tmp_path):
     """Importing evals/taxonomy writes a __pycache__ beside it on the very
     first harness run. The first full demonstration engagement stopped at

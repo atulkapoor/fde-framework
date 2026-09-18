@@ -484,18 +484,34 @@ def samples_cmd(
     from fde.intake.samples import split_pairs
 
     holdout_ids = set(split_pairs(pairs).holdout_ids)
+    holdout_note = ""
     if holdout_ids:
-        (engagement.artifacts_dir / "holdout.jsonl").write_text("".join(
+        holdout_path = engagement.artifacts_dir / "holdout.jsonl"
+        body_holdout = "".join(
             json.dumps(pair) + "\n" for pair in pairs
             if pair.get("id") in holdout_ids
-        ))
+        )
+        if holdout_path.exists() and holdout_path.read_text() != body_holdout:
+            # A replaced holdout silently retires every implement run scored
+            # against the old one; say so with both digests on the record.
+            import hashlib
+
+            before = hashlib.sha256(holdout_path.read_bytes()).hexdigest()[:12]
+            after = hashlib.sha256(body_holdout.encode()).hexdigest()[:12]
+            holdout_note = (
+                f"\nholdout replaced: artifacts/holdout.jsonl differed (sha256 "
+                f"{before} -> {after}). Any implement run scored against the old "
+                f"holdout is no longer comparable; rebuild so the exam record "
+                f"matches."
+            )
+        holdout_path.write_text(body_holdout)
     if sensitive:
         (engagement.artifacts_dir / "sensitive_fields.json").write_text(
             json.dumps(sorted(set(sensitive)))
         )
 
     suite = build_eval_set(pairs)
-    typer.echo(f"{len(pairs)} pairs, {len(contract.fields)} fields\n")
+    typer.echo(f"{len(pairs)} pairs, {len(contract.fields)} fields{holdout_note}\n")
     for name, entry in sorted(contract.fields.items()):
         marks = " ".join(
             m for m in ("required" if entry.required else "optional", entry.sensitivity or "")

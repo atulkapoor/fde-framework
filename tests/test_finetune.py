@@ -1,0 +1,183 @@
+"""A fine-tuning decision ships its data path, and its serving side answers
+through an adapter or refuses -- never with a data split dressed as an answer.
+
+The sixth audit pass read the finetune emission as a sketch: one method that
+split a list in memory, a run() that returned the split, no recipe, no
+before/after, no record of what an adapter learned from. Every finding is a
+check here before it is a fix.
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+from fde.architect import architect
+from fde.emit import emit
+from fde.models.base import Provenance
+from fde.models.fact import Fact
+from fde.models.profile import Profile
+from fde.registry import load_registry
+
+FRAMEWORK = Path(__file__).resolve().parents[1] / "framework"
+
+HOUSE_STYLE = dict(
+    output_shape="freeform", input_format="text", corpus_size=40_000,
+    labelled_count=2_000, data_residency="cannot_leave", hosting="on-prem",
+    external_systems=0, human_waiting="no", query_pattern="lookup",
+)
+
+
+@pytest.fixture(scope="module")
+def reg():
+    return load_registry(FRAMEWORK)
+
+
+@pytest.fixture(scope="module")
+def trained(reg, tmp_path_factory):
+    """A freeform build whose reasoning was overridden to finetune -- the
+    corpus's own rule is that the prompted model wins the opening move."""
+    out = tmp_path_factory.mktemp("finetune")
+    profile = Profile()
+    profile.ingest([Fact(k, v, Provenance.ARTIFACT) for k, v in HOUSE_STYLE.items()])
+    architecture = architect(
+        profile, reg,
+        overrides={"reasoning": {"chosen": "finetune", "because": "house style, measured"}},
+    )
+    assert architecture.decisions["reasoning"].approach == "finetune"
+    emit(architecture, out, registry=reg)
+    return out
+
+
+def run_in(out: Path, code: str, env: dict | None = None):
+    return subprocess.run(
+        [sys.executable, "-c", code], cwd=out, capture_output=True, text=True,
+        timeout=120, env={"PATH": "/usr/bin", **(env or {})},
+    )
+
+
+def test_the_data_path_ships_beside_the_decision(trained):
+    for name in ("prepare.py", "lora.py", "compare.py", "README.md", "requirements.txt"):
+        assert (trained / "train" / name).exists(), name
+    assert (trained / "tests" / "test_train.py").exists()
+    readme = (trained / "README.md").read_text()
+    assert "`train/`" in readme
+
+
+def test_the_adapter_is_named_in_the_environment(trained):
+    env = (trained / "deploy" / "env.example").read_text()
+    assert "FINETUNED_MODEL=" in env
+    assert "LLM_ENDPOINT=" in env  # the serving side goes through the one model seam
+
+
+def test_the_emitted_data_path_passes_its_own_tests(trained):
+    """The deliverable's CI runs these model-free: the split is recorded and
+    deterministic, the recipe plans without a GPU, changed data is refused."""
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/test_train.py"],
+        cwd=trained, capture_output=True, text=True, timeout=300,
+    )
+    assert result.returncode == 0, result.stdout[-2500:] + result.stderr[-800:]
+
+
+def test_the_data_path_is_lint_clean(trained):
+    pytest.importorskip("ruff")
+    result = subprocess.run(
+        [sys.executable, "-m", "ruff", "check", "--isolated", "--select", "F,E,W,I,B,UP",
+         "--line-length", "100", str(trained)],
+        capture_output=True, text=True, timeout=120,
+    )
+    assert result.returncode == 0, result.stdout[-1500:]
+
+
+def test_run_refuses_without_an_adapter_instead_of_returning_a_split(trained):
+    result = run_in(trained, """
+from app.components.reasoning import Reasoning
+from app.llm import ModelUnconfigured
+try:
+    Reasoning().run({"query": "How should we phrase a refund refusal?"})
+except ModelUnconfigured as exc:
+    assert "FINETUNED_MODEL" in str(exc)
+    print("refused")
+""")
+    assert result.returncode == 0, result.stderr
+    assert "refused" in result.stdout
+
+
+def test_run_answers_through_the_adapter_in_the_training_prompt_shape(trained):
+    result = run_in(trained, """
+import app.llm
+from app.components import reasoning
+seen = {}
+def fake_complete(prompt, timeout=None, *, endpoint=None, model=None):
+    seen["prompt"], seen["model"] = prompt, model
+    return " We are sorry, but the fee stands. "
+app.llm.complete = fake_complete
+out = reasoning.Reasoning().run({"query": "Refuse the refund politely.",
+                                 "retrieved": [{"id": "d1", "text": "Fees are final."}]})
+assert out["answer"] == "We are sorry, but the fee stands."
+assert out["answered_by"] == "v-abc123"
+assert seen["model"] == "v-abc123"
+assert seen["prompt"] == reasoning.format_prompt("Refuse the refund politely.",
+                                                 [{"id": "d1", "text": "Fees are final."}])
+assert "=== EVIDENCE ===" in seen["prompt"]
+print("ok")
+""", env={"FINETUNED_MODEL": "v-abc123"})
+    assert result.returncode == 0, result.stderr
+    assert "ok" in result.stdout
+
+
+def test_the_recipe_trains_on_the_prompt_the_component_serves(trained):
+    """One prompt shape, imported rather than copied: the recipe's example()
+    must produce exactly what format_prompt produces."""
+    result = run_in(trained, """
+import sys
+sys.path.insert(0, "train")
+import lora
+from app.components.reasoning import format_prompt
+prompt, completion = lora.example(
+    {"input": "Q?", "output": "A.", "evidence": [{"id": "x", "text": "t"}]})
+assert prompt == format_prompt("Q?", [{"id": "x", "text": "t"}])
+assert completion == "A."
+print("ok")
+""")
+    assert result.returncode == 0, result.stderr
+
+
+def test_a_mapper_adapter_reports_what_it_could_not_parse(reg, tmp_path):
+    """The representation side: a reply that is not JSON is reported, never
+    invented, and a field the reply did not produce is unmapped."""
+    out = tmp_path / "mapper"
+    profile = Profile()
+    profile.ingest([Fact(k, v, Provenance.ARTIFACT) for k, v in dict(
+        output_shape="structured", input_format="documents", corpus_size=50_000,
+        labelled_count=5_000, data_residency="cannot_leave", hosting="on-prem",
+        external_systems=0, human_waiting="no", query_pattern="lookup",
+    ).items()])
+    architecture = architect(
+        profile, reg,
+        overrides={"representation": {"chosen": "finetune", "because": "layouts vary"}},
+    )
+    assert architecture.decisions["representation"].approach == "finetune"
+    emit(architecture, out, registry=reg)
+    assert (out / "train" / "lora.py").exists()
+    result = run_in(out, """
+import app.llm
+from app.components.representation import Representation
+replies = iter(['{"total": "12.50", "extra": 1}', "not json at all"])
+app.llm.complete = lambda prompt, timeout=None, *, endpoint=None, model=None: next(replies)
+r = Representation(contract=["total", "account"], adapter="v1")
+out = r.run({"records": [{"id": "1", "raw": {"Amount": "12.50"}}, {"id": "2", "raw": {}}]})
+first, second = out["records"]
+assert first["mapped"] == {"total": "12.50"} and first["unmapped"] == ["account"]
+assert second["mapped"] == {} and not second["reply_was_json"]
+assert out["needs_attention"] == ["1", "2"]
+print("ok")
+""")
+    assert result.returncode == 0, result.stderr
+    manifest = json.loads((out / "evals" / "manifest.json").read_text())
+    assert manifest["holdout"] is None  # no pairs, no holdout: recorded as such

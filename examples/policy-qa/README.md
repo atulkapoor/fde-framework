@@ -53,7 +53,7 @@ fde architect helpdesk
 # not decided: perception
 
 fde build helpdesk --out project
-# evals: 2 golden, 0 edge, 2 adversarial
+# evals: 2 golden, 0 edge, 11 adversarial
 # next: fde implement project --holdout engagements/helpdesk/artifacts/holdout.jsonl
 ```
 

@@ -9,6 +9,7 @@ avoid_when:
   - output_shape == structured
   - output_shape == classification
   - output_shape == decision and labelled_count >= 1000
+  - input_format == text
 evidence: {case_ids: [route-planning], confidence: high, last_verified: 2026-08-31}
 ---
 A solver as the reasoner, for decisions that are genuinely assignments under
@@ -28,3 +29,8 @@ labelled, the solver does.
 Split from the planning-side optimisation on purpose: an airline recovery
 plan and a per-unit disposition share an algorithm family and nothing else,
 and one avoid rule serving both components punished the wrong one.
+
+A narrative is not an allocation either: a decision read off free text
+with a labelled history belongs to labelled-decision, however few the
+labels -- a solver given a hundred and twenty complaints once had
+nothing to optimise and the deliverable had no path from text to label.

@@ -38,9 +38,14 @@ class {{ class_name }}:
         """One. Enumerable is not a figure of speech here."""
         return 1
 
-    def run(self, payload: Any) -> dict[str, Any]:
-        state, trace = payload, []
+    def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Envelope in, envelope out. Each configured step transforms the
+        envelope in order; the plan records the path taken, which was known
+        before anything ran."""
+        state: dict[str, Any] = payload
+        trace: list[str] = []
         for name, step in self.steps:
             state = step(state)
             trace.append(name)
-        return {"result": state, "trace": trace, "stopped_because": "sequence_complete"}
+        return {**state, "plan": {"steps": self.plan(str(payload.get("goal", ""))),
+                                  "trace": trace, "stopped_because": "sequence_complete"}}

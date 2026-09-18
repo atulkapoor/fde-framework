@@ -23,6 +23,7 @@ for the person running this, not for this module.
 from __future__ import annotations
 
 import hashlib
+import json
 import shlex
 import subprocess
 import sys
@@ -57,6 +58,7 @@ class ImplementReport:
     rounds: list[Round]
     done: bool
     stopped_by: str  # "harness green" | "round cap" | "guardrail" | "agent failed"
+    provisional: bool = False
 
     def log(self) -> str:
         lines = ["# Implementation log", ""]
@@ -75,6 +77,11 @@ class ImplementReport:
                 lines.append("```")
             lines.append("")
         lines.append(f"**Stopped by**: {self.stopped_by}.")
+        if self.provisional:
+            lines.append("")
+            lines.append("**Provisional**: this build is judged and the judge is not yet "
+                         "calibrated; no score above is quotable until `evals/calibrate.py` "
+                         "passes on hand-graded cases.")
         lines.append("")
         return "\n".join(lines)
 
@@ -88,6 +95,29 @@ def _protected_files(project: Path) -> list[Path]:
 
 def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _holdout_provenance(project: Path, holdout: Path) -> str:
+    """One line when the holdout is not the file the build recorded.
+
+    A green against a holdout nobody can tie to the split is a green
+    against an unknown exam -- 36 verified pairs once went missing between
+    the split and the file handed to this check, and nothing said so."""
+    manifest = project / "evals" / "manifest.json"
+    if not manifest.exists():
+        return ""
+    try:
+        recorded = (json.loads(manifest.read_text()).get("holdout") or {}).get("sha256")
+    except (ValueError, AttributeError):
+        return ""
+    if not recorded:
+        return ""
+    actual = hashlib.sha256(holdout.read_bytes()).hexdigest()
+    if actual == recorded:
+        return " -- the file the build recorded"
+    return (f"\nholdout: NOT the file recorded at build (sha256 {actual[:12]} != "
+            f"{recorded[:12]}) -- the exam changed since the build; this green is "
+            f"against a different exam than the one on record")
 
 
 def _snapshot(project: Path) -> dict[Path, tuple[str, bytes]]:
@@ -113,6 +143,11 @@ def _run_check(project: Path, check: str | None,
     command = shlex.split(check) if check else [
         sys.executable, "evals/harness.py", "--min-score", "0.85",
     ]
+    # The loop drives to green BEFORE a judge can be calibrated (calibration
+    # needs answers to grade), so a judged build's green is provisional and
+    # asked for by name; the report says so where the loop stops.
+    if "--allow-uncalibrated" not in command and (project / "evals" / "calibrate.py").exists():
+        command = command + ["--allow-uncalibrated"]
     command = command + (extra or [])
     try:
         result = subprocess.run(  # noqa: S603 - the check is the caller's own command
@@ -248,8 +283,12 @@ def run_loop(
                 return ImplementReport(rounds, done=False,
                                        stopped_by="holdout red")
             tail += "\nholdout: green (cases the implementer never saw)"
+            tail += _holdout_provenance(project, Path(holdout))
         rounds.append(Round(number, True, tail))
-        return ImplementReport(rounds, done=True, stopped_by="harness green")
+        provisional = ((project / "evals" / "calibrate.py").exists()
+                       and not (project / "evals" / "judge-calibration.json").exists())
+        return ImplementReport(rounds, done=True, stopped_by="harness green",
+                               provisional=provisional)
 
     for number in range(1, max_rounds + 1):
         passed, tail = _run_check(project, check, timeout=check_timeout)

@@ -13,6 +13,7 @@ what it does.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from fde.models.schema import earliest_cap
@@ -356,6 +357,7 @@ def _baseline_lines(baseline) -> list[str]:
         ]
     lines = ["**Captured.** The numbers to beat, by their recorded "
              "definitions:", ""]
+    stated = 0
     for key, entry in baseline.items():
         if key == "sampled" or not isinstance(entry, dict):
             continue
@@ -364,7 +366,16 @@ def _baseline_lines(baseline) -> list[str]:
         line = f"- **{key}** — {value} {unit}".rstrip()
         if definition:
             line += f" ({definition})"
+        # A definition that calls itself an estimate, a scenario or an
+        # assumption is a number somebody said, and the file says so.
+        if re.search(r"estimat|scenario|assum|guess|approx", definition, re.I):
+            line += " — **stated, not measured**"
+            stated += 1
         lines.append(line)
+    if stated:
+        lines += ["", f"{stated} of these figures are stated rather than measured. The "
+                  "acceptance protocol's bar is the measured error rate; capture "
+                  "it by the same definition before quoting a delta."]
     sampled = baseline.get("sampled")
     if isinstance(sampled, dict):
         lines.append(

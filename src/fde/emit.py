@@ -13,6 +13,7 @@ hole that imports cleanly is a hole found in production.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from dataclasses import dataclass, field
@@ -23,10 +24,19 @@ from jinja2 import Environment, FileSystemLoader, TemplateNotFound
 from fde.architect import Architecture
 from fde.decide import base_component as _base
 from fde.deploy import write_deploy
-from fde.intake.samples import build_eval_set, infer_contract, infer_metrics, load_pairs
+from fde.graph import TOPOLOGY_DIMENSION
+from fde.intake.samples import (
+    HOLDOUT_SHARE,
+    SPLIT_SEED,
+    build_eval_set,
+    infer_contract,
+    infer_metrics,
+    load_pairs,
+)
 from fde.moves import BoundaryViolation, assert_boundary
 from fde.ops import measurable_retrieval, write_ops
 from fde.registry import Registry
+from fde.training import trained_components, write_training
 
 
 class BuildRefused(Exception):
@@ -85,7 +95,8 @@ def emit(
     _write_package(architecture, out)
     _write_shapes(architecture, out)
     scaffolded = _write_components(
-        architecture, out, env, sensitive_fields=_sensitive_fields(pairs_path)
+        architecture, out, env, sensitive_fields=_sensitive_fields(pairs_path),
+        labels=_label_set(pairs_path)
     )
     _write_pipeline(architecture, out, registry)
     _write_ledger(architecture, out)
@@ -99,8 +110,9 @@ def emit(
     _write_project_file(out)
     _write_gitignore(out)
     _write_smoke(out)
+    write_training(architecture, out)
     (out / "ARCHITECTURE.md").write_text(render_architecture(architecture, registry))
-    _write_risks(out, waivers or [], overrides or [], architecture)
+    _write_risks(out, waivers or [], overrides or [], architecture, registry)
     return EmitReport(path=out, scaffolded=scaffolded)
 
 
@@ -117,7 +129,9 @@ def _cell(text) -> str:
     return _flat(text).replace("|", "\\|")
 
 
-def _write_risks(out: Path, waivers, overrides, architecture: Architecture) -> None:
+def _write_risks(
+    out: Path, waivers, overrides, architecture: Architecture, registry: Registry | None = None,
+) -> None:
     """What was waved through, and what was chosen against the rules.
 
     Four separate places promise that waivers and conflicting overrides
@@ -148,6 +162,17 @@ def _write_risks(out: Path, waivers, overrides, architecture: Architecture) -> N
                   "payload path.", ""]
         lines += [f"- `{name}`" for name in scaffolds]
         lines.append("")
+    advisory = sorted(c for c in architecture.decisions.decided() if c in _NON_PAYLOAD)
+    if advisory:
+        lines += ["## Decided, emitted, not on the payload path", "",
+                  "These components were decided and their modules are emitted, but "
+                  "the request path does not run them: the edge's structured log is the "
+                  "observability that runs, the ledger is the audit that runs, the unit is "
+                  "the deployment. Each module says so in its first lines. Wire one in, or "
+                  "leave it as the reference it is -- but do not read its presence as "
+                  "running code.", ""]
+        lines += [f"- `{c}`" for c in advisory]
+        lines.append("")
     if "integration" in architecture.decisions.decided():
         lines += ["## Identity at the edge", "",
                   "One bearer token, one service principal, one set of scopes: "
@@ -155,6 +180,15 @@ def _write_risks(out: Path, waivers, overrides, architecture: Architecture) -> N
                   "the service, not a person. Per-caller identity is an "
                   "`access_model` decision nobody has answered; accept this or "
                   "front the service with something that does.", ""]
+    standing = _standing_facts(architecture, registry)
+    if standing:
+        lines += ["## Facts this design stands on", "",
+                  "The governance, the boundary and the topology follow from these "
+                  "values. A value learned from a person or inferred is asserted, "
+                  "not established -- confirm it with the client before the "
+                  "decision that rests on it stands.", ""]
+        lines += standing
+        lines.append("")
     if architecture.assumptions:
         lines += ["## Unanswered assumptions", "",
                   "Decisions were made without these facts. Each is a risk "
@@ -244,6 +278,13 @@ def _refuse_if_unsound(
 # --- code ----------------------------------------------------------------
 
 
+def _train_row(architecture: Architecture) -> str:
+    if not trained_components(architecture):
+        return ""
+    return ("| `train/` | The fine-tuning data path: a seeded, stratified, recorded "
+            "split, the LoRA recipe, the before/after comparison on the holdout |\n")
+
+
 def _write_package(architecture: Architecture, out: Path) -> None:
     (out / "app" / "__init__.py").write_text(
         f'"""Generated from an engagement profile.\n\n'
@@ -292,6 +333,16 @@ def _write_package(architecture: Architecture, out: Path) -> None:
         "\n"
         "Variables a build does not read are commented out in `deploy/env.example`.\n"
         "\n"
+        "## What CI does and does not do\n"
+        "\n"
+        "The workflow runs the deliverable's own tests on every push, model-free.\n"
+        "The evaluation gates at `--min-score 0.0` (no regression) and is red\n"
+        "until the exam is seeded from the client's pairs -- an empty exam is\n"
+        "red on purpose. A judged evaluation needs a model; on a build whose\n"
+        "data may not leave it runs only on a self-hosted runner labelled\n"
+        "`inside-boundary`, never on a hosted one, and its score is not quotable\n"
+        "until `evals/calibrate.py` passes.\n"
+        "\n"
         "## The pieces\n"
         "\n"
         "| Path | What it is |\n"
@@ -318,6 +369,7 @@ def _write_package(architecture: Architecture, out: Path) -> None:
         "| `deploy/` | The substrate this profile earned, its install path, "
         "and how to tear it down |\n"
         "| `ops/` | Runbook keyed to the failure taxonomy, SLOs, rollback |\n"
+        + _train_row(architecture) +
         "\n"
         "Regenerating from the same facts reproduces this project byte for\n"
         "byte; a diff between two builds means a decision changed.\n"
@@ -370,11 +422,28 @@ Keys, by who writes them:
 
 from __future__ import annotations
 
+import re
 from typing import Any, Protocol
 
 from app.contract import RefusedInput
 
 RESERVED = ("request_id", "principal")
+# Control characters and zero-width marks carry no content and smuggle a
+# lot: a NUL, a zero-width joiner inside an identifier, a BOM. Scrubbed
+# from every string a caller sends, before any step reads it.
+INVISIBLE = re.compile(
+    "[\\u0000-\\u0008\\u000b\\u000c\\u000e-\\u001f\\u007f\\u200b-\\u200f\\u2060\\ufeff]"
+)
+
+
+def _clean(value: Any) -> Any:
+    if isinstance(value, str):
+        return INVISIBLE.sub("", value)
+    if isinstance(value, list):
+        return [_clean(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _clean(v) for k, v in value.items()}
+    return value
 
 # What a caller may send TO THIS BUILD -- generated from the components on
 # its request path, so a key nothing here reads is refused by name rather
@@ -399,6 +468,7 @@ def envelope(raw: Any) -> dict[str, Any]:
     an object is taken as it is, minus the reserved keys. Anything else
     is refused: the pipeline never guesses what None was meant to be.
     """
+    raw = _clean(raw)
     if isinstance(raw, dict):
         body = {k: v for k, v in raw.items() if k not in RESERVED}
         unknown = sorted(k for k in body if k not in CALLER_KEYS)
@@ -927,7 +997,8 @@ def build_handler(config: dict):
                     {k: item.get(k) for k in ("id", "source", "rank") if k in item}
                     for item in env["retrieved"]
                 ]
-            for key in ("stopped_because", "steps", "cost", "retrieval_note"):
+            for key in ("stopped_because", "steps", "cost", "retrieval_note",
+                        "cited", "evidence_dropped", "decided_by", "baseline"):
                 if key in env:
                     response[key] = env[key]
             _log(level="info", request_id=self.request_id, event="answered",
@@ -1320,6 +1391,28 @@ def _write_ledger(architecture: Architecture, out: Path) -> None:
         (out / "app" / "ledger.py").write_text(_LEDGER)
 
 
+def _label_set(pairs_path: Path | None) -> list[str]:
+    """The distinct decisions the client's pairs record, in order of
+    frequency. A string output is the label; a one-field object is its
+    value; anything wider is not a label set."""
+    if not pairs_path or not Path(pairs_path).exists():
+        return []
+    try:
+        pairs = load_pairs(pairs_path)
+    except Exception:  # noqa: BLE001 -- unreadable pairs decide nothing here
+        return []
+    counts: dict[str, int] = {}
+    for pair in pairs:
+        output = pair.get("output")
+        if isinstance(output, dict) and len(output) == 1:
+            output = next(iter(output.values()))
+        if isinstance(output, str) and output.strip():
+            counts[output] = counts.get(output, 0) + 1
+    if len(counts) < 2 or len(counts) > 50:
+        return []
+    return [label for label, _ in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
+
+
 def _sensitive_fields(pairs_path: Path | None) -> str:
     """The declared sensitive fields, as a Python tuple body for templates.
 
@@ -1344,7 +1437,8 @@ def _sensitive_fields(pairs_path: Path | None) -> str:
 
 
 def _write_components(
-    architecture: Architecture, out: Path, env, sensitive_fields: str = ""
+    architecture: Architecture, out: Path, env, sensitive_fields: str = "",
+    labels: list[str] | None = None,
 ) -> list[str]:
     scaffolded = []
     for component, decision in sorted(architecture.decisions.items()):
@@ -1361,7 +1455,7 @@ def _write_components(
             continue
         body, was_scaffold = _implementation(
             component, decision, realization, env, sensitive_fields,
-            values=architecture.values,
+            values=architecture.values, labels=labels or [],
         )
         if was_scaffold:
             scaffolded.append(component)
@@ -1438,7 +1532,7 @@ def _scaffold(component: str, decision, realization) -> str:
 
 def _implementation(
     component: str, decision, realization, env, sensitive_fields: str = "",
-    values: dict | None = None,
+    values: dict | None = None, labels: list[str] | None = None,
 ) -> str:
     """The reference implementation if one exists, a scaffold otherwise.
 
@@ -1460,6 +1554,10 @@ def _implementation(
         class_name=_class_name(component),
         rejected=decision.rejected,
         sensitive_fields=sensitive_fields,
+        # The label set a decision is made from, read off the client's own
+        # pairs: a decision component that does not know its labels is a
+        # solver looking for constraints.
+        labels=labels or [],
         # Everything discovery settled, so a template can carry the
         # engagement's own numbers instead of a reference default -- the
         # difference between generated code and generic code.
@@ -1946,6 +2044,7 @@ from __future__ import annotations
 import json
 import os
 import time
+import urllib.error
 import urllib.request
 
 
@@ -1977,21 +2076,37 @@ def complete(prompt: str, timeout: float | None = None, *,
             # it feels like reasoning; a person is sometimes waiting.
             "max_tokens": int(os.environ.get("LLM_MAX_TOKENS", "512")),
         }).encode()
+        headers = {"Content-Type": "application/json"}
+        if os.environ.get("LLM_API_KEY"):
+            # A local server behind an auth proxy (vLLM --api-key) still
+            # lives inside the boundary; the key rides in the header.
+            headers["Authorization"] = "Bearer " + os.environ["LLM_API_KEY"]
         request = urllib.request.Request(
-            endpoint.rstrip("/") + "/v1/chat/completions",
-            data=body, headers={"Content-Type": "application/json"},
+            endpoint.rstrip("/") + "/v1/chat/completions", data=body, headers=headers,
         )
-        # One bounded retry: a transport blip is not a model failure,
-        # and a person may be waiting on the difference.
+        # One bounded retry on a TRANSPORT failure or a 5xx: a blip is not
+        # a model failure, and a person may be waiting on the difference.
+        # A 4xx is deterministic and is never retried -- doubling load on a
+        # server that already said no is how a brownout becomes an outage.
         last_error = None
         for attempt in (1, 2):
             try:
                 with urllib.request.urlopen(request, timeout=timeout) as response:
-                    return json.load(response)["choices"][0]["message"]["content"]
+                    reply = json.load(response)
+                try:
+                    return reply["choices"][0]["message"]["content"]
+                except (KeyError, IndexError, TypeError) as exc:
+                    raise ModelUnconfigured(
+                        f"the model endpoint answered without a completion: "
+                        f"{str(reply)[:120]}") from exc
+            except urllib.error.HTTPError as exc:
+                if exc.code < 500:
+                    raise
+                last_error = exc
             except (urllib.error.URLError, TimeoutError) as exc:
                 last_error = exc
-                if attempt == 1:
-                    time.sleep(0.5)
+            if attempt == 1:
+                time.sleep(0.5)
         raise last_error
 
     if os.environ.get("ANTHROPIC_API_KEY"):
@@ -2029,7 +2144,7 @@ def _needs_model(architecture: Architecture) -> bool:
         d.approach for d in architecture.decisions.values() if d.approach
     }
     return bool(approaches & {"judged", "llm", "llm-extraction", "llm-scrubbing",
-                              "cascade", "model-planner"})
+                              "cascade", "model-planner", "finetune"})
 
 
 def _write_evals(
@@ -2050,7 +2165,14 @@ def _write_evals(
     pairs = load_pairs(pairs_path) if pairs_path and pairs_path.exists() else []
     suite = build_eval_set(pairs) if pairs else None
     contract = infer_contract(pairs) if pairs else None
-    metrics = infer_metrics(contract) if contract else ["field_exact_match"]
+    evaluation = architecture.decisions.get("evaluation")
+    judged = bool(evaluation and evaluation.approach == "judged")
+    if judged:
+        metrics = ["judged"]
+    elif contract:
+        metrics = [m for m in infer_metrics(contract) if m != "field_coverage"]
+    else:
+        metrics = ["field_exact_match"]
 
     for name, cases in (
         ("golden", suite.golden if suite else []),
@@ -2061,8 +2183,6 @@ def _write_evals(
             "".join(json.dumps(c, default=str) + "\n" for c in cases)
         )
 
-    evaluation = architecture.decisions.get("evaluation")
-    judged = bool(evaluation and evaluation.approach == "judged")
     if _needs_model(architecture):
         (out / "app" / "llm.py").write_text(_LLM_PROVIDER)
 
@@ -2089,8 +2209,10 @@ def _write_evals(
             cases_path.write_text("")
 
     golden_count = len(suite.golden) if suite else 0
+    exam = _exam_record(evals, pairs_path)
+    (evals / "manifest.json").write_text(json.dumps(exam, indent=2, sort_keys=True) + "\n")
     (evals / "acceptance.md").write_text(
-        _acceptance(architecture, golden_count, waived or set())
+        _acceptance(architecture, golden_count, waived or set(), exam)
     )
 
     latency = (architecture.values or {}).get("latency_budget_ms")
@@ -2112,8 +2234,88 @@ def _judged(architecture: Architecture) -> bool:
     return bool(evaluation and evaluation.approach == "judged")
 
 
+def _standing_facts(architecture: Architecture, registry: Registry | None) -> list[str]:
+    """The boundary-bearing dimensions, each with how it was learned."""
+    if registry is None:
+        return []
+    bearing = sorted(
+        {name for name, entry in registry.dimensions.items() if entry.boundary_when}
+        | {TOPOLOGY_DIMENSION}
+    )
+    lines = []
+    for dimension in bearing:
+        value = architecture.values.get(dimension)
+        if value is None:
+            continue
+        provenance = architecture.provenance.get(dimension, "unknown")
+        line = f"- `{dimension} = {value}` -- {provenance}"
+        if provenance not in ("detected", "artifact"):
+            line += (" -- asserted, not established: confirm before the decisions "
+                     "resting on it stand")
+        lines.append(line)
+    return lines
+
+
+def _digest(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _exam_record(evals: Path, pairs_path: Path | None) -> dict:
+    """What the exam is, so a holdout can be checked against the split it
+    was drawn for and a memorised green can be told from an earned one."""
+    record: dict = {
+        "split_seed": SPLIT_SEED,
+        "holdout_share": HOLDOUT_SHARE,
+        "layers": {},
+    }
+    for name in ("golden", "edge_case", "adversarial"):
+        path = evals / f"{name}.jsonl"
+        cases = sum(1 for line in path.read_text().splitlines() if line.strip())
+        record["layers"][name] = {"cases": cases, "sha256": _digest(path)}
+    holdout = Path(pairs_path).with_name("holdout.jsonl") if pairs_path else None
+    if holdout is not None and holdout.exists():
+        record["holdout"] = {
+            "cases": sum(1 for line in holdout.read_text().splitlines() if line.strip()),
+            "sha256": _digest(holdout),
+            "note": "kept with the engagement, never shipped; fde implement --holdout "
+                    "must be given the file with this digest",
+        }
+    else:
+        record["holdout"] = None
+    return record
+
+
+def _exam_lines(exam: dict | None) -> list[str]:
+    """The exam, identified: which split, which files, which digests."""
+    if not exam:
+        return []
+    layers = exam.get("layers", {})
+    lines = [
+        "## Exam record",
+        "",
+        f"Split seed {exam.get('split_seed')}, holdout share "
+        f"{exam.get('holdout_share')}; `evals/manifest.json` carries the same "
+        "record for tools.",
+        "",
+    ]
+    for name, layer in layers.items():
+        lines.append(f"- `{name}.jsonl`: {layer['cases']} cases, sha256 "
+                     f"`{layer['sha256'][:16]}`")
+    holdout = exam.get("holdout")
+    if holdout:
+        lines.append(f"- holdout: {holdout['cases']} cases, sha256 "
+                     f"`{holdout['sha256'][:16]}` -- {holdout['note']}")
+    else:
+        lines.append("- holdout: none recorded at build -- `fde samples` draws one "
+                     "from the client's pairs; without it a green is only a green "
+                     "against cases the implementer could read")
+    lines.append("")
+    return lines
+
+
 def _acceptance(
     architecture: Architecture, golden_count: int, waived: set[str] | None = None,
+    exam: dict | None = None,
 ) -> str:
     """The user-acceptance protocol, written down before anyone is asked to
     accept anything.
@@ -2150,8 +2352,9 @@ def _acceptance(
         "",
         "## Protocol",
         "",
-        f"1. **Who judges**: {judge_note}, plus at least one person who does "
-        "the work today. Not the builder.",
+        f"1. **Who judges**: {judge_note} -- the client_readiness gate is part of "
+        "the engagement record that produced this project, not of this project "
+        "-- plus at least one person who does the work today. Not the builder.",
         f"2. **Sample**: fresh items from live data -- never the golden set "
         f"{seen_note}. Size to match "
         "the golden set or 30, whichever is larger.",
@@ -2159,11 +2362,16 @@ def _acceptance(
         "system's output; disagreement between judges is recorded, not "
         "resolved by the loudest voice.",
         "4. **Compare**: system output against the blind labels, scored by "
-        "the same metrics the harness runs. The baseline's error rate is "
+        "the same metrics the harness runs -- for a decision task that is "
+        "per-class precision and recall against the majority rate, never "
+        "accuracy alone. Two judges who disagree on a case have found a "
+        "specification question; it is recorded, and it blocks sign-off "
+        "until the client answers it. The baseline's error rate is "
         "the number to beat -- beating zero was never the bar.",
         "5. **Sign-off**: recorded with names and the score. A meeting that "
         "went well is not a sign-off.",
         "",
+        *_exam_lines(exam),
         "## Refusals worth respecting",
         "",
         "If nobody can be found to judge, that is the client_readiness gate "
@@ -2687,10 +2895,20 @@ def parse_verdict(reply):
     lines = [line.strip() for line in (reply or "").splitlines() if line.strip()]
     if not lines:
         return 0.0
+    # A line that labels itself a verdict wins outright: "Verdict: correct"
+    # followed by an explanation that says "not incorrect" is a correct.
+    for line in lines:
+        labelled = re.match(
+            r"^\\W*(verdict|answer|grade)\\W*:\\s*\\W*(correct|partial(?:ly)?|incorrect)\\b",
+            line.lower(),
+        )
+        if labelled:
+            token = labelled.group(2)
+            return VERDICTS["partial" if token.startswith("partial") else token]
     last = lines[-1].lower()
-    # Anywhere on the last line: "Verdict: correct" and "The candidate is
-    # correct." are verdicts; an anchor at the start scored them zero and
-    # a team concluded their judge was bad when the parser was.
+    # Otherwise, anywhere on the last line: "The candidate is correct." is
+    # a verdict; an anchor at the start scored it zero and a team concluded
+    # their judge was bad when the parser was.
     match = re.search(r"\\b(correct|partial(?:ly)?|incorrect)\\b", last)
     if not match:
         return 0.0
@@ -2703,6 +2921,40 @@ def parse_verdict(reply):
     return VERDICTS[verdict]
 
 
+def is_label(value):
+    return isinstance(value, str) or (isinstance(value, dict) and len(value) == 1
+                                      and isinstance(next(iter(value.values())), str))
+
+
+def label_of(value):
+    return next(iter(value.values())) if isinstance(value, dict) else value
+
+
+def decision_metrics(cases, predictions):
+    """Per-class precision, recall and F1, their macro average, the
+    confusion, and the majority rate -- for a decision task, accuracy
+    alone cannot tell a classifier from a constant."""
+    pairs = [(label_of(c.get("output", c.get("expect"))), label_of(p))
+             for c, p in zip(cases, predictions, strict=False) if p is not None]
+    labels = sorted({{e for e, _ in pairs}} | {{a for _, a in pairs if isinstance(a, str)}})
+    per_class = {{}}
+    for label in labels:
+        tp = sum(1 for e, a in pairs if e == label and a == label)
+        fp = sum(1 for e, a in pairs if e != label and a == label)
+        fn = sum(1 for e, a in pairs if e == label and a != label)
+        precision = tp / (tp + fp) if tp + fp else 0.0
+        recall = tp / (tp + fn) if tp + fn else 0.0
+        f1 = 2 * precision * recall / (precision + recall) if precision + recall else 0.0
+        per_class[label] = {{"precision": round(precision, 3), "recall": round(recall, 3),
+                            "f1": round(f1, 3), "support": tp + fn}}
+    confusion = Counter(f"{{e}} -> {{a}}" for e, a in pairs if e != a)
+    expected_counts = Counter(e for e, _ in pairs)
+    majority = max(expected_counts.values()) / len(pairs) if pairs else 0.0
+    macro_f1 = sum(v["f1"] for v in per_class.values()) / len(per_class) if per_class else 0.0
+    return {{"per_class": per_class, "macro_f1": round(macro_f1, 3),
+            "confusion": dict(confusion.most_common(8)), "majority_rate": round(majority, 3)}}
+
+
 def compare(actual, expected):
     """(correct, missed_fields, invented_fields).
 
@@ -2713,6 +2965,11 @@ def compare(actual, expected):
     """
     if JUDGED:
         return judge_score(actual, expected) >= JUDGE_THRESHOLD, [], []
+    if is_label(expected) and is_label(actual):
+        # A decision is its label whichever way it is written: the pairs
+        # say {{"decision": "refund"}}, the pipeline answers "refund". A
+        # classifier that was right on every case once scored 0.0% here.
+        return label_of(actual) == label_of(expected), [], []
     if isinstance(expected, dict) and isinstance(actual, dict):
         missed = [k for k, v in expected.items() if actual.get(k) != v]
         invented = [k for k in actual if k not in expected]
@@ -2728,6 +2985,7 @@ def run_layer(name, cases, predict):
 
     correct, errors, failures = 0, 0, []
     by_field = Counter()
+    predictions = []
     for case in cases:
         expected = case.get("output", case.get("expect"))
         if case.get("expect_refusal"):
@@ -2746,6 +3004,7 @@ def run_layer(name, cases, predict):
                 failures.append({{"id": case.get("id"),
                                  "source": "prediction",
                                  "note": f"accepted forbidden input: {{actual!r}}"[:300]}})
+            predictions.append(None)
             continue
         try:
             actual = predict(case.get("input"))
@@ -2753,22 +3012,35 @@ def run_layer(name, cases, predict):
             errors += 1
             failures.append({{"id": case.get("id"), "source": classify(
                 expected, None, {{"exception": exc}}), "error": repr(exc)[:200]}})
+            predictions.append(None)
             continue
+        predictions.append(actual)
         ok, missed, invented = compare(actual, expected)
         if ok:
             correct += 1
             continue
         by_field.update(missed)
         by_field.update(f"+{{k}}" for k in invented)
-        failures.append({{"id": case.get("id"),
-                         "source": classify(expected, actual),
-                         "missed": missed, "invented": invented}})
+        failure = {{"id": case.get("id"), "source": classify(expected, actual),
+                   "missed": missed, "invented": invented}}
+        if is_label(expected) and is_label(actual):
+            # A label mismatch has no fields to name; name the labels.
+            failure.update(expected=label_of(expected), got=label_of(actual))
+        failures.append(failure)
 
+    graded = [c for c in cases if not c.get("expect_refusal")]
+    graded_predictions = [p for c, p in zip(cases, predictions, strict=False)
+                          if not c.get("expect_refusal")]
+    decision = None
+    if not JUDGED and graded and all(is_label(c.get("output", c.get("expect"))) for c in graded):
+        decision = decision_metrics(graded, graded_predictions)
     return {{
         "layer": name,
         "cases": len(cases),
         "score": correct / len(cases),
         "errors": errors,
+        # For a decision task: what accuracy alone cannot say.
+        "decision": decision,
         # The shape of the failures, which is what decides the next move.
         "by_source": dict(Counter(f["source"] for f in failures)),
         # Which fields miss, most often first. '+name' is a field the
@@ -2798,6 +3070,15 @@ def print_layer(layer):
     if layer.get("by_field"):
         top = dict(list(layer["by_field"].items())[:8])
         print(f"               by field:  {{top}}")
+    if layer.get("decision"):
+        d = layer["decision"]
+        print(f"               majority rate {{d['majority_rate']:.1%}}, "
+              f"macro-F1 {{d['macro_f1']:.3f}}")
+        for label, m in d["per_class"].items():
+            print(f"                 {{label[:40]:40}} P {{m['precision']:.2f}}  "
+                  f"R {{m['recall']:.2f}}  F1 {{m['f1']:.2f}}  n={{m['support']}}")
+        if d["confusion"]:
+            print(f"               confusion: {{d['confusion']}}")
     for failure in layer.get("failures", [])[:SHOWN_FAILURES]:
         print(f"               - {{json.dumps(failure, default=str)[:160]}}")
 
@@ -2821,6 +3102,9 @@ def main():
                              "memorizing the golden file)")
     parser.add_argument("--report", type=str, default=None,
                         help="write every layer and every failure here as JSON")
+    parser.add_argument("--allow-uncalibrated", action="store_true",
+                        help="a judged run with no calibration record is red unless "
+                             "this says, by name, that a provisional score is wanted")
     args = parser.parse_args()
 
     # The pipeline is the thing under evaluation. While its components are
@@ -2845,6 +3129,11 @@ def main():
             # right is not the check against a memorised golden file.
             floor = max(args.min_score, 0.5)
             score = layer["score"] or 0
+            if (calibration is not None and "agreement" not in calibration
+                    and not args.allow_uncalibrated):
+                print("holdout: no judge calibration on record -- red until "
+                      "evals/calibrate.py passes, or --allow-uncalibrated", file=sys.stderr)
+                return 1
             if layer.get("errors") or score < floor or (args.min_score <= 0.5 and score <= 0.5):
                 print("holdout red: the pipeline fails on cases it never saw "
                       "-- a green golden layer beside a red holdout usually "
@@ -2897,9 +3186,20 @@ def main():
     if golden["score"] < args.min_score:
         print(f"below {{args.min_score:.1%}}", file=sys.stderr)
         return 1
+    if golden.get("decision") and golden["score"] <= golden["decision"]["majority_rate"]:
+        # A constant answer would do as well: that is not a classifier.
+        print(f"golden {{golden['score']:.1%}} does not beat the majority rate "
+              f"{{golden['decision']['majority_rate']:.1%}} -- a constant answer would "
+              f"score this; the system has not read the input", file=sys.stderr)
+        return 1
     if calibration and "agreement" in calibration and not calibration["calibrated"]:
         print("the judge failed calibration -- its scores are not a passing "
               "grade until evals/calibrate.py passes", file=sys.stderr)
+        return 1
+    if calibration is not None and "agreement" not in calibration and not args.allow_uncalibrated:
+        print("no judge calibration on record -- red until evals/calibrate.py passes, "
+              "or --allow-uncalibrated asks for a provisional score by name",
+              file=sys.stderr)
         return 1
     adversarial = next(layer for layer in report if layer["layer"] == "adversarial")
     if adversarial["cases"] == 0:

@@ -47,6 +47,11 @@ class Architecture:
     # What was known when this was decided. Carried so the documents can quote
     # a stated budget rather than reconstruct it from a rationale.
     values: dict[str, object] = field(default_factory=dict)
+    # How each value was learned. A residency stated in an interview and a
+    # residency read off a data-processing agreement decide the same
+    # governance and boundary; only the record can tell a reader which
+    # one this design stands on.
+    provenance: dict[str, str] = field(default_factory=dict)
 
     @property
     def copyleft_licences(self) -> dict[str, str]:
@@ -108,6 +113,11 @@ def architect(
         disagreements=profile.disagreements(),
         unrealizable=unrealizable,
         values=dict(values),
+        provenance={
+            dimension: str(fact.provenance)
+            for dimension in profile.dimensions()
+            if (fact := profile.fact(dimension)) is not None
+        },
     )
 
 

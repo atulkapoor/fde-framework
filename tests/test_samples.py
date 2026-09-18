@@ -187,7 +187,11 @@ def test_too_few_pairs_is_reported_with_the_number(reg=None):
 
 
 def test_enough_pairs_produces_no_warning(reg=None):
-    assert assess([{**PAIRS[0], "id": str(n)} for n in range(80)]) == []
+    # Distinct inputs of distinct lengths: the same line eighty times is a
+    # duplicate cluster, and eighty lines of one length is a truncation.
+    distinct = [{**PAIRS[0], "id": str(n), "input": PAIRS[0]["input"] + "\nRef: " + "x" * n}
+                for n in range(80)]
+    assert assess(distinct) == []
 
 
 def test_pairs_load_from_a_jsonl_file(tmp_path):

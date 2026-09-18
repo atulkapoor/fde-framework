@@ -6,7 +6,9 @@ every architecture shape, and never regresses. This is the same doctrine
 the emitted projects live under, applied to the emitter itself.
 """
 
+import json
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -1036,3 +1038,125 @@ print("ok")
 """
     result = run_in(out, code)
     assert result.returncode == 0, f"{shape}: {result.stderr[-600:]}"
+
+
+# --- a decision read off labelled text: the sixth pass's generator findings
+
+# Three labels whose vocabularies do not overlap and never contain the
+# label word itself, so a steering probe that names another label carries
+# a token the classifier never learned.
+LABELS = ("refund", "escalate", "reply")
+VOCAB = {
+    "refund": ["charged twice", "double charge", "money back", "overcharged",
+               "fee never agreed"],
+    "escalate": ["legal action", "ombudsman", "regulator", "lawyer",
+                 "formal complaint"],
+    "reply": ["how do I", "where can I", "what is the", "please explain",
+              "which form"],
+}
+
+
+def complaint_pairs(path: Path, n: int = 48) -> None:
+    rows = []
+    for i in range(n):
+        label = LABELS[i % 3]
+        rows.append({
+            "id": f"c{i}", "verified": True,
+            "input": f"Complaint {i}: {VOCAB[label][i % 5]} on my account "
+                     f"statement, ticket {1000 + i}.",
+            "output": {"decision": label},
+        })
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+
+
+@pytest.fixture(scope="module")
+def labelled(reg, tmp_path_factory):
+    """The decision shape, built from the client's own labelled pairs."""
+    out = tmp_path_factory.mktemp("accept-labelled")
+    pairs = out.parent / "labelled-pairs.jsonl"
+    complaint_pairs(pairs)
+    profile = Profile()
+    profile.ingest([Fact(k, v, Provenance.ARTIFACT)
+                    for k, v in SHAPES["decision"].items()])
+    emit(architect(profile, reg), out, registry=reg, pairs_path=pairs)
+    return out
+
+
+def harness(out: Path, *extra: str):
+    report = out / "harness-report.json"
+    result = subprocess.run(
+        [sys.executable, "evals/harness.py", "--report", str(report), *extra],
+        cwd=out, capture_output=True, text=True, timeout=300, env={"PATH": "/usr/bin"},
+    )
+    layers = (json.loads(report.read_text())["layers"] if report.exists() else [])
+    return result, {layer["layer"]: layer for layer in layers}
+
+
+def test_the_labels_are_the_clients_not_a_placeholder(labelled):
+    """A decision component that does not know its labels is a scaffold.
+    Built from pairs, the emitted classifier names the client's labels."""
+    body = (labelled / "app" / "components" / "reasoning.py").read_text()
+    assert "labelled-decision" in body
+    assert all(f'"{label}"' in body for label in LABELS)
+
+
+def test_a_decision_from_labelled_text_beats_the_majority_on_its_own_exam(labelled):
+    """Fitted on the golden set and scored on it, the reference classifier
+    must at least beat a constant answer -- the floor the harness gates on."""
+    result, layers = harness(labelled)
+    golden = layers.get("golden")
+    manifest = json.loads((labelled / "evals" / "manifest.json").read_text())
+    assert golden and golden["cases"] == manifest["layers"]["golden"]["cases"], result.stderr
+    assert golden.get("decision"), "no per-class metrics on a decision task"
+    assert golden["score"] > golden["decision"]["majority_rate"], result.stdout
+
+
+def test_a_constant_answer_is_not_a_passing_grade(labelled, tmp_path):
+    """A classifier that returns one label scores the majority rate; the
+    exam must call that red, or CI blesses a system that never read the
+    input -- the constant-classifier finding, as a check."""
+    out = tmp_path / "constant"
+    shutil.copytree(labelled, out, ignore=shutil.ignore_patterns("__pycache__", ".venv"))
+    (out / "app" / "components" / "reasoning.py").write_text(
+        "class Reasoning:\n"
+        "    def run(self, payload):\n"
+        "        return {**payload, 'decision': 'refund', 'decided_by': 'constant'}\n"
+    )
+    result, layers = harness(out)
+    assert result.returncode != 0
+    assert "majority" in result.stderr, result.stdout + result.stderr
+
+
+def test_the_exam_carries_steering_probes(labelled):
+    """An injection that only asks for chatter is a weak probe. The exam
+    also carries one that steers toward a different label and one that
+    contradicts the input -- each graded against the original label."""
+    probes = {json.loads(line)["id"]: json.loads(line)
+              for line in (labelled / "evals" / "adversarial.jsonl").read_text().splitlines()
+              if line.strip()}
+    for wanted in ("adv-injection-steered", "adv-injection-contradiction"):
+        assert wanted in probes, sorted(probes)
+        probe = probes[wanted]
+        assert not probe.get("expect_refusal")
+        expected = probe.get("output", probe.get("expect"))
+        assert expected in [{"decision": label} for label in LABELS], expected
+    steered = probes["adv-injection-steered"]
+    other = [label for label in LABELS if label != steered["output"]["decision"]]
+    assert any(label in steered["input"] for label in other), steered["input"]
+
+
+def test_the_exam_record_names_its_split(labelled):
+    """A holdout nobody can tie to the split it was drawn for is a holdout
+    against an unknown exam: the build records seed, share and digests."""
+    manifest = json.loads((labelled / "evals" / "manifest.json").read_text())
+    assert manifest["split_seed"] == 0 and manifest["holdout_share"] == 0.3
+    golden_lines = [line for line in (labelled / "evals" / "golden.jsonl")
+                    .read_text().splitlines() if line.strip()]
+    assert manifest["layers"]["golden"]["cases"] == len(golden_lines)
+    acceptance = (labelled / "evals" / "acceptance.md").read_text()
+    assert "## Exam record" in acceptance
+    assert manifest["layers"]["golden"]["sha256"][:16] in acceptance
+    # No engagement holdout sat beside these pairs: recorded as absent, not
+    # silently omitted.
+    assert manifest["holdout"] is None
+    assert "holdout: none recorded at build" in acceptance
