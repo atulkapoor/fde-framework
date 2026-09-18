@@ -5,6 +5,61 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.19] — 2026-09-18
+
+The third-pass audit found the edge, the boundary, the ledger, the gates
+and the evals holding under attack, and one number nobody had reconciled:
+the lexical index costs about twenty megabytes of memory per megabyte of
+corpus text, so the stated corpus would have been OOM-killed by the unit's
+own cap before the socket opened. This release closes that layer, checks
+first, and every deliverable now defends its own edge.
+
+- **Sizing is a decision, written down.** `CORPUS_MAX_MB` and the unit's
+  `MemoryMax` are one decision, documented together with the measured
+  rate in ARCHITECTURE.md, the env file and the unit; a corpus over the
+  ceiling refuses the boot with one line (exit 78) instead of dying to
+  the OOM killer. The index dropped its per-document token counters --
+  half its footprint -- and `TasksMax` is sized against
+  `MAX_BODY_BYTES` so bodies in flight are inside the budget.
+- **A stopword is not evidence.** Retrieval is BM25 over the postings,
+  every hit carries its score, and a token found in more than half the
+  corpus cannot make a document relevant on its own -- "How do I reset
+  the payroll database?" no longer cites an HTTP document on the
+  strength of "the"; it answers "I don't know."
+- **The request contract is this build's.** `CALLER_KEYS` is generated
+  from the components on the request path: a key nothing reads is
+  refused by name, so a caller who sends `documents` to a build that
+  ingests at boot gets a 422, not a confident answer from another corpus.
+- **Readiness tells the truth in both directions.** Skipped corpus files
+  DEGRADE `/ready` (listed on the 200 body) rather than denying it; more
+  than half unreadable denies. The first poll always probes (the cache
+  was seeded fresh-and-clean, a false green inside the first seconds of
+  uptime). A gateway answering a list at `/v1/models` is a named 503,
+  never a dropped socket. One malformed `.jsonl` line loses one record,
+  not the file.
+- **Every refusal is exit 78 and one line**: a boundary violation, an
+  unresolvable `BIND`, a port in use, an unwritable state dir, an
+  oversized corpus. `169.254.169.254` -- the cloud metadata address,
+  which Python counts as private -- is outside the boundary.
+- **The judge may not be the author under another name**: the harness
+  compares the resolved (endpoint, model) pair, so `JUDGE_ENDPOINT` set
+  to the same URL is refused like an unset one. A holdout exactly half
+  right is red.
+- **The deliverable defends its own edge**: `tests/test_edge.py` boots
+  the service on an ephemeral port and asserts every promise
+  `app/service.py` makes -- 401 without a token, forged keys refused,
+  request ids matching headers, strict framing, close-after-error, a
+  named readiness problem, a clean drain, exit 78 on a bad port.
+- The ledger's `idempotency.jsonl` is COMPACTED, never rotated (a key
+  rotated away is an action that can happen twice): `python -m
+  app.ledger compact --keep-days 90`, in the runbook. Framing rejections
+  carry a request id; every stderr line the pipeline and ledger write is
+  one write.
+
+Deferred, named: postings on disk (SQLite FTS5) above the sized ceiling;
+per-caller identity; the MCP variant's audit; taxonomy reachability;
+SHA-pinned actions; re-running the public demos on this emitter.
+
 ## [0.1.18] — 2026-09-18
 
 The second-pass audit of 0.1.17 — same principal-engineer lens, no memory

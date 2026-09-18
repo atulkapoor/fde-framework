@@ -148,8 +148,11 @@ def _systemd(deploy: Path, boundary: bool = False) -> None:
         "CapabilityBoundingSet=\n"
         "UMask=0077\n"
         "# Resource ceilings: a thread-per-connection server without them is\n"
-        "# a denial of service one slow client away.\n"
-        "TasksMax=512\n"
+        "# a denial of service one slow client away. The memory budget is\n"
+        "# the index (about twenty megabytes per megabyte of corpus text,\n"
+        "# measured -- CORPUS_MAX_MB in the env file must agree with this)\n"
+        "# plus TasksMax x MAX_BODY_BYTES of request bodies in flight.\n"
+        "TasksMax=128\n"
         "MemoryMax=2G\n"
         "LimitNOFILE=4096\n"
         f"{egress}"
@@ -569,6 +572,11 @@ def _write_env_example(architecture, deploy: Path) -> None:
             "# The documents to answer from, ingested at boot: .txt/.md files,",
             "# .json lists of {id, text}, .jsonl of the same. Empty = not ready.",
             "CORPUS_DIR=/var/lib/app/corpus",
+            "# Megabytes of corpus TEXT the index may hold. The index costs about",
+            "# twenty megabytes of memory per megabyte of text (measured); this",
+            "# and MemoryMax in the unit are one decision. Over it, the boot",
+            "# refuses with one line instead of dying to the OOM killer.",
+            "CORPUS_MAX_MB=80",
         ]
     if architecture.graph.sensitive_nodes():
         lines += [

@@ -126,6 +126,8 @@ else that looks like registry knowledge in `src/` is a bug — report it.
   endpoints, a ledger that survives restart, a service that carries a
   request id on every answer, a request contract that refuses forged
   results, retrieval and perception linear in their input, a journal that
-  survives concurrency, a corpus and a ledger that survive a bad file
-  (`tests/test_acceptance.py` — a quality finding lands there as a check
-  before it lands as a fix).
+  survives concurrency, a corpus and a ledger that survive a bad file, a
+  request contract generated from the build's own request path, an index
+  sized against the unit's memory cap, and edge tests inside the
+  deliverable (`tests/test_acceptance.py` — a quality finding lands there
+  as a check before it lands as a fix).

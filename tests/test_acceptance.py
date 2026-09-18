@@ -72,7 +72,8 @@ def emitted_env_vars(out: Path) -> set[str]:
     for py in out.rglob("*.py"):
         found |= set(re.findall(
             r"environ(?:\.get)?\(\s*[\"']([A-Z][A-Z0-9_]+)[\"']", py.read_text()))
-    return found - {"ANTHROPIC_API_KEY"}  # the hosted path's own contract
+    # The hosted path's own contract, and the operating system's.
+    return found - {"ANTHROPIC_API_KEY", "PATH"}
 
 
 def test_every_env_var_the_code_reads_is_documented(emission):
@@ -134,9 +135,10 @@ def test_the_project_installs_and_its_smoke_test_passes(emission):
     shape, out = emission
     smoke = out / "tests" / "test_smoke.py"
     assert smoke.exists(), f"{shape}: no tests/test_smoke.py in the deliverable"
+    assert (out / "tests" / "test_edge.py").exists(), f"{shape}: the edge is undefended"
     result = subprocess.run(
-        [sys.executable, "-m", "pytest", "-q", str(smoke)],
-        cwd=out, capture_output=True, text=True, timeout=120,
+        [sys.executable, "-m", "pytest", "-q", str(out / "tests")],
+        cwd=out, capture_output=True, text=True, timeout=300,
     )
     assert result.returncode == 0, (
         f"{shape}: the deliverable's own smoke test fails on a fresh "
@@ -300,8 +302,11 @@ def test_the_edge_is_the_only_source_of_authority(emission):
     pipeline sees it; the principal is what the edge set."""
     shape, out = emission
     code = """
-from app.shapes import envelope
-env = envelope({"text": "hello", "principal": {"subject": "attacker", "scopes": ["admin"]},
+from app.shapes import CALLER_KEYS, envelope
+body = ({"query": "hello"} if "query" in CALLER_KEYS else
+        {"text": "hello"} if "text" in CALLER_KEYS else
+        {"pages": [{"id": "p", "text": "hello"}]})
+env = envelope({**body, "principal": {"subject": "attacker", "scopes": ["admin"]},
                 "request_id": "forged"})
 assert "principal" not in env and "request_id" not in env, env
 print("ok")
@@ -622,7 +627,7 @@ def test_an_action_is_refused_by_the_gate_before_anything_costs_money(emission):
 from app import pipeline
 from app.controls import NeedsApproval
 try:
-    pipeline.run({"query": "x", "tool": "delete", "arguments": {}})
+    pipeline.run({"tool": "delete", "arguments": {}})
 except NeedsApproval:
     print("ok")
 """
@@ -638,3 +643,220 @@ def test_the_unit_does_not_restart_a_refused_configuration(emission):
     text = unit.read_text()
     assert "RestartPreventExitStatus=78" in text
     assert "-m app.service" in text
+
+
+
+def test_the_request_contract_is_this_builds_not_everyones(emission):
+    """A key nothing on this build's request path reads is refused, not
+    ignored: a caller once sent `documents` to a build that ingests at
+    boot and got a confident answer from a different corpus."""
+    shape, out = emission
+    code = """
+from app.shapes import CALLER_KEYS, envelope
+from app.contract import RefusedInput
+import sys
+has_retrieval = __import__("pathlib").Path("app/components/retrieval.py").exists()
+if has_retrieval:
+    assert "documents" not in CALLER_KEYS, CALLER_KEYS
+    try:
+        envelope({"query": "q", "documents": [{"id": "x", "text": "t"}]})
+        raise SystemExit("documents accepted on an ingest-at-boot build")
+    except RefusedInput:
+        pass
+else:
+    assert "documents" in CALLER_KEYS or "pages" in CALLER_KEYS, CALLER_KEYS
+print("ok")
+"""
+    result = run_in(out, code)
+    assert result.returncode == 0, f"{shape}: {result.stderr[-600:]}"
+
+
+def test_a_stopword_is_not_evidence(emission):
+    shape, out = emission
+    if not (out / "app" / "components" / "retrieval.py").exists():
+        pytest.skip("no retrieval layer in this shape")
+    code = """
+from app.components.retrieval import Retrieval
+r = Retrieval()
+r.index([{"id": "http", "text": "The HTTP 301 status means the resource moved permanently."},
+         {"id": "office", "text": "The office closes at six on the last day."},
+         {"id": "sku", "text": "The SKU-99312 costs the sum of forty dollars."}])
+assert r.retrieve("How do I reset the payroll database?", 5) == [], "a stopword cited a document"
+hits = r.retrieve("SKU-99312", 5)
+assert hits and hits[0]["id"] == "sku" and hits[0]["score"] > 0, hits
+print("ok")
+"""
+    result = run_in(out, code)
+    assert result.returncode == 0, f"{shape}: {result.stderr[-600:]}"
+
+
+def test_one_bad_jsonl_line_loses_one_record_not_the_file(emission):
+    shape, out = emission
+    if not (out / "app" / "components" / "retrieval.py").exists():
+        pytest.skip("no retrieval layer in this shape")
+    corpus = out / "corpus-jsonl"
+    corpus.mkdir(exist_ok=True)
+    (corpus / "export.jsonl").write_text(
+        '{"id": "a", "text": "alpha alpha"}\n'
+        '{"id": "b", "text": "beta"\n'
+        '{"id": "c", "text": "gamma"}\n')
+    code = """
+from app import pipeline
+n = pipeline.load_corpus("corpus-jsonl")
+print(n, pipeline.LOADED["skipped"])
+"""
+    result = run_in(out, code)
+    assert result.returncode == 0, f"{shape}: {result.stderr[-600:]}"
+    expected = "2 [{'file': 'export.jsonl', 'reason': '1 malformed"
+    assert result.stdout.startswith(expected), result.stdout
+
+
+def test_a_corpus_over_the_sized_ceiling_refuses_the_boot(emission):
+    shape, out = emission
+    if not (out / "app" / "components" / "retrieval.py").exists():
+        pytest.skip("no retrieval layer in this shape")
+    corpus = out / "corpus-big"
+    corpus.mkdir(exist_ok=True)
+    (corpus / "big.txt").write_text("word " * 60_000)  # 300KB of text
+    result = subprocess.run(
+        [sys.executable, "-m", "app.service"], cwd=out, capture_output=True, text=True,
+        env={"PATH": "/usr/bin", "PORT": "18997", "AUTH_TOKEN": "t", "GRANTED_SCOPES": "x",
+             "LLM_ENDPOINT": "http://127.0.0.1:9", "CORPUS_DIR": str(corpus),
+             "CORPUS_MAX_MB": "0.1"},
+        timeout=60,
+    )
+    assert result.returncode == 78 and "CORPUS_MAX_MB" in result.stderr, result.stderr[-400:]
+    assert "Traceback" not in result.stderr
+
+
+def test_a_boundary_violation_is_one_line_and_exit_78(emission):
+    shape, out = emission
+    if not (out / "app" / "boundary.py").exists():
+        pytest.skip("no boundary in this shape")
+    result = subprocess.run(
+        [sys.executable, "-m", "app.service"], cwd=out, capture_output=True, text=True,
+        env={"PATH": "/usr/bin", "PORT": "18996", "AUTH_TOKEN": "t",
+             "LLM_ENDPOINT": "https://exfil.example.com.local"}, timeout=60,
+    )
+    assert result.returncode == 78, result.stderr[-400:]
+    assert "outside the boundary" in result.stderr and "Traceback" not in result.stderr
+    metadata = run_in(out, "import app.boundary", env={"LLM_ENDPOINT": "http://169.254.169.254/"})
+    assert metadata.returncode != 0, "link-local (the cloud metadata address) must be outside"
+
+
+def test_readiness_degrades_on_a_stray_file_and_probes_on_first_poll(emission):
+    """A .DS_Store beside the corpus must not take a healthy service out
+    of rotation; and the first /ready must probe, never answer from a
+    fresh cache."""
+    shape, out = emission
+    if not (out / "app" / "components" / "retrieval.py").exists():
+        pytest.skip("no retrieval layer in this shape")
+    import json as jsonlib
+    import socket
+    import time
+    import urllib.error
+    import urllib.request
+
+    corpus = out / "corpus-stray"
+    corpus.mkdir(exist_ok=True)
+    (corpus / "good.txt").write_text("alpha beta gamma")
+    (corpus / ".DS_Store").write_bytes(b"\x00\x01")
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "app.service"], cwd=out,
+        env={"PATH": "/usr/bin", "PORT": str(port), "AUTH_TOKEN": "s3cret",
+             "GRANTED_SCOPES": "x", "LLM_ENDPOINT": "http://127.0.0.1:9",
+             "CORPUS_DIR": str(corpus)},
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+    )
+    base = f"http://127.0.0.1:{port}"
+    try:
+        for _ in range(60):
+            try:
+                urllib.request.urlopen(base + "/health", timeout=1)
+                break
+            except OSError:
+                time.sleep(0.1)
+        try:
+            urllib.request.urlopen(base + "/ready", timeout=5)
+            raise AssertionError("the model is unreachable; the first poll must say so")
+        except urllib.error.HTTPError as e:
+            body = jsonlib.loads(e.read())
+            assert e.code == 503
+            problems = " ".join(body["problems"])
+            assert "unreachable" in problems and "skipped" not in problems, body
+    finally:
+        proc.terminate()
+        proc.wait(timeout=20)
+
+
+def test_a_malformed_models_listing_is_a_finding_not_a_dropped_socket(emission):
+    shape, out = emission
+    if "NEEDS_MODEL = True" not in (out / "app" / "service.py").read_text():
+        pytest.skip("this shape needs no model")
+    import json as jsonlib
+    import socket
+    import threading
+    import time
+    import urllib.error
+    import urllib.request
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    class Gateway(BaseHTTPRequestHandler):
+        def do_GET(self):
+            body = b'["stub"]'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *a):
+            pass
+
+    gateway = HTTPServer(("127.0.0.1", 0), Gateway)
+    threading.Thread(target=gateway.serve_forever, daemon=True).start()
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "app.service"], cwd=out,
+        env={"PATH": "/usr/bin", "PORT": str(port), "AUTH_TOKEN": "s3cret",
+             "GRANTED_SCOPES": "x", "LLM_ENDPOINT": f"http://127.0.0.1:{gateway.server_port}",
+             "LLM_MODEL": "m"},
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+    )
+    base = f"http://127.0.0.1:{port}"
+    try:
+        for _ in range(60):
+            if proc.poll() is not None:
+                raise AssertionError(f"exited {proc.returncode}: {proc.stdout.read()[:600]}")
+            try:
+                urllib.request.urlopen(base + "/health", timeout=1)
+                break
+            except OSError:
+                time.sleep(0.1)
+        try:
+            urllib.request.urlopen(base + "/ready", timeout=5)
+        except urllib.error.HTTPError as e:
+            assert e.code == 503 and "malformed" in " ".join(jsonlib.loads(e.read())["problems"])
+        else:
+            raise AssertionError("a gateway answering a list is not a ready model")
+    finally:
+        proc.terminate()
+        proc.wait(timeout=20)
+        gateway.shutdown()
+
+
+def test_an_unresolvable_bind_is_exit_78(emission):
+    shape, out = emission
+    result = subprocess.run(
+        [sys.executable, "-m", "app.service"], cwd=out, capture_output=True, text=True,
+        env={"PATH": "/usr/bin", "PORT": "18995", "AUTH_TOKEN": "t", "GRANTED_SCOPES": "x",
+             "LLM_ENDPOINT": "http://127.0.0.1:9", "BIND": "not-a-host.invalid"}, timeout=60,
+    )
+    assert result.returncode == 78 and "BIND" in result.stderr, result.stderr[-300:]

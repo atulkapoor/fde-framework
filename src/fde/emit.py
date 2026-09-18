@@ -83,7 +83,7 @@ def emit(
 
     (out / "app" / "components").mkdir(parents=True, exist_ok=True)
     _write_package(architecture, out)
-    _write_shapes(out)
+    _write_shapes(architecture, out)
     scaffolded = _write_components(
         architecture, out, env, sensitive_fields=_sensitive_fields(pairs_path)
     )
@@ -376,16 +376,14 @@ from app.contract import RefusedInput
 
 RESERVED = ("request_id", "principal")
 
-# What a caller may send. Everything else is refused by name: a key a step
-# WRITES (answer, decision, known, retrieved, ...) arriving from a caller
-# is a forged result, not an input -- a request once carried its own
-# `known` answer and the service returned it as grounded, HTTP 200.
+# What a caller may send TO THIS BUILD -- generated from the components on
+# its request path, so a key nothing here reads is refused by name rather
+# than silently ignored (a caller once sent `documents` to a build that
+# ingests at boot and got a confident answer from another corpus). A key
+# a step WRITES (answer, decision, known, retrieved, ...) arriving from a
+# caller is a forged result, not an input, and is refused the same way.
 # Extend this tuple when the implementation grows a real input.
-CALLER_KEYS = (
-    "id", "text", "documents", "pages", "rows", "events", "query", "goal", "k",
-    "items", "capacity", "tool", "arguments", "session", "subject",
-    "observation", "audio_ref", "video_ref", "flagged_moments", "from", "to",
-)
+CALLER_KEYS = __CALLER_KEYS__
 MAX_QUESTION_CHARS = 4000
 MAX_K = 100
 
@@ -472,8 +470,39 @@ def documents_of(payload: dict[str, Any]) -> list[dict[str, Any]]:
 '''
 
 
-def _write_shapes(out: Path) -> None:
-    (out / "app" / "shapes.py").write_text(_SHAPES)
+# What each component family on the REQUEST path reads from a caller. A
+# key nobody on that path reads is refused by name: a caller who sends
+# `documents` to a build whose corpus is ingested at boot would otherwise
+# get a confident answer from a different corpus, with no warning.
+_CALLER_KEYS_BY_FAMILY = {
+    "perception": ("id", "text", "documents", "pages", "rows", "events",
+                   "audio_ref", "video_ref", "flagged_moments"),
+    "memory": ("session", "subject", "observation"),
+    "retrieval": ("query", "k", "from", "to"),
+    "planning": ("goal", "items", "capacity"),
+    "reasoning": ("query", "goal"),
+    "integration": ("tool", "arguments"),
+}
+
+
+def _request_path_families(architecture: Architecture) -> set[str]:
+    decided = set(architecture.decisions.decided())
+    families = {re.split(r"[-_:]", c, maxsplit=1)[0] for c in decided} - _NON_PAYLOAD
+    if "retrieval" in families:
+        families -= set(_INGEST_PHASES)
+    return families
+
+
+def _write_shapes(architecture: Architecture, out: Path) -> None:
+    keys: list[str] = []
+    for family in sorted(_request_path_families(architecture)):
+        for key in _CALLER_KEYS_BY_FAMILY.get(family, ()):
+            if key not in keys:
+                keys.append(key)
+    if not keys:
+        keys = ["text", "query"]
+    rendered = "(\n" + "".join(f"    {k!r},\n" for k in keys) + ")"
+    (out / "app" / "shapes.py").write_text(_SHAPES.replace("__CALLER_KEYS__", rendered))
 
 
 _SERVICE = '''"""The HTTP edge. Stdlib only; runs as `python -m app.service`.
@@ -504,6 +533,7 @@ import json
 import os
 import re
 import signal
+import socket
 import sys
 import threading
 import time
@@ -513,8 +543,17 @@ import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse
 
-from app import pipeline
 from app.contract import RefusedInput
+
+try:
+    # The boundary asserts at import. A violation is a configuration
+    # refusal like any other: one line and exit 78, never a traceback the
+    # unit restarts five times.
+    from app import pipeline
+except RuntimeError as boundary_refusal:
+    print(json.dumps({"level": "fatal", "boot_problem": str(boundary_refusal)[:300]}),
+          file=sys.stderr, flush=True)
+    raise SystemExit(78) from None
 
 NEEDS_MODEL = __NEEDS_MODEL__
 HAS_RETRIEVAL = __HAS_RETRIEVAL__
@@ -548,7 +587,11 @@ TRANSIENT = (urllib.error.URLError, TimeoutError, ConnectionError, ModelUnconfig
 CONTENT_LENGTH = re.compile(r"^[0-9]{1,12}$")
 REQUEST_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
 READY_TTL_SECONDS = 5.0
-STATE: dict = {"corpus_documents": 0, "ready_at": 0.0, "ready_problems": []}
+# ready_at starts at -inf so the FIRST poll always probes: seeded at 0.0,
+# a poll inside the first seconds of machine uptime answered green with
+# no model and no corpus.
+STATE: dict = {"corpus_documents": 0, "ready_at": float("-inf"), "ready_problems": [],
+               "degraded": []}
 _READY_LOCK = threading.Lock()
 
 
@@ -587,9 +630,15 @@ def load_config() -> dict:
     subject = os.environ.get("SERVICE_SUBJECT", "").strip()
     if token and not subject:
         subject = "token:" + hashlib.sha256(token.encode()).hexdigest()[:8]
+    bind = os.environ.get("BIND", "127.0.0.1").strip()
+    try:
+        socket.getaddrinfo(bind, None)
+    except OSError:
+        _log(level="fatal", config="BIND", value=bind, wanted="a resolvable address")
+        raise SystemExit(78) from None
     return {
         "port": _int_env("PORT", 8080, 1, 65535),
-        "bind": os.environ.get("BIND", "127.0.0.1"),
+        "bind": bind,
         "max_body": _int_env("MAX_BODY_BYTES", 1024 * 1024, 1, 1024 * 1024 * 1024),
         "workers": _int_env("WORKERS", 8, 1, 1024),
         "token": token,
@@ -615,10 +664,12 @@ def _model_problems() -> list[str]:
     try:
         with urllib.request.urlopen(endpoint.rstrip("/") + "/v1/models", timeout=3) as r:
             served = json.load(r)
+        # A gateway answering a list or a string is a finding, never a
+        # dropped connection: every parse failure lands here.
+        ids = {m.get("id") for m in served.get("data", []) if isinstance(m, dict)}
     except Exception as exc:  # noqa: BLE001 -- any failure is one finding
-        return [f"model endpoint unreachable: {type(exc).__name__}"]
+        return [f"model endpoint unreachable or malformed: {type(exc).__name__}"]
     wanted = os.environ.get("LLM_MODEL", "").strip()
-    ids = {m.get("id") for m in served.get("data", []) if isinstance(m, dict)}
     if wanted and ids and wanted not in ids:
         return [f"LLM_MODEL {wanted!r} is not served by the endpoint"]
     return []
@@ -633,10 +684,15 @@ def preflight(config: dict) -> tuple[list[str], list[str]]:
                          "principal, so every tool call would be refused")
     if LEDGER is not None and getattr(LEDGER, "problem", None):
         permanent.append(LEDGER.problem)
-    skipped = getattr(pipeline, "LOADED", {}).get("skipped") or []
-    if skipped:
-        transient.append(f"corpus: {len(skipped)} file(s) skipped at ingest "
-                         f"(see the boot log)")
+    loaded = getattr(pipeline, "LOADED", {})
+    skipped = loaded.get("skipped") or []
+    # Skipped files DEGRADE readiness, they do not deny it: a stray
+    # .DS_Store must not take a healthy service out of rotation. Past
+    # half the corpus unreadable, it is not the corpus that was sized.
+    STATE["degraded"] = skipped[:50]
+    total = loaded.get("documents", 0) + len(skipped)
+    if total and len(skipped) * 2 > total:
+        transient.append(f"corpus: {len(skipped)} of {total} files unreadable")
     if NEEDS_MODEL:
         for problem in _model_problems():
             (transient if "unreachable" in problem else permanent).append(problem)
@@ -705,7 +761,10 @@ def build_handler(config: dict):
 
         def send_error(self, code, message=None, explain=None):
             # Unsupported methods and framing faults answer in the same
-            # JSON the contract promises, never the stdlib's HTML page.
+            # JSON the contract promises, never the stdlib's HTML page --
+            # and with a request id, which the stdlib path never assigned.
+            if self.request_id == "-":
+                self._begin()
             self._send(code, {"error": message or "request rejected"})
 
         def log_message(self, fmt, *args):
@@ -747,12 +806,16 @@ def build_handler(config: dict):
                 if not self._loopback() and not self._authorised():
                     self._send(401, {"error": "bearer token required"})
                     return
-                problems = ready_problems(config)
+                try:
+                    problems = ready_problems(config)
+                except Exception as exc:  # noqa: BLE001 -- readiness never drops a socket
+                    problems = [f"readiness probe failed: {type(exc).__name__}"]
                 if problems:
                     self._send(503, {"ready": False, "problems": problems})
                 else:
                     self._send(200, {"ready": True,
-                                     "corpus_documents": STATE["corpus_documents"]})
+                                     "corpus_documents": STATE["corpus_documents"],
+                                     "degraded": STATE["degraded"]})
             else:
                 self._send(404, {"error": "POST / with a JSON payload"})
 
@@ -859,8 +922,17 @@ class Server(ThreadingHTTPServer):
 def main() -> int:
     config = load_config()
     if HAS_RETRIEVAL:
-        STATE["corpus_documents"] = pipeline.load_corpus()
+        try:
+            STATE["corpus_documents"] = pipeline.load_corpus()
+        except MemoryError:
+            _log(level="fatal", boot_problem="the corpus does not fit in memory; "
+                 "raise MemoryMax from the measured sizing in ARCHITECTURE.md "
+                 "or lower CORPUS_MAX_MB")
+            return 78
         loaded = getattr(pipeline, "LOADED", {})
+        if loaded.get("refused"):
+            _log(level="fatal", boot_problem=loaded["refused"])
+            return 78
         for skipped in loaded.get("skipped", []):
             _log(level="warning", event="corpus file skipped", **skipped)
         _log(level="info", event="corpus loaded", documents=STATE["corpus_documents"],
@@ -873,7 +945,12 @@ def main() -> int:
     for problem in transient:
         _log(level="warning", boot_problem=problem)
 
-    server = Server((config["bind"], config["port"]), build_handler(config))
+    try:
+        server = Server((config["bind"], config["port"]), build_handler(config))
+    except OSError as exc:
+        _log(level="fatal", boot_problem=f"cannot bind {config['bind']}:{config['port']}: "
+                                         f"{type(exc).__name__}")
+        return 78
 
     def _drain(signum, frame):
         # Stop accepting from another thread (shutdown() blocks until
@@ -966,10 +1043,11 @@ class Ledger:
                 if "key" in line:
                     self._keys[line["key"]] = line
         else:
-            print(json.dumps({"level": "warning", "ledger":
-                              "STATE_DIR unset: audit and idempotency live in "
-                              "process memory and vanish on restart"}),
-                  file=sys.stderr, flush=True)
+            why = self.problem or "STATE_DIR unset"
+            sys.stderr.write(json.dumps({"level": "warning", "ledger":
+                                         f"{why}: audit and idempotency live in "
+                                         f"process memory and vanish on restart"}) + "\\n")
+            sys.stderr.flush()
 
     # -- files ---------------------------------------------------------------
 
@@ -989,8 +1067,9 @@ class Ledger:
             except ValueError:
                 torn += 1
         if torn:
-            print(json.dumps({"level": "warning", "ledger": name,
-                              "torn_lines_skipped": torn}), file=sys.stderr, flush=True)
+            sys.stderr.write(json.dumps({"level": "warning", "ledger": name,
+                                         "torn_lines_skipped": torn}) + "\\n")
+            sys.stderr.flush()
         return records
 
     def _write(self, name: str, record: dict[str, Any]) -> None:
@@ -1067,6 +1146,26 @@ class Ledger:
         self.append({"phase": "resolved", "key": key, "by": by})
 
 
+    def compact(self, retention_seconds: float) -> int:
+        """Rewrite idempotency.jsonl keeping every unresolved key and every
+        key completed within the retention. NEVER rotate that file: a key
+        rotated away is an action that can happen twice. Returns the
+        number of records dropped."""
+        cutoff = time.time() - retention_seconds
+        with self._lock:
+            keep = {k: r for k, r in self._keys.items()
+                    if "outcome" not in r or r.get("completed_at", 0) >= cutoff}
+            dropped = len(self._keys) - len(keep)
+            if self.root is not None:
+                path = self.root / "idempotency.jsonl"
+                tmp = path.with_suffix(".jsonl.tmp")
+                tmp.write_text("".join(json.dumps(r, default=str) + "\\n"
+                                       for r in keep.values()))
+                os.replace(tmp, path)
+            self._keys = keep
+        return dropped
+
+
 def _canonical(value: Any) -> Any:
     if isinstance(value, float) and value.is_integer():
         return int(value)
@@ -1085,14 +1184,18 @@ if __name__ == "__main__":
     import argparse
     import getpass
 
-    parser = argparse.ArgumentParser(description="resolve a stuck idempotency key")
-    parser.add_argument("command", choices=["resolve", "show"])
-    parser.add_argument("key")
+    parser = argparse.ArgumentParser(description="the ledger's operator commands")
+    parser.add_argument("command", choices=["resolve", "show", "compact"])
+    parser.add_argument("key", nargs="?")
     parser.add_argument("outcome", nargs="?", default="null")
     parser.add_argument("--by", default=getpass.getuser())
+    parser.add_argument("--keep-days", type=float, default=90.0,
+                        help="compact: keep completed keys newer than this")
     args = parser.parse_args()
     if args.command == "show":
         print(json.dumps(LEDGER._keys.get(args.key), indent=2))  # noqa: SLF001
+    elif args.command == "compact":
+        print(f"dropped {LEDGER.compact(args.keep_days * 86400)} completed record(s)")
     else:
         LEDGER.resolve(args.key, json.loads(args.outcome), by=args.by)
         print(f"resolved {args.key} by {args.by}")
@@ -1323,7 +1426,7 @@ def ingest(documents: list[dict]) -> int:
 
 
 # What the last load_corpus() read, and what it could not.
-LOADED: dict = {"documents": 0, "skipped": []}
+LOADED: dict = {"documents": 0, "skipped": [], "refused": None}
 
 
 def load_corpus(directory: str | None = None) -> int:
@@ -1332,7 +1435,7 @@ def load_corpus(directory: str | None = None) -> int:
     .jsonl as one {id, text} per line. Returns the document count; zero
     means the service has nothing to answer from, and /ready says so."""
     root = directory or os.environ.get("CORPUS_DIR")
-    LOADED.update({"documents": 0, "skipped": []})
+    LOADED.update({"documents": 0, "skipped": [], "refused": None})
     if not root or not Path(root).is_dir():
         return 0
     documents = []
@@ -1347,9 +1450,19 @@ def load_corpus(directory: str | None = None) -> int:
             elif suffix == ".json":
                 documents.extend(json.loads(path.read_text(encoding="utf-8")))
             elif suffix == ".jsonl":
-                documents.extend(json.loads(line)
-                                 for line in path.read_text(encoding="utf-8").splitlines()
-                                 if line.strip())
+                # Line by line: one torn record must not take the other
+                # hundred thousand with it. Bad lines are counted, kept out.
+                bad = 0
+                for line in path.read_text(encoding="utf-8").splitlines():
+                    if not line.strip():
+                        continue
+                    try:
+                        documents.append(json.loads(line))
+                    except ValueError:
+                        bad += 1
+                if bad:
+                    LOADED["skipped"].append({"file": str(path.relative_to(root)),
+                                              "reason": f"{bad} malformed line(s) skipped"})
             else:
                 # Not silently: a corpus that read a quarter of its files
                 # answers confidently from a quarter of the truth.
@@ -1360,6 +1473,16 @@ def load_corpus(directory: str | None = None) -> int:
             # named in the boot log and counted in /ready.
             LOADED["skipped"].append({"file": str(path.relative_to(root)),
                                       "reason": f"{type(exc).__name__}: {str(exc)[:120]}"})
+    # The lexical index costs roughly twenty megabytes of memory per
+    # megabyte of corpus text (measured). A corpus over the sized ceiling
+    # is refused with a line, not killed by the cgroup before the socket
+    # opens. Raise CORPUS_MAX_MB together with MemoryMax in the unit.
+    ceiling = float(os.environ.get("CORPUS_MAX_MB", "80"))
+    size_mb = sum(len(d.get("text", "")) for d in documents if isinstance(d, dict)) / 1e6
+    if size_mb > ceiling:
+        LOADED["refused"] = (f"corpus is {size_mb:.0f} MB of text; CORPUS_MAX_MB is "
+                             f"{ceiling:.0f} (about {ceiling * 20:.0f} MB of memory)")
+        return 0
     ingested = 0
     for document in documents:
         try:
@@ -1508,9 +1631,10 @@ def _write_pipeline(architecture: Architecture, out: Path, registry=None) -> Non
         f"        except RefusedInput:\n"
         f"            raise\n"
         f"        except Exception:\n"
-        f'            print(json.dumps({{"failed_step": name,\n'
-        f'                              "request_id": payload.get("request_id")}}),\n'
-        f"                  file=sys.stderr, flush=True)\n"
+        f'            sys.stderr.write(json.dumps({{"failed_step": name,\n'
+        f'                                         "request_id": payload.get("request_id")}})\n'
+        f'                             + "\\n")\n'
+        f"            sys.stderr.flush()\n"
         f"            raise\n"
         f"    return payload\n"
         f"{ingest_fn}\n\n"
@@ -1672,7 +1796,9 @@ def _write_boundary(architecture: Architecture, out: Path) -> None:
         "        address = ipaddress.ip_address(host)\n"
         "    except ValueError:\n"
         "        return host == 'localhost'\n"
-        "    return address.is_loopback or address.is_private or address.is_link_local\n\n\n"
+        "    # Not link-local: 169.254.169.254 is the cloud metadata service,\n"
+        "    # and Python counts that range as private.\n"
+        "    return address.is_loopback or (address.is_private and not address.is_link_local)\n\n\n"
         "def check() -> None:\n"
         '    """Fail loudly if anything sensitive has been moved outside -- in the\n'
         '    placement table, or in the one place data actually leaves: a URL."""\n'
@@ -2396,9 +2522,14 @@ def judge_score(actual, expected):
     endpoint = os.environ.get("JUDGE_ENDPOINT") or None
     model = os.environ.get("JUDGE_MODEL") or None
     configured = os.environ.get("LLM_ENDPOINT") or os.environ.get("ANTHROPIC_API_KEY")
+    # The same endpoint AND model under a different name is still the
+    # author: compare what resolves, not whether a variable was set.
+    same = ((endpoint or os.environ.get("LLM_ENDPOINT")) == os.environ.get("LLM_ENDPOINT")
+            and (model or os.environ.get("LLM_MODEL", "default"))
+            == os.environ.get("LLM_MODEL", "default"))
     # No model at all is complete()'s clear red; a model with no separate
     # judge is the author grading itself, refused unless accepted by name.
-    if not endpoint and not model and configured:
+    if same and configured:
         if os.environ.get("ALLOW_SELF_JUDGE") != "1":
             raise ModelUnconfigured(
                 "the judge would be the author's own model. Set JUDGE_ENDPOINT "
@@ -2585,7 +2716,11 @@ def main():
             if layer["cases"] == 0:
                 print("holdout file holds no cases", file=sys.stderr)
                 return 1
-            if layer.get("errors") or (layer["score"] or 0) < max(args.min_score, 0.5):
+            # The floor is exclusive at the default: a holdout exactly half
+            # right is not the check against a memorised golden file.
+            floor = max(args.min_score, 0.5)
+            score = layer["score"] or 0
+            if layer.get("errors") or score < floor or (args.min_score <= 0.5 and score <= 0.5):
                 print("holdout red: the pipeline fails on cases it never saw "
                       "-- a green golden layer beside a red holdout usually "
                       "means the golden file was memorized", file=sys.stderr)
@@ -2757,6 +2892,119 @@ def test_rank_fusion_rewards_agreement():
 '''
 
 
+_EDGE_TESTS = '''"""The edge, defended by the deliverable itself.
+
+app/service.py promises identity, request ids, strict framing, bounded
+workers and a clean drain. Every promise below is asserted against the
+service booted on an ephemeral port, model-free: an unreachable model is
+a dependency problem the edge reports, not a reason the edge cannot be
+tested. A change that drops the transfer-encoding refusal, the reserved
+key strip or the close-after-error is caught here, not by a client.
+"""
+
+import json
+import os
+import socket
+import subprocess
+import sys
+import time
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+TOKEN = "edge-test-token"
+
+
+def _free_port() -> int:
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    return port
+
+
+def _boot(tmp_path):
+    port = _free_port()
+    env = {
+        "PATH": os.environ.get("PATH", "/usr/bin"), "PORT": str(port),
+        "AUTH_TOKEN": TOKEN, "GRANTED_SCOPES": "x",
+        "LLM_ENDPOINT": "http://127.0.0.1:9", "STATE_DIR": str(tmp_path / "state"),
+        "CORPUS_DIR": str(tmp_path / "no-corpus"),
+    }
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "app.service"], cwd=ROOT, env=env,
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+    )
+    base = f"http://127.0.0.1:{port}"
+    for _ in range(100):
+        if proc.poll() is not None:
+            raise AssertionError(f"service exited {proc.returncode}: {proc.stdout.read()[:800]}")
+        try:
+            urllib.request.urlopen(base + "/health", timeout=1)
+            return proc, base, port
+        except OSError:
+            time.sleep(0.1)
+    proc.kill()
+    raise AssertionError("service never came up: " + proc.stdout.read()[:800])
+
+
+def _post(base, body, headers=None, token=TOKEN):
+    request = urllib.request.Request(
+        base + "/", data=body, method="POST",
+        headers={"Content-Type": "application/json",
+                 **({"Authorization": f"Bearer {token}"} if token else {}),
+                 **(headers or {})})
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            return response.status, json.loads(response.read()), response.headers
+    except urllib.error.HTTPError as error:
+        return error.code, json.loads(error.read()), error.headers
+
+
+def test_the_edge_keeps_its_promises(tmp_path):
+    proc, base, port = _boot(tmp_path)
+    try:
+        # identity: no token, no service; a forged principal is dropped
+        code, body, _ = _post(base, b'"hello"', token=None)
+        assert code == 401 and "request_id" in body
+        forged = b'{"query": "q", "principal": {"scopes": ["admin"]}, "answer": "forged"}'
+        code, body, headers = _post(base, forged)
+        assert code == 422 and "answer" in body["refused"], body
+        # request ids: on every response, matching the header
+        code, body, headers = _post(base, b"null")
+        assert code == 422 and body["request_id"] == headers["X-Request-Id"]
+        # framing
+        assert _post(base, b"{}", headers={"Content-Length": "1_0"})[0] == 400
+        assert _post(base, b"{}", headers={"Transfer-Encoding": "chunked"})[0] == 501
+        assert _post(base, b"[" * 20000)[0] == 400
+        code, body, headers = _post(base, b"null")
+        assert headers.get("Connection") == "close", "errors must close the connection"
+        # a real request reaches the pipeline and answers with a shape
+        code, body, _ = _post(base, b'"a question"')
+        assert code in (200, 422, 503, 500) and "request_id" in body and "detail" not in body
+        # readiness reports the unreachable model, never a dropped socket
+        try:
+            urllib.request.urlopen(base + "/ready", timeout=5)
+        except urllib.error.HTTPError as error:
+            assert error.code == 503
+            assert "problems" in json.loads(error.read())
+    finally:
+        proc.terminate()
+        assert proc.wait(timeout=30) == 0, "SIGTERM must drain and exit 0"
+
+
+def test_a_refused_configuration_is_one_line_and_exit_78(tmp_path):
+    result = subprocess.run(
+        [sys.executable, "-m", "app.service"], cwd=ROOT, capture_output=True, text=True,
+        env={"PATH": os.environ.get("PATH", "/usr/bin"), "PORT": "not-a-port",
+             "AUTH_TOKEN": TOKEN}, timeout=60,
+    )
+    assert result.returncode == 78, result.stderr[-400:]
+    assert "Traceback" not in result.stderr
+'''
+
+
 def _write_smoke(out: Path) -> None:
     """The deliverable carries its own model-free floor.
 
@@ -2776,6 +3024,9 @@ def _write_smoke(out: Path) -> None:
     if retrieval.exists() and "def fuse(" in retrieval.read_text():
         body += _SMOKE_FUSION
     (tests / "test_smoke.py").write_text(body)
+    # The edge defends itself: every promise app/service.py makes is
+    # asserted against the booted service, model-free.
+    (tests / "test_edge.py").write_text(_EDGE_TESTS)
 
 
 def _write_project_file(out: Path) -> None:
@@ -2999,6 +3250,20 @@ def render_architecture(architecture: Architecture, registry: Registry | None = 
             f"| {component} | {decision.approach}{advisory} | "
             f"{realization.stack if realization else '--'} | {decision.rationale} |"
         )
+    if "retrieval" in architecture.decisions.decided():
+        corpus = (architecture.values or {}).get("corpus_size")
+        lines += ["", "## Sizing the index", "",
+                  "The lexical index costs about twenty megabytes of memory per "
+                  "megabyte of corpus text (measured on the emitted realization). "
+                  "The unit's `MemoryMax` and the env file's `CORPUS_MAX_MB` are "
+                  "one decision: at the shipped defaults (2G, 80 MB of text) the "
+                  "service refuses a larger corpus at boot with one line rather "
+                  "than dying to the OOM killer before its socket opens."
+                  + (f" This profile states `corpus_size = {corpus}` documents; "
+                     f"at a few kilobytes each that is near the ceiling -- size "
+                     f"it, or move the postings to disk (SQLite FTS5, standard "
+                     f"library) which is a realization swap, not a redesign."
+                     if corpus else "")]
     if "integration" in architecture.decisions.decided():
         lines += ["", "The tool boundary is emitted UNWIRED: no external system's "
                   "tools are registered and the approval gate and critic are "

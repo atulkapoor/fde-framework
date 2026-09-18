@@ -13,6 +13,17 @@ never to the corpus: the index is a postings list per token, not a scan.
 A query is capped in tokens, because an uncapped one once cost 5.7 seconds
 of CPU per request at a tenth of the stated corpus.
 
+Scoring is BM25 -- term frequency saturates and long chunks stop winning by
+length alone -- and a token found in more than half the corpus (the, of, a)
+carries no evidence: a hit must share an INFORMATIVE token with the query,
+or it is not a hit. "How do I reset the payroll database?" once cited an
+HTTP document on the strength of "the". Every hit carries its score.
+
+Memory: about twenty megabytes per megabyte of corpus text, measured, and
+the deploy sizes MemoryMax and CORPUS_MAX_MB from that figure. Beyond a
+hundred megabytes of text the postings belong on disk (SQLite FTS5 is in
+the standard library); that is a realization swap, not a redesign.
+
 Where a semantic tier is later earned, the `hybrid-search` approach fuses
 the two on rank; this module deliberately does not carry that machinery.
 """
@@ -30,6 +41,12 @@ TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*")
 # Tokens of a query that are scored. Beyond this a question is not a
 # question; the envelope refuses over-long ones earlier, this is the floor.
 MAX_QUERY_TOKENS = 64
+# BM25's two constants, at their conventional values.
+K1 = 1.5
+B = 0.75
+# A token in more than this share of the corpus is a stopword for scoring:
+# it cannot make a document relevant on its own.
+STOPWORD_SHARE = 0.5
 
 
 class {{ class_name }}:
@@ -42,9 +59,12 @@ class {{ class_name }}:
     def __init__(self) -> None:
         self._documents: dict[str, str] = {}
         self._sources: dict[str, str] = {}
-        self._frequencies: dict[str, Counter] = {}
+        self._lengths: dict[str, int] = {}
         # token -> {doc_id: count}. The postings list is what makes a
-        # query cost what it matches rather than what the corpus holds.
+        # query cost what it matches rather than what the corpus holds --
+        # and it is the ONLY token structure: a second per-document
+        # Counter, kept only to retire postings on re-index, was half the
+        # footprint of the whole index.
         self._postings: dict[str, dict[str, int]] = defaultdict(dict)
 
     def index(self, documents: list[dict[str, Any]]) -> None:
@@ -53,14 +73,17 @@ class {{ class_name }}:
             # Re-indexing a document first retires its old postings, or the
             # document frequency drifts above the document count and the
             # ranking quietly rots on every corpus refresh.
-            if doc_id in self._frequencies:
-                for token in self._frequencies[doc_id]:
-                    self._postings[token].pop(doc_id, None)
-            counts = Counter(self._tokenise(document["text"]))
+            if doc_id in self._documents:
+                # Re-index is rare (a corpus update is a restart); paying a
+                # scan of the vocabulary here is cheaper than carrying every
+                # document's token counts in memory for the lifetime of it.
+                for posting in self._postings.values():
+                    posting.pop(doc_id, None)
+            tokens = self._tokenise(document["text"])
             self._documents[doc_id] = document["text"]
             self._sources[doc_id] = str(document.get("source", doc_id))
-            self._frequencies[doc_id] = counts
-            for token, count in counts.items():
+            self._lengths[doc_id] = len(tokens)
+            for token, count in Counter(tokens).items():
                 self._postings[token][doc_id] = count
 
     def __len__(self) -> int:
@@ -72,8 +95,9 @@ class {{ class_name }}:
         ranked = self._lexical(query)
         return [
             {"id": doc_id, "source": self._sources.get(doc_id, doc_id),
-             "text": self._documents[doc_id], "rank": position + 1}
-            for position, doc_id in enumerate(ranked[:k])
+             "text": self._documents[doc_id], "rank": position + 1,
+             "score": round(score, 4)}
+            for position, (doc_id, score) in enumerate(ranked[:k])
         ]
 
     def run(self, payload: dict[str, Any]) -> dict[str, Any]:
@@ -83,22 +107,28 @@ class {{ class_name }}:
 
     # -- lexical ----------------------------------------------------------
 
-    def _lexical(self, query: str) -> list[str]:
-        """Term frequency against inverse document frequency.
+    def _lexical(self, query: str) -> list[tuple[str, float]]:
+        """BM25 over the postings, informative tokens only.
 
         Unfashionable and hard to beat when the query contains the token the
         answer contains -- which is most of the time in a document corpus.
+        A document that shares only stopwords with the query is not ranked
+        low; it is not ranked at all.
         """
-        total = len(self._documents) or 1
+        total = len(self._documents)
+        if not total:
+            return []
+        average_length = sum(self._lengths.values()) / total
         scores: dict[str, float] = defaultdict(float)
         for token in self._tokenise(query)[:MAX_QUERY_TOKENS]:
             posting = self._postings.get(token)
-            if not posting:
+            if not posting or len(posting) > STOPWORD_SHARE * total:
                 continue
-            rarity = math.log(1 + (total / len(posting)))
+            idf = math.log(1 + (total - len(posting) + 0.5) / (len(posting) + 0.5))
             for doc_id, count in posting.items():
-                scores[doc_id] += count * rarity
-        return sorted(scores, key=lambda d: (-scores[d], d))
+                norm = 1 - B + B * self._lengths[doc_id] / (average_length or 1)
+                scores[doc_id] += idf * count * (K1 + 1) / (count + K1 * norm)
+        return sorted(scores.items(), key=lambda item: (-item[1], item[0]))
 
     @staticmethod
     def _tokenise(text: str) -> list[str]:

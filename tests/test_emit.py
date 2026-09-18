@@ -767,9 +767,11 @@ def test_a_judged_harness_scores_against_a_local_judge(reg, tmp_path):
             cwd=out, capture_output=True, text=True,
             env={"PATH": "/usr/bin",
                  "LLM_ENDPOINT": f"http://127.0.0.1:{server.server_port}",
-                 # Declared as the judge: the harness refuses an undeclared
-                 # author-grades-itself run, and this stub IS the judge.
-                 "JUDGE_ENDPOINT": f"http://127.0.0.1:{server.server_port}"},
+                 # A different model on the same stub endpoint: the harness
+                 # compares the resolved (endpoint, model) pair, and this
+                 # is a distinct judge by that measure.
+                 "JUDGE_ENDPOINT": f"http://127.0.0.1:{server.server_port}",
+                 "JUDGE_MODEL": "judge-stub"},
         )
         assert result.returncode == 0, result.stdout + result.stderr
         assert "100.0%" in result.stdout
@@ -1018,3 +1020,41 @@ def test_the_emitted_project_ships_its_own_hygiene(reg, tmp_path):
     assert "__pycache__" in ignore and "*.sqlite3" in ignore
     unit = (out / "deploy" / "systemd" / "app.service").read_text()
     assert "PYTHONUNBUFFERED=1" in unit and "EnvironmentFile=" in unit
+
+
+
+def test_the_judge_may_not_be_the_author_under_another_name(reg, tmp_path):
+    """JUDGE_ENDPOINT set to the same URL as LLM_ENDPOINT is the author
+    grading itself with a costume on; the harness compares what resolves."""
+    import json as jsonlib
+
+    out = tmp_path / "p"
+    emit(architect(profile(**FREEFORM), reg), out)
+    (out / "evals" / "golden.jsonl").write_text(jsonlib.dumps(
+        {"id": "g1", "input": "q", "output": "a"}) + "\n")
+    (out / "app" / "pipeline.py").write_text("def run(p, **kw):\n    return 'a'\n")
+    result = subprocess.run(
+        [sys.executable, "evals/harness.py"], cwd=out, capture_output=True, text=True,
+        env={"PATH": "/usr/bin", "LLM_ENDPOINT": "http://127.0.0.1:9",
+             "JUDGE_ENDPOINT": "http://127.0.0.1:9"},
+    )
+    assert result.returncode == 1
+    assert "author" in result.stderr, result.stderr[-300:]
+
+
+def test_a_holdout_exactly_half_right_is_red(reg, tmp_path):
+    import json as jsonlib
+
+    out = tmp_path / "p"
+    emit(architect(profile(**COMPLETE), reg), out)
+    (out / "app" / "pipeline.py").write_text("def run(p, **kw):\n    return p\n")
+    holdout = tmp_path / "holdout.jsonl"
+    holdout.write_text("".join(jsonlib.dumps(c) + "\n" for c in (
+        {"id": "h1", "input": {"a": 1}, "output": {"a": 1}},
+        {"id": "h2", "input": {"a": 2}, "output": {"a": 3}},
+    )))
+    result = subprocess.run(
+        [sys.executable, "evals/harness.py", "--cases", str(holdout)], cwd=out,
+        capture_output=True, text=True, env={"PATH": "/usr/bin"},
+    )
+    assert result.returncode == 1, result.stdout + result.stderr

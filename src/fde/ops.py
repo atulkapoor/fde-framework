@@ -123,10 +123,13 @@ def _runbook(architecture, registry) -> str:
         "",
         "## The ledger (builds that act on the world)",
         "",
-        "`$STATE_DIR/audit.jsonl` and `$STATE_DIR/idempotency.jsonl` are "
-        "append-only, fsync'd, and grow without bound -- rotate them under a "
-        "retention the client signs off (they are the record of every outward "
-        "call). A key that was reserved and never completed is a call that "
+        "`$STATE_DIR/audit.jsonl` is append-only, fsync'd, and grows without "
+        "bound -- rotate it under a retention the client signs off (it is the "
+        "record of every outward call). `$STATE_DIR/idempotency.jsonl` is NEVER "
+        "rotated: a key rotated away is an action that can happen twice. It is "
+        "compacted instead -- `python -m app.ledger compact --keep-days 90` "
+        "drops completed keys older than the client's retry horizon and keeps "
+        "every unresolved one. A key that was reserved and never completed is a call that "
         "started and did not finish; every retry of that exact action is "
         "refused (`KeyUnresolved`) until a person establishes what happened "
         "and records it:",
