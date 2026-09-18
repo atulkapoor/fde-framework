@@ -149,8 +149,8 @@ def _systemd(deploy: Path, boundary: bool = False) -> None:
         "UMask=0077\n"
         "# Resource ceilings: a thread-per-connection server without them is\n"
         "# a denial of service one slow client away. The memory budget is\n"
-        "# the index (about twenty megabytes per megabyte of corpus text,\n"
-        "# measured -- CORPUS_MAX_MB in the env file must agree with this)\n"
+        "# the index (five to twenty-five megabytes per megabyte of corpus\n"
+        "# text by vocabulary, measured -- CORPUS_MAX_MB must agree with this)\n"
         "# plus TasksMax x MAX_BODY_BYTES of request bodies in flight.\n"
         "TasksMax=128\n"
         "MemoryMax=2G\n"
@@ -559,6 +559,9 @@ def _write_env_example(architecture, deploy: Path) -> None:
         "# Exception text in the journal (never in a response). Off by",
         "# default: on a build with a data boundary, the text can carry data.",
         "LOG_DETAIL=0",
+        "# Behind a reverse proxy, log the forwarded client address instead of",
+        "# the proxy's. Only when the proxy is yours: 1 trusts X-Forwarded-For.",
+        "TRUSTED_PROXY=0",
         "# Audit records carry argument KEYS and a digest by default; `full`",
         "# writes the values too (sensitive-looking keys redacted).",
         "AUDIT_ARGUMENTS=digest",
@@ -572,10 +575,11 @@ def _write_env_example(architecture, deploy: Path) -> None:
             "# The documents to answer from, ingested at boot: .txt/.md files,",
             "# .json lists of {id, text}, .jsonl of the same. Empty = not ready.",
             "CORPUS_DIR=/var/lib/app/corpus",
-            "# Megabytes of corpus TEXT the index may hold. The index costs about",
-            "# twenty megabytes of memory per megabyte of text (measured); this",
-            "# and MemoryMax in the unit are one decision. Over it, the boot",
-            "# refuses with one line instead of dying to the OOM killer.",
+            "# Megabytes of corpus TEXT the index may hold. The index costs five",
+            "# to twenty-five megabytes of memory per megabyte of text by",
+            "# vocabulary (measured both ends; size from the top); this and",
+            "# MemoryMax in the unit are one decision. Over it, the boot refuses",
+            "# with one line instead of dying to the OOM killer.",
             "CORPUS_MAX_MB=80",
         ]
     if architecture.graph.sensitive_nodes():

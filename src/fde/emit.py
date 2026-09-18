@@ -424,6 +424,9 @@ def envelope(raw: Any) -> dict[str, Any]:
         if "arguments" in body and not isinstance(body["arguments"], dict):
             raise RefusedInput("'arguments' must be an object")
         env: dict[str, Any] = {"input": raw, **body}
+        # A goal is a question to a system that answers from evidence.
+        if "goal" in body and "query" not in body:
+            env["query"] = body["goal"]
         text = body.get("text")
         if isinstance(text, str) and "documents" not in body:
             env["documents"] = [{"id": str(body.get("id", "input")), "text": text}]
@@ -478,7 +481,8 @@ _CALLER_KEYS_BY_FAMILY = {
     "perception": ("id", "text", "documents", "pages", "rows", "events",
                    "audio_ref", "video_ref", "flagged_moments"),
     "memory": ("session", "subject", "observation"),
-    "retrieval": ("query", "k", "from", "to"),
+    "retrieval": ("query", "k"),
+    "graph-retrieval": ("from", "to"),
     "planning": ("goal", "items", "capacity"),
     "reasoning": ("query", "goal"),
     "integration": ("tool", "arguments"),
@@ -495,7 +499,11 @@ def _request_path_families(architecture: Architecture) -> set[str]:
 
 def _write_shapes(architecture: Architecture, out: Path) -> None:
     keys: list[str] = []
-    for family in sorted(_request_path_families(architecture)):
+    families = _request_path_families(architecture)
+    retrieval = architecture.decisions.get("retrieval")
+    if retrieval and retrieval.approach and retrieval.approach.startswith("graph-retrieval"):
+        families.add("graph-retrieval")
+    for family in sorted(families):
         for key in _CALLER_KEYS_BY_FAMILY.get(family, ()):
             if key not in keys:
                 keys.append(key)
@@ -645,6 +653,7 @@ def load_config() -> dict:
         "principal": {"subject": subject or "anonymous",
                       "scopes": [s.strip() for s in scopes] if token else []},
         "log_detail": os.environ.get("LOG_DETAIL", "") == "1",
+        "trusted_proxy": os.environ.get("TRUSTED_PROXY", "") == "1",
     }
 
 
@@ -739,6 +748,12 @@ def build_handler(config: dict):
         def _send(self, code: int, body: dict) -> None:
             data = json.dumps({**body, "request_id": self.request_id},
                               default=str).encode()
+            # A request line that never parsed leaves the stdlib believing
+            # this is HTTP/0.9, which writes no status line and no headers
+            # -- a bare JSON body on the wire. Answer as HTTP/1.1 and close.
+            if getattr(self, "request_version", "HTTP/0.9") == "HTTP/0.9":
+                self.request_version = "HTTP/1.1"
+                self.close_connection = True
             # Any error answered before the body was consumed leaves that
             # body on the socket, where keep-alive would parse it as the
             # next request line. Errors close the connection, always.
@@ -768,7 +783,8 @@ def build_handler(config: dict):
             self._send(code, {"error": message or "request rejected"})
 
         def log_message(self, fmt, *args):
-            _log(level="access", request_id=self.request_id, line=fmt % args)
+            _log(level="access", request_id=self.request_id, client=self._client(),
+                 line=fmt % args)
 
         def _authorised(self) -> bool:
             if not token:
@@ -781,8 +797,21 @@ def build_handler(config: dict):
             return self.client_address[0] in ("127.0.0.1", "::1")
 
         def _begin(self) -> None:
-            given = self.headers.get("X-Request-Id", "")
+            # A request line that never parsed has no headers yet -- and it
+            # still gets an id and a JSON 400, never a dropped socket.
+            headers = getattr(self, "headers", None)
+            given = headers.get("X-Request-Id", "") if headers is not None else ""
             self.request_id = given if REQUEST_ID.match(given) else str(uuid.uuid4())[:8]
+
+        def _client(self) -> str:
+            # Behind the prescribed proxy every peer is loopback; the
+            # forwarded address is trusted only when told to be.
+            peer = self.client_address[0]
+            headers = getattr(self, "headers", None)
+            forwarded = headers.get("X-Forwarded-For", "") if headers is not None else ""
+            if config["trusted_proxy"] and forwarded:
+                return forwarded.split(",")[0].strip()[:64]
+            return peer
 
         # -- routes -----------------------------------------------------------
 
@@ -813,9 +842,13 @@ def build_handler(config: dict):
                 if problems:
                     self._send(503, {"ready": False, "problems": problems})
                 else:
+                    # File names are internal; the unauthenticated loopback
+                    # probe gets the count, a bearer gets the list.
+                    degraded = (STATE["degraded"] if self._authorised() and token
+                                else len(STATE["degraded"]))
                     self._send(200, {"ready": True,
                                      "corpus_documents": STATE["corpus_documents"],
-                                     "degraded": STATE["degraded"]})
+                                     "degraded": degraded})
             else:
                 self._send(404, {"error": "POST / with a JSON payload"})
 
@@ -879,7 +912,7 @@ def build_handler(config: dict):
                 return
             except Exception as exc:  # noqa: BLE001 -- mapped, logged, never dropped
                 fields = dict(level="error", request_id=self.request_id,
-                              error=type(exc).__name__,
+                              client=self._client(), error=type(exc).__name__,
                               ms=int((time.monotonic() - started) * 1000))
                 if config["log_detail"]:
                     fields["detail"] = str(exc)[:300]
@@ -894,12 +927,13 @@ def build_handler(config: dict):
                     {k: item.get(k) for k in ("id", "source", "rank") if k in item}
                     for item in env["retrieved"]
                 ]
-            for key in ("stopped_because", "steps", "cost"):
+            for key in ("stopped_because", "steps", "cost", "retrieval_note"):
                 if key in env:
                     response[key] = env[key]
             _log(level="info", request_id=self.request_id, event="answered",
                  ms=int((time.monotonic() - started) * 1000),
-                 stopped_because=env.get("stopped_because"),
+                 client=self._client(), stopped_because=env.get("stopped_because"),
+                 retrieval_note=env.get("retrieval_note"),
                  steps=env.get("steps"), cost=env.get("cost"))
             self._send(200, response)
 
@@ -928,6 +962,10 @@ def main() -> int:
             _log(level="fatal", boot_problem="the corpus does not fit in memory; "
                  "raise MemoryMax from the measured sizing in ARCHITECTURE.md "
                  "or lower CORPUS_MAX_MB")
+            return 78
+        except Exception as exc:  # noqa: BLE001 -- a refusal, never a restart loop
+            _log(level="fatal", boot_problem=f"corpus load failed: {type(exc).__name__}: "
+                                             f"{str(exc)[:200]}")
             return 78
         loaded = getattr(pipeline, "LOADED", {})
         if loaded.get("refused"):
@@ -992,6 +1030,7 @@ start. Fine on a laptop. Not a service.
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
@@ -1072,18 +1111,25 @@ class Ledger:
             sys.stderr.flush()
         return records
 
+    def _locked(self):
+        """An exclusive lock on STATE_DIR shared by every process that
+        writes the ledger -- the service and the operator's compaction --
+        so neither can interleave with, or rewrite under, the other."""
+        return _DirectoryLock(self.root)
+
     def _write(self, name: str, record: dict[str, Any]) -> None:
         if self.root is None:
             return
-        # One append per record, fsync'd: a crash leaves at most one torn
-        # line, never an interleaving of two.
+        # One append per record, fsync'd, under the directory lock: a
+        # crash leaves at most one torn line, never an interleaving.
         data = (json.dumps(record, default=str) + "\\n").encode()
-        fd = os.open(self.root / name, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
-        try:
-            os.write(fd, data)
-            os.fsync(fd)
-        finally:
-            os.close(fd)
+        with self._locked():
+            fd = os.open(self.root / name, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+            try:
+                os.write(fd, data)
+                os.fsync(fd)
+            finally:
+                os.close(fd)
 
     # -- audit ---------------------------------------------------------------
 
@@ -1149,21 +1195,59 @@ class Ledger:
     def compact(self, retention_seconds: float) -> int:
         """Rewrite idempotency.jsonl keeping every unresolved key and every
         key completed within the retention. NEVER rotate that file: a key
-        rotated away is an action that can happen twice. Returns the
-        number of records dropped."""
+        rotated away is an action that can happen twice. The file is
+        RE-READ under the directory lock before it is rewritten, so a key
+        the running service reserved a moment ago survives -- an earlier
+        version rewrote from this process's stale snapshot and dropped it.
+        Returns the number of records dropped."""
         cutoff = time.time() - retention_seconds
-        with self._lock:
-            keep = {k: r for k, r in self._keys.items()
+        with self._lock, self._locked():
+            current: dict[str, dict[str, Any]] = dict(self._keys)
+            if self.root is not None:
+                for line in self._read("idempotency.jsonl"):
+                    if "key" in line:
+                        current[line["key"]] = line
+            keep = {k: r for k, r in current.items()
                     if "outcome" not in r or r.get("completed_at", 0) >= cutoff}
-            dropped = len(self._keys) - len(keep)
+            dropped = len(current) - len(keep)
             if self.root is not None:
                 path = self.root / "idempotency.jsonl"
                 tmp = path.with_suffix(".jsonl.tmp")
-                tmp.write_text("".join(json.dumps(r, default=str) + "\\n"
-                                       for r in keep.values()))
+                fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                try:
+                    os.write(fd, "".join(json.dumps(r, default=str) + "\\n"
+                                         for r in keep.values()).encode())
+                    os.fsync(fd)
+                finally:
+                    os.close(fd)
                 os.replace(tmp, path)
+                dir_fd = os.open(self.root, os.O_RDONLY)
+                try:
+                    os.fsync(dir_fd)
+                finally:
+                    os.close(dir_fd)
             self._keys = keep
         return dropped
+
+
+class _DirectoryLock:
+    """flock on STATE_DIR/.lock, or a no-op without a STATE_DIR."""
+
+    def __init__(self, root: Path | None) -> None:
+        self.root = root
+        self.fd: int | None = None
+
+    def __enter__(self):
+        if self.root is not None:
+            self.fd = os.open(self.root / ".lock", os.O_RDWR | os.O_CREAT, 0o600)
+            fcntl.flock(self.fd, fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, *exc):
+        if self.fd is not None:
+            fcntl.flock(self.fd, fcntl.LOCK_UN)
+            os.close(self.fd)
+            self.fd = None
 
 
 def _canonical(value: Any) -> Any:
@@ -1473,15 +1557,16 @@ def load_corpus(directory: str | None = None) -> int:
             # named in the boot log and counted in /ready.
             LOADED["skipped"].append({"file": str(path.relative_to(root)),
                                       "reason": f"{type(exc).__name__}: {str(exc)[:120]}"})
-    # The lexical index costs roughly twenty megabytes of memory per
-    # megabyte of corpus text (measured). A corpus over the sized ceiling
-    # is refused with a line, not killed by the cgroup before the socket
-    # opens. Raise CORPUS_MAX_MB together with MemoryMax in the unit.
+    # The lexical index costs between five and twenty-five megabytes of
+    # memory per megabyte of corpus text, by vocabulary (measured both
+    # ends). A corpus over the sized ceiling is refused with a line, not
+    # killed by the cgroup before the socket opens. Raise CORPUS_MAX_MB
+    # together with MemoryMax in the unit.
     ceiling = float(os.environ.get("CORPUS_MAX_MB", "80"))
     size_mb = sum(len(d.get("text", "")) for d in documents if isinstance(d, dict)) / 1e6
     if size_mb > ceiling:
         LOADED["refused"] = (f"corpus is {size_mb:.0f} MB of text; CORPUS_MAX_MB is "
-                             f"{ceiling:.0f} (about {ceiling * 20:.0f} MB of memory)")
+                             f"{ceiling:.0f} (up to {ceiling * 25:.0f} MB of memory)")
         return 0
     ingested = 0
     for document in documents:
@@ -1489,7 +1574,10 @@ def load_corpus(directory: str | None = None) -> int:
             ingest([document])
             ingested += 1
         except Exception as exc:  # noqa: BLE001 -- named, counted, not fatal
-            LOADED["skipped"].append({"file": str(document.get("id")),
+            # A record that is not even an object has no id to name.
+            label = (document.get("id") if isinstance(document, dict)
+                     else f"record {type(document).__name__}")
+            LOADED["skipped"].append({"file": str(label),
                                       "reason": f"{type(exc).__name__}: {str(exc)[:120]}"})
     LOADED["documents"] = ingested
     return ingested
@@ -2169,6 +2257,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+try:
+    # This script sends the client's references and the system's answers
+    # to a judge; the boundary decides where that judge may be.
+    import app.boundary  # noqa: E402, F401
+except ImportError:
+    pass  # no boundary in this build
+except RuntimeError as refusal:
+    print(f"refused by the boundary: {refusal}", file=sys.stderr)
+    raise SystemExit(78) from None
+
 from evals.harness import VERDICTS, judge_score  # noqa: E402
 
 HERE = Path(__file__).parent
@@ -2474,6 +2572,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+try:
+    # The boundary asserts at import, whichever entry point runs: this
+    # harness sends references and answers to a judge.
+    import app.boundary  # noqa: E402, F401
+except ImportError:
+    pass  # no boundary in this build
+except RuntimeError as refusal:
+    print(f"refused by the boundary: {{refusal}}", file=sys.stderr)
+    raise SystemExit(78) from None
+
 from evals.taxonomy import classify  # noqa: E402
 
 try:
@@ -2558,15 +2666,18 @@ judge_score.warned = False
 def parse_verdict(reply):
     """Small local judges are verbose; the parser must never let chatter
     invert the verdict. Each rule below was learned from a real reply:
-    the verdict is read from the LAST non-empty line; a negation on that
-    line ("not correct") is ungradeable; a reply containing more than one
+    the verdict is read from the LAST non-empty line, anywhere on it; a
+    negation on that line ("not correct") is ungradeable; a reply containing more than one
     distinct verdict token ("incorrect\\ncorrect") contradicts itself and
     is ungradeable. Ungradeable is a failing grade, visibly."""
     lines = [line.strip() for line in (reply or "").splitlines() if line.strip()]
     if not lines:
         return 0.0
     last = lines[-1].lower()
-    match = re.match(r"^[^a-z]*(correct|partial(?:ly)?|incorrect)\\b", last)
+    # Anywhere on the last line: "Verdict: correct" and "The candidate is
+    # correct." are verdicts; an anchor at the start scored them zero and
+    # a team concluded their judge was bad when the parser was.
+    match = re.search(r"\\b(correct|partial(?:ly)?|incorrect)\\b", last)
     if not match:
         return 0.0
     if re.search(r"\\bnot\\b|n't\\b", last):
@@ -2980,6 +3091,22 @@ def test_the_edge_keeps_its_promises(tmp_path):
         assert _post(base, b"[" * 20000)[0] == 400
         code, body, headers = _post(base, b"null")
         assert headers.get("Connection") == "close", "errors must close the connection"
+        # a request line that never parses is a JSON 400 with an id, not
+        # an anonymous dropped socket (a TLS hello on the plaintext port)
+        raw = socket.create_connection(("127.0.0.1", port), timeout=5)
+        raw.sendall(b"\\x16\\x03\\x01 not http at all\\r\\n\\r\\n")
+        reply = b""
+        try:
+            while True:
+                chunk = raw.recv(65536)
+                if not chunk:
+                    break
+                reply += chunk
+        except OSError:
+            pass
+        raw.close()
+        assert reply.startswith(b"HTTP/1.1 400"), reply[:80]
+        assert b"request_id" in reply, reply[:300]
         # a real request reaches the pipeline and answers with a shape
         code, body, _ = _post(base, b'"a question"')
         assert code in (200, 422, 503, 500) and "request_id" in body and "detail" not in body
@@ -3253,8 +3380,9 @@ def render_architecture(architecture: Architecture, registry: Registry | None = 
     if "retrieval" in architecture.decisions.decided():
         corpus = (architecture.values or {}).get("corpus_size")
         lines += ["", "## Sizing the index", "",
-                  "The lexical index costs about twenty megabytes of memory per "
-                  "megabyte of corpus text (measured on the emitted realization). "
+                  "The lexical index costs between five and twenty-five megabytes of "
+                  "memory per megabyte of corpus text depending on vocabulary size "
+                  "(measured at both ends on the emitted realization; size from the top). "
                   "The unit's `MemoryMax` and the env file's `CORPUS_MAX_MB` are "
                   "one decision: at the shipped defaults (2G, 80 MB of text) the "
                   "service refuses a larger corpus at boot with one line rather "

@@ -108,6 +108,8 @@ class {{ class_name }}:
         """
         tool = self._tools.get(name)
         if tool is None:
+            # A denial is an outward-call attempt too: it goes on the record.
+            self._deny(name, subject, actor, request_id, "unregistered tool")
             raise UnregisteredTool(
                 f"{name!r} is not registered; every outward call goes through here"
             )
@@ -115,11 +117,16 @@ class {{ class_name }}:
         # Authority is checked here, against what the caller actually holds --
         # never against what the tool says about itself.
         if tool.required_scope not in granted_scopes:
+            self._deny(name, subject, actor, request_id, f"scope {tool.required_scope!r} not held")
             raise ScopeDenied(
                 f"{name!r} needs {tool.required_scope!r}, which {subject} does not hold"
             )
 
-        self._validate(tool, arguments)
+        try:
+            self._validate(tool, arguments)
+        except RefusedInput as refusal:
+            self._deny(name, subject, actor, request_id, f"arguments refused: {refusal}")
+            raise
         # A mutative call reserves its key BEFORE acting; the same action
         # retried finds the key taken and returns the recorded outcome.
         key = None
@@ -184,6 +191,13 @@ class {{ class_name }}:
             raise RefusedInput(
                 f"{tool.name!r}: unknown arguments {unknown}, missing {missing}"
             )
+
+    def _deny(self, name, subject, actor, request_id, reason) -> None:
+        entry = {"phase": "denied", "tool": name, "subject": subject, "actor": actor,
+                 "request_id": request_id, "reason": reason}
+        self.audit.append(entry)
+        del self.audit[:-200]
+        LEDGER.append(entry)
 
     def _record(self, phase, tool, subject, actor, arguments, error=None,
                 request_id=None) -> None:

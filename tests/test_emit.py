@@ -820,6 +820,10 @@ def test_the_judge_rubric_is_discrete_and_noise_tolerant(reg, tmp_path):
     parse = harness["parse_verdict"]
     # the parser survives chatter and formatting...
     assert parse("**correct**") == 1.0
+    # ordinary judge phrasings are verdicts, not zeros
+    assert parse("Verdict: correct") == 1.0
+    assert parse("The candidate is correct.") == 1.0
+    assert parse("Verdict: incorrect") == 0.0
     assert parse("Verdict:\ncorrect.") == 1.0
     assert parse("partially correct") == 0.5  # the audit's exact case
     assert parse("partial") == 0.5

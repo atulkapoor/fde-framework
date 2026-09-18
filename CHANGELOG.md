@@ -5,6 +5,54 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.20] — 2026-09-18
+
+The fourth-pass audit was the first to name the exact conditions for
+sign-off. Four of its six were framework defects, one of them mine from
+the round before; this release meets them, checks first. (The other two
+-- seeding an engagement's eval cases, and running the deliverable's
+edge tests in CI -- are an engagement's inputs and a one-line workflow
+fix, the latter shipped here.)
+
+- **The stopword cut became a recall cliff, and is gone.** A token in
+  most documents was discarded outright, so a one-document corpus
+  retrieved nothing for any question and a homogeneous corpus retrieved
+  nothing for its own domain word. Tokens are now three kinds:
+  informative (a minority of documents) rank alone when any matches;
+  ubiquitous ones rank, weakly, when none does; function words never
+  count. Every result carries a `retrieval_note` saying which case it
+  was, so "I don't know" for a genuine miss is never the same sentence
+  as "I discarded your question". The query cap rose to 512 tokens and
+  truncation is noted.
+- **One non-object corpus record no longer exits 1.** The skip path
+  itself assumed an object; it now names the record's type, and the
+  corpus load is wrapped so any escape is one line and exit 78 --
+  never a restart loop.
+- **Compaction races the running service no more.** Every ledger write
+  and the operator's `compact` take an exclusive lock on `STATE_DIR`;
+  compaction re-reads the file under that lock before rewriting it, so a
+  key reserved by the service a moment ago survives (the earlier version
+  rewrote from a stale snapshot and dropped it); the temp file and the
+  directory are fsync'd.
+- **Every eval entry point imports the boundary.** `evals/calibrate.py`
+  was the one script that sent references and answers to a judge without
+  it; both it and the harness now refuse an outside judge with one line
+  and exit 78.
+- Authorisation denials -- unregistered tool, scope not held, arguments
+  refused -- leave an audit record. A request line that never parses is
+  a JSON 400 with an id, not a bare body without a status line. Every
+  log line carries the client address (`TRUSTED_PROXY=1` trusts the
+  forwarded one). `/ready` lists degraded files only to a bearer.
+  `goal` is an alias of `query`; `from`/`to` are accepted only by graph
+  retrieval. The verdict parser reads "Verdict: correct" as a verdict.
+  The sizing figure is restated as the measured range (five to
+  twenty-five MB per MB of text, by vocabulary). CI runs every test in
+  the deliverable, edge included.
+
+Deferred, named: postings on disk above the ceiling; per-caller
+identity; the MCP variant's audit; taxonomy reachability; SHA-pinned
+actions; re-running the public demos on this emitter.
+
 ## [0.1.19] — 2026-09-18
 
 The third-pass audit found the edge, the boundary, the ledger, the gates

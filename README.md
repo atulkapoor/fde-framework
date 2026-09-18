@@ -280,10 +280,12 @@ caller cannot forge a result, a hostile document or a long query costs
 milliseconds, the journal stays one JSON line per event under threads, an
 error closes its connection, a bad corpus file is skipped and counted, the
 boundary refuses an endpoint outside it, the ledger survives a restart and
-a torn line, a stopword cannot cite a document, an oversized corpus refuses
-the boot with one line, readiness degrades rather than denies on a stray
-file, and the service carries a request id on every answer -- and the
-deliverable ships its own edge tests. A quality finding lands
+a torn line, a stopword cannot cite a document and a one-document corpus
+still answers, compaction cannot drop a live key, every eval entry point
+honours the boundary, an oversized corpus refuses the boot with one line,
+readiness degrades rather than denies on a stray file, and the service
+carries a request id on every answer -- and the deliverable ships its own
+edge tests, which its CI runs. A quality finding lands
 there as a check before it lands anywhere as a fix
 ([`tests/test_acceptance.py`](tests/test_acceptance.py)).
 

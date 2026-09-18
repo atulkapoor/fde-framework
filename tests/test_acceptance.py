@@ -151,8 +151,8 @@ def test_ci_has_a_lane_that_can_go_green_without_a_model(emission):
     judged evaluation joins only where a model is configured."""
     shape, out = emission
     ci = (out / ".github" / "workflows" / "ci.yml").read_text()
-    assert "test_smoke.py" in ci, (
-        f"{shape}: no model-free smoke lane in the workflow")
+    assert "pytest -q tests/" in ci, (
+        f"{shape}: no model-free lane running the deliverable's own tests")
     judged = "JUDGED = True" in (out / "evals" / "harness.py").read_text()
     if judged:  # a judged evaluation needs a model
         assert "vars.LLM_ENDPOINT != ''" in ci, (
@@ -682,8 +682,22 @@ r.index([{"id": "http", "text": "The HTTP 301 status means the resource moved pe
          {"id": "office", "text": "The office closes at six on the last day."},
          {"id": "sku", "text": "The SKU-99312 costs the sum of forty dollars."}])
 assert r.retrieve("How do I reset the payroll database?", 5) == [], "a stopword cited a document"
+assert "appear in the corpus" in r.last_note, r.last_note
 hits = r.retrieve("SKU-99312", 5)
 assert hits and hits[0]["id"] == "sku" and hits[0]["score"] > 0, hits
+# A one-document corpus must still answer the question it holds: every
+# token is 'ubiquitous' there, and a hard cut once retrieved nothing.
+one = Retrieval()
+one.index([{"id": "rfc",
+            "text": "HTTP status 301 Moved Permanently means the resource has a new URI."}])
+assert one.retrieve("Which status code means moved permanently?", 5), one.last_note
+# A homogeneous corpus where the domain word is in every document: the
+# common-term query ranks (weakly) rather than returning nothing.
+hr = Retrieval()
+hr.index([{"id": f"hr-{i}", "text": f"policy number {i}: leave policy applies to staff"}
+          for i in range(50)])
+assert hr.retrieve("What is the policy?", 5), hr.last_note
+assert "common" in hr.last_note, hr.last_note
 print("ok")
 """
     result = run_in(out, code)
@@ -860,3 +874,113 @@ def test_an_unresolvable_bind_is_exit_78(emission):
              "LLM_ENDPOINT": "http://127.0.0.1:9", "BIND": "not-a-host.invalid"}, timeout=60,
     )
     assert result.returncode == 78 and "BIND" in result.stderr, result.stderr[-300:]
+
+
+
+def test_a_scalar_corpus_record_is_skipped_not_a_traceback(emission):
+    shape, out = emission
+    if not (out / "app" / "components" / "retrieval.py").exists():
+        pytest.skip("no retrieval layer in this shape")
+    corpus = out / "corpus-scalar"
+    corpus.mkdir(exist_ok=True)
+    (corpus / "export.json").write_text('[{"id": "a", "text": "alpha"}, null, 123, "bare"]')
+    code = """
+from app import pipeline
+n = pipeline.load_corpus("corpus-scalar")
+names = sorted(s["file"] for s in pipeline.LOADED["skipped"])
+print(n, names)
+"""
+    result = run_in(out, code)
+    assert result.returncode == 0, f"{shape}: {result.stderr[-600:]}"
+    expected = "1 ['record NoneType', 'record int', 'record str']"
+    assert result.stdout.startswith(expected), result.stdout
+
+
+def test_compaction_keeps_a_key_another_process_reserved(emission):
+    """The operator's compaction re-reads the file under the directory
+    lock: a key the running service reserved after the CLI started must
+    survive, or a retry of that action happens twice."""
+    shape, out = emission
+    if not (out / "app" / "ledger.py").exists():
+        pytest.skip("nothing outward in this shape")
+    state = out / "state-compact"
+    state.mkdir(exist_ok=True)
+    code = """
+import json, time
+from app.ledger import LEDGER, Ledger
+old = LEDGER.key_for({"tool": "old"})
+LEDGER.reserve(old, "d"); LEDGER.complete(old, "done")
+# age it past the retention, on disk and in memory
+for r in (LEDGER._keys[old],):
+    r["completed_at"] = time.time() - 10 * 86400
+LEDGER._write("idempotency.jsonl", LEDGER._keys[old])
+# another process reserves a key the CLI's snapshot never saw
+other = Ledger(str(LEDGER.root))
+live = other.key_for({"tool": "live"})
+assert other.reserve(live, "d") is None
+dropped = LEDGER.compact(retention_seconds=86400)
+fresh = Ledger(str(LEDGER.root))
+assert live in fresh._keys, "compaction dropped a key reserved by another process"
+assert old not in fresh._keys and dropped == 1, (dropped, list(fresh._keys))
+print("ok")
+"""
+    result = run_in(out, code, env={"STATE_DIR": str(state)})
+    assert result.returncode == 0, f"{shape}: {result.stderr[-800:]}"
+
+
+def test_every_eval_entry_point_imports_the_boundary(emission):
+    shape, out = emission
+    if not (out / "app" / "boundary.py").exists():
+        pytest.skip("no boundary in this shape")
+    for name in ("harness.py", "calibrate.py"):
+        script = out / "evals" / name
+        if not script.exists():
+            continue
+        assert "import app.boundary" in script.read_text(), f"{shape}: {name} skips the boundary"
+        result = subprocess.run(
+            [sys.executable, str(script)], cwd=out, capture_output=True, text=True,
+            env={"PATH": "/usr/bin", "JUDGE_ENDPOINT": "https://exfil.example.com",
+                 "LLM_ENDPOINT": "http://127.0.0.1:9"}, timeout=60,
+        )
+        assert result.returncode == 78, f"{shape}: {name}: {result.stderr[-300:]}"
+        assert "outside the boundary" in result.stderr and "Traceback" not in result.stderr
+
+
+def test_a_goal_is_a_question(emission):
+    shape, out = emission
+    code = """
+from app.shapes import CALLER_KEYS, envelope
+if "goal" in CALLER_KEYS:
+    assert envelope({"goal": "find the total"})["query"] == "find the total"
+print("ok")
+"""
+    result = run_in(out, code)
+    assert result.returncode == 0, f"{shape}: {result.stderr[-400:]}"
+
+
+def test_a_denied_tool_call_leaves_an_audit_record(emission):
+    shape, out = emission
+    integration = out / "app" / "components" / "integration.py"
+    if not integration.exists() or "governed-tools" not in integration.read_text():
+        pytest.skip("no governed tool boundary in this shape")
+    state = out / "state-denied"
+    state.mkdir(exist_ok=True)
+    code = """
+import json
+from pathlib import Path
+from app.components.integration import Integration, Tool, ScopeDenied, UnregisteredTool
+i = Integration()
+i.register(Tool(name="refund", run=lambda **a: "done", required_scope="finance",
+                input_schema={"amount": "int"}))
+for call, error in ((("nope", {}), UnregisteredTool), (("refund", {"amount": 1}), ScopeDenied)):
+    try:
+        i.call(call[0], call[1], subject="alice", granted_scopes=set(), request_id="r1")
+    except error:
+        pass
+records = [json.loads(l) for l in Path("state-denied/audit.jsonl").read_text().splitlines()]
+denied = [r for r in records if r["phase"] == "denied"]
+assert len(denied) == 2 and denied[1]["request_id"] == "r1", records
+print("ok")
+"""
+    result = run_in(out, code, env={"STATE_DIR": str(state)})
+    assert result.returncode == 0, f"{shape}: {result.stderr[-600:]}"
