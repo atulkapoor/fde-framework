@@ -241,9 +241,12 @@ def _diagnosis(architecture) -> str:
         "stop here: no layer below this one can settle a question the client "
         "has not.",
         "",
-        "**If it is this** — the fix is a decision, recorded in the golden "
-        "cases, not a change to any code. Disagreement here is a discovery "
-        "finding, and surfacing it is this system working.",
+        "**If it is this** — the fix is a decision, recorded as a verified pair "
+        "in the engagement and rebuilt, not a change to any code. The golden "
+        "file is generated from the pairs; in a build whose baseline is fitted "
+        "on it, an edit there changes the served decision, and the build "
+        "refuses to boot until the exam record matches. Disagreement here is a "
+        "discovery finding, and surfacing it is this system working.",
         "",
     ]
     step = 2

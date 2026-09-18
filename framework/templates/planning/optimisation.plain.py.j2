@@ -51,8 +51,9 @@ class {{ class_name }}:
         for position, item in enumerate(items):
             if not isinstance(item, dict) or "id" not in item:
                 raise RefusedInput(f"items[{position}] needs an object with an 'id'")
-            if not isinstance(item.get("size", 1), (int, float)):
-                raise RefusedInput(f"items[{position}].size must be a number")
+            size = item.get("size", 1)
+            if isinstance(size, bool) or not isinstance(size, (int, float)) or size < 0:
+                raise RefusedInput(f"items[{position}].size must be a number >= 0")
         for resource, remaining in capacity.items():
             if not isinstance(remaining, (int, float)):
                 raise RefusedInput(f"capacity[{resource!r}] must be a number")

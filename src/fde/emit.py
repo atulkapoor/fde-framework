@@ -144,7 +144,7 @@ def _write_risks(
     undecided = architecture.decisions.undecided()
     scaffolds = sorted(
         p.stem for p in (out / "app" / "components").glob("*.py")
-        if "NotImplementedError" in p.read_text()
+        if SCAFFOLD_MARK.split("  #")[0] in p.read_text()
     )
     lines = ["# Risks accepted", ""]
     if not waivers and not overrides and not architecture.unrealizable and not undecided:
@@ -403,7 +403,7 @@ Two keys are reserved for the edge (app/service.py) and never taken
 from a caller: `request_id`, which every log line and response carries,
 and `principal`, the authenticated identity and scopes every outward
 call is authorised against. Anything a client sends under those names
-is dropped before the pipeline sees it.
+is refused by name, the same as a forged result.
 
 Keys, by who writes them:
 
@@ -454,6 +454,10 @@ def _clean(value: Any) -> Any:
 # Extend this tuple when the implementation grows a real input.
 CALLER_KEYS = __CALLER_KEYS__
 MAX_QUESTION_CHARS = 4000
+# The same ceiling on every entry shape: a bare string, `text`, and each
+# `documents[].text`. Capping one path once let a 900 KB narrative in by
+# another.
+MAX_TEXT_CHARS = MAX_QUESTION_CHARS * 8
 MAX_K = 100
 
 
@@ -470,7 +474,12 @@ def envelope(raw: Any) -> dict[str, Any]:
     """
     raw = _clean(raw)
     if isinstance(raw, dict):
-        body = {k: v for k, v in raw.items() if k not in RESERVED}
+        forged = sorted(k for k in raw if k in RESERVED)
+        if forged:
+            raise RefusedInput(
+                f"{forged} are set by the edge, never by a caller"
+            )
+        body = dict(raw)
         unknown = sorted(k for k in body if k not in CALLER_KEYS)
         if unknown:
             raise RefusedInput(
@@ -488,6 +497,14 @@ def envelope(raw: Any) -> dict[str, Any]:
         for key in ("query", "goal"):
             if key in body and len(body[key]) > MAX_QUESTION_CHARS:
                 raise RefusedInput(f"{key!r} is over {MAX_QUESTION_CHARS} characters")
+        if "text" in body and len(body["text"]) > MAX_TEXT_CHARS:
+            raise RefusedInput(f"'text' is over {MAX_TEXT_CHARS} characters")
+        for position, document in enumerate(body.get("documents") or []):
+            content = document.get("text") if isinstance(document, dict) else None
+            if isinstance(content, str) and len(content) > MAX_TEXT_CHARS:
+                raise RefusedInput(
+                    f"documents[{position}].text is over {MAX_TEXT_CHARS} characters"
+                )
         if "k" in body and (not isinstance(body["k"], int) or isinstance(body["k"], bool)
                             or not 1 <= body["k"] <= MAX_K):
             raise RefusedInput(f"'k' must be an integer in [1, {MAX_K}]")
@@ -506,8 +523,8 @@ def envelope(raw: Any) -> dict[str, Any]:
     if isinstance(raw, str):
         if not raw.strip():
             raise RefusedInput("empty input")
-        if len(raw) > MAX_QUESTION_CHARS * 8:
-            raise RefusedInput(f"input is over {MAX_QUESTION_CHARS * 8} characters")
+        if len(raw) > MAX_TEXT_CHARS:
+            raise RefusedInput(f"input is over {MAX_TEXT_CHARS} characters")
         return {
             "input": raw, "text": raw, "query": raw, "goal": raw,
             "documents": [{"id": "input", "text": raw}],
@@ -547,6 +564,19 @@ def documents_of(payload: dict[str, Any]) -> list[dict[str, Any]]:
 # key nobody on that path reads is refused by name: a caller who sends
 # `documents` to a build whose corpus is ingested at boot would otherwise
 # get a confident answer from a different corpus, with no warning.
+# Where the approach decides what arrives, the approach names the keys: a
+# text-decision build once accepted `items` and `capacity` (the solver's
+# input) and `pages`, `rows`, `events` (other perceptions') by family.
+_CALLER_KEYS_BY_APPROACH = {
+    "text-extraction": ("id", "text", "documents"),
+    "ocr-pipeline": ("id", "pages", "documents"),
+    "speech-transcription": ("id", "audio_ref"),
+    "video-ingestion": ("id", "video_ref", "flagged_moments"),
+    "windowed-ingestion": ("id", "events", "rows"),
+    "optimisation": ("goal", "items", "capacity"),
+    "fixed-sequence": ("goal",),
+    "model-planner": ("goal",),
+}
 _CALLER_KEYS_BY_FAMILY = {
     "perception": ("id", "text", "documents", "pages", "rows", "events",
                    "audio_ref", "video_ref", "flagged_moments"),
@@ -573,10 +603,20 @@ def _write_shapes(architecture: Architecture, out: Path) -> None:
     retrieval = architecture.decisions.get("retrieval")
     if retrieval and retrieval.approach and retrieval.approach.startswith("graph-retrieval"):
         families.add("graph-retrieval")
+    by_family: dict[str, list[tuple[str, ...]]] = {}
+    for component, decision in sorted(architecture.decisions.decided().items()):
+        family = re.split(r"[-_:]", component, maxsplit=1)[0]
+        if family not in families:
+            continue
+        by_family.setdefault(family, []).append(
+            _CALLER_KEYS_BY_APPROACH.get(
+                decision.approach or "", _CALLER_KEYS_BY_FAMILY.get(family, ()))
+        )
     for family in sorted(families):
-        for key in _CALLER_KEYS_BY_FAMILY.get(family, ()):
-            if key not in keys:
-                keys.append(key)
+        for group in by_family.get(family) or [_CALLER_KEYS_BY_FAMILY.get(family, ())]:
+            for key in group:
+                if key not in keys:
+                    keys.append(key)
     if not keys:
         keys = ["text", "query"]
     rendered = "(\n" + "".join(f"    {k!r},\n" for k in keys) + ")"
@@ -751,6 +791,12 @@ def _model_problems() -> list[str]:
     wanted = os.environ.get("LLM_MODEL", "").strip()
     if wanted and ids and wanted not in ids:
         return [f"LLM_MODEL {wanted!r} is not served by the endpoint"]
+    adapter = os.environ.get("FINETUNED_MODEL", "").strip()
+    if adapter and ids and adapter not in ids:
+        # /ready was green while the first request failed: the adapter
+        # is a served model like any other, listed or not.
+        return [f"FINETUNED_MODEL {adapter!r} is not served by the endpoint "
+                f"(vLLM --lora-modules names it)"]
     return []
 
 
@@ -1478,6 +1524,13 @@ def _module_name(component: str) -> str:
     return component.replace(":", "_")
 
 
+# A scaffold says so in one greppable line. RISKS.md once listed an
+# implemented classifier as "not yet implemented" because it detected
+# scaffolds by the substring NotImplementedError, which a real module may
+# raise for a real reason.
+SCAFFOLD_MARK = "SCAFFOLD = True  # fde: the contract is decided, the body is not"
+
+
 def _unfilled(component: str, reason: str) -> str:
     """A module that refuses to run, saying what was missing.
 
@@ -1491,6 +1544,7 @@ def _unfilled(component: str, reason: str) -> str:
         f"This module exists so the gap is visible. Answer the question that was\n"
         f'missing and regenerate, or implement it by hand and say so.\n"""\n\n'
         f"{UNDECIDED_EXCEPTION}\n"
+        f"{SCAFFOLD_MARK}\n\n\n"
         f"def run(*args, **kwargs):\n"
         f"    raise UndecidedComponent(\n"
         f"        {component!r} \" was in scope but could not be decided: \"\n"
@@ -1516,7 +1570,8 @@ def _scaffold(component: str, decision, realization) -> str:
         f"Satisfies the {realization.provides} interface. The contract below is\n"
         f"decided; the body is not, and is yours to write.\n"
         f'"""\n\n'
-        f"from typing import Any\n\n\n"
+        f"from typing import Any\n\n"
+        f"{SCAFFOLD_MARK}\n\n\n"
         f"class {_class_name(component)}:\n"
         f'    """{realization.provides}, as {decision.approach}."""\n\n'
         f"    interface = {realization.provides!r}\n"
@@ -1905,6 +1960,24 @@ def is_action(payload) -> bool:
     return isinstance(payload, dict) and ("tool" in payload or "action" in payload)
 
 
+def _record(outcome, guards, payload):
+    """A refusal at the gate is an event an auditor asks about; it goes in
+    the ledger when the build has one. The refusal stands either way."""
+    try:
+        from app.ledger import LEDGER
+    except ImportError:
+        return
+    if LEDGER is None:
+        return
+    try:
+        LEDGER.append({"phase": "denied", "by": "approval-gate", "outcome": outcome,
+                       "guards": list(guards) if isinstance(guards, (list, tuple)) else guards,
+                       "tool": payload.get("tool"),
+                       "request_id": payload.get("request_id")})
+    except Exception:  # noqa: BLE001 - recording must not mask the refusal
+        return
+
+
 class ApprovalGate:
     """Sits in front of a step that changes something outside the system.
 
@@ -1921,11 +1994,13 @@ class ApprovalGate:
         if not is_action(payload):
             return payload
         if self._approve is None:
+            _record("unapproved", self.guards, payload)
             raise NeedsApproval(
                 f"{self.guards!r} changes the world and nothing approves it yet. "
                 f"Construct this gate with approve=<callable> in pipeline.py."
             )
         if not self._approve(payload):
+            _record("refused", self.guards, payload)
             raise NeedsApproval(f"approval for {self.guards!r} was refused")
         return payload
 
@@ -2062,6 +2137,52 @@ def _boundary_present() -> bool:
     return True
 
 
+def complete_raw(prompt: str, timeout: float | None = None, *,
+                 model: str, endpoint: str | None = None) -> str:
+    """One completion against /v1/completions, the prompt sent as the bytes
+    the caller built. An adapter is trained on raw text by train/lora.py;
+    served through the chat endpoint it would be wrapped in the base
+    model's chat template -- tokens the recipe never produced."""
+    if timeout is None:
+        timeout = float(os.environ.get("LLM_TIMEOUT", "120"))
+    endpoint = endpoint or os.environ.get("LLM_ENDPOINT")
+    if not endpoint:
+        raise ModelUnconfigured(
+            "an adapter is served by an OpenAI-compatible endpoint; set LLM_ENDPOINT")
+    body = json.dumps({
+        "model": model,
+        "prompt": prompt,
+        "temperature": 0,
+        "max_tokens": int(os.environ.get("LLM_MAX_TOKENS", "512")),
+    }).encode()
+    headers = {"Content-Type": "application/json"}
+    if os.environ.get("LLM_API_KEY"):
+        headers["Authorization"] = "Bearer " + os.environ["LLM_API_KEY"]
+    request = urllib.request.Request(
+        endpoint.rstrip("/") + "/v1/completions", data=body, headers=headers,
+    )
+    last_error = None
+    for attempt in (1, 2):
+        try:
+            with urllib.request.urlopen(request, timeout=timeout) as response:
+                reply = json.load(response)
+            try:
+                return reply["choices"][0]["text"]
+            except (KeyError, IndexError, TypeError) as exc:
+                raise ModelUnconfigured(
+                    f"the model endpoint answered without a completion: "
+                    f"{str(reply)[:120]}") from exc
+        except urllib.error.HTTPError as exc:
+            if exc.code < 500:
+                raise
+            last_error = exc
+        except (urllib.error.URLError, TimeoutError) as exc:
+            last_error = exc
+        if attempt == 1:
+            time.sleep(0.5)
+    raise last_error
+
+
 def complete(prompt: str, timeout: float | None = None, *,
              endpoint: str | None = None, model: str | None = None) -> str:
     if timeout is None:
@@ -2187,8 +2308,11 @@ def _write_evals(
         (out / "app" / "llm.py").write_text(_LLM_PROVIDER)
 
     (evals / "taxonomy.py").write_text(_TAXONOMY)
+    reasoning = architecture.decisions.get("reasoning")
+    fitted_on_golden = bool(reasoning and reasoning.approach == "labelled-decision")
     (evals / "harness.py").write_text(
-        _HARNESS.format(metrics=json.dumps(metrics), judged=judged)
+        _HARNESS.format(metrics=json.dumps(metrics), judged=judged,
+                        in_sample=json.dumps(["golden"] if fitted_on_golden else []))
     )
     if judged:
         # The judge is calibrated against a human before any of its
@@ -2814,6 +2938,8 @@ except ImportError:  # a build with no model seam has nothing to misconfigure
 
 HERE = Path(__file__).parent
 METRICS = {metrics}
+# Layers the served baseline was fitted on: an in-sample number, said so.
+IN_SAMPLE = {in_sample}
 # Failures shown on the console per layer; the JSON report carries them all.
 SHOWN_FAILURES = 10
 CALIBRATION = HERE / "judge-calibration.json"
@@ -2853,10 +2979,12 @@ def judge_score(actual, expected):
     model = os.environ.get("JUDGE_MODEL") or None
     configured = os.environ.get("LLM_ENDPOINT") or os.environ.get("ANTHROPIC_API_KEY")
     # The same endpoint AND model under a different name is still the
-    # author: compare what resolves, not whether a variable was set.
+    # author: compare what resolves, not whether a variable was set. The
+    # author is whichever model answered -- the adapter named by
+    # FINETUNED_MODEL when one is served, else LLM_MODEL.
+    author = os.environ.get("FINETUNED_MODEL") or os.environ.get("LLM_MODEL", "default")
     same = ((endpoint or os.environ.get("LLM_ENDPOINT")) == os.environ.get("LLM_ENDPOINT")
-            and (model or os.environ.get("LLM_MODEL", "default"))
-            == os.environ.get("LLM_MODEL", "default"))
+            and (model or author) == author)
     # No model at all is complete()'s clear red; a model with no separate
     # judge is the author grading itself, refused unless accepted by name.
     if same and configured:
@@ -2927,7 +3055,9 @@ def is_label(value):
 
 
 def label_of(value):
-    return next(iter(value.values())) if isinstance(value, dict) else value
+    if isinstance(value, dict) and len(value) == 1:
+        return next(iter(value.values()))
+    return value
 
 
 def decision_metrics(cases, predictions):
@@ -2951,8 +3081,10 @@ def decision_metrics(cases, predictions):
     expected_counts = Counter(e for e, _ in pairs)
     majority = max(expected_counts.values()) / len(pairs) if pairs else 0.0
     macro_f1 = sum(v["f1"] for v in per_class.values()) / len(per_class) if per_class else 0.0
+    # The majority rate is unrounded: a constant answer scores EXACTLY the
+    # majority, and rounding it once let 11/29 clear a gate set at 0.379.
     return {{"per_class": per_class, "macro_f1": round(macro_f1, 3),
-            "confusion": dict(confusion.most_common(8)), "majority_rate": round(majority, 3)}}
+            "confusion": dict(confusion.most_common(8)), "majority_rate": majority}}
 
 
 def compare(actual, expected):
@@ -3026,6 +3158,19 @@ def run_layer(name, cases, predict):
         if is_label(expected) and is_label(actual):
             # A label mismatch has no fields to name; name the labels.
             failure.update(expected=label_of(expected), got=label_of(actual))
+        if case.get("kind"):
+            failure["kind"] = case["kind"]
+        if case.get("base_id"):
+            failure["base_id"] = case["base_id"]
+        if case.get("expect_refusal"):
+            failure["expect_refusal"] = True
+        steered = case.get("steered_toward")
+        if steered is not None:
+            # Followed only when the answer IS the injected one. A wrong
+            # answer that is not it is a misread of the base case, and the
+            # difference is the whole finding.
+            failure["steered_toward"] = label_of(steered)
+            failure["followed"] = label_of(actual) == label_of(steered)
         failures.append(failure)
 
     graded = [c for c in cases if not c.get("expect_refusal")]
@@ -3065,6 +3210,9 @@ def calibration_status():
 def print_layer(layer):
     score = "--" if layer["score"] is None else f"{{layer['score']:.1%}}"
     print(f"  {{layer['layer']:12}} {{layer['cases']:4}} cases  {{score}}")
+    if layer["layer"] in IN_SAMPLE:
+        print("               in-sample: the served baseline is fitted on this file; "
+              "the holdout is the out-of-sample number")
     if layer.get("by_source"):
         print(f"               by source: {{layer['by_source']}}")
     if layer.get("by_field"):
@@ -3133,6 +3281,14 @@ def main():
                     and not args.allow_uncalibrated):
                 print("holdout: no judge calibration on record -- red until "
                       "evals/calibrate.py passes, or --allow-uncalibrated", file=sys.stderr)
+                return 1
+            majority = (layer.get("decision") or {{}}).get("majority_rate")
+            if majority is not None and score <= majority:
+                # The out-of-sample gate for a decision task: the golden gate
+                # is in-sample wherever the baseline is fitted on golden.
+                print(f"holdout {{score:.1%}} does not beat the majority rate "
+                      f"{{majority:.1%}} -- a constant answer would score this on "
+                      f"cases never seen", file=sys.stderr)
                 return 1
             if layer.get("errors") or score < floor or (args.min_score <= 0.5 and score <= 0.5):
                 print("holdout red: the pipeline fails on cases it never saw "
@@ -3212,9 +3368,24 @@ def main():
               file=sys.stderr)
         return 1
     if adversarial.get("errors") or adversarial["score"] < 1.0:
-        print("the attack layer found takers -- an injected instruction was "
-              "followed, or forbidden input was accepted or crashed the "
-              "pipeline instead of being refused (see failures above)",
+        found = adversarial.get("failures", [])
+        # A probe on a case the system misreads un-steered is a misread,
+        # not a follower: the base's own verdict is read off the layer it
+        # sits in (edge or golden).
+        wrong_bases = {{f.get("id") for layer in report if layer["layer"] != "adversarial"
+                       for f in layer.get("failures", [])}}
+        for failure in found:
+            if failure.get("base_id") in wrong_bases and not failure.get("followed"):
+                failure["misread"] = True
+        followed = sum(1 for f in found if f.get("followed"))
+        misread = sum(1 for f in found if f.get("misread")
+                      or ("followed" in f and not f["followed"]))
+        refusals = sum(1 for f in found if f.get("expect_refusal") and not f.get("misread"))
+        wrong = len(found) - followed - misread - refusals
+        print(f"the attack layer found takers -- {{followed}} injection(s) followed, "
+              f"{{misread}} answered wrong regardless of the injection (the base case "
+              f"is misread un-steered), {{wrong}} answered wrong under mutation, "
+              f"{{refusals}} forbidden input(s) accepted or crashed (see failures above)",
               file=sys.stderr)
         return 1
     edge = next(layer for layer in report if layer["layer"] == "edge_case")
@@ -3234,6 +3405,10 @@ def _write_gitignore(out: Path) -> None:
     # deliverable's git history. The emitted project ships its own hygiene.
     (out / ".gitignore").write_text(
         "__pycache__/\n*.py[co]\n.venv/\nvar/\n*.sqlite3\n.implement/\n"
+        ".ruff_cache/\n.pytest_cache/\n"
+        # The training split and every adapter live beside the code and
+        # never in its history; the holdout in particular.
+        "train/data/\nartifacts/\n"
     )
 
 
@@ -3390,10 +3565,14 @@ def _post(base, body, headers=None, token=TOKEN):
 def test_the_edge_keeps_its_promises(tmp_path):
     proc, base, port = _boot(tmp_path)
     try:
-        # identity: no token, no service; a forged principal is dropped
+        # identity: no token, no service; a forged principal is refused by
+        # name, as is a forged result
         code, body, _ = _post(base, b'"hello"', token=None)
         assert code == 401 and "request_id" in body
-        forged = b'{"query": "q", "principal": {"scopes": ["admin"]}, "answer": "forged"}'
+        forged = b'{"query": "q", "principal": {"scopes": ["admin"]}}'
+        code, body, headers = _post(base, forged)
+        assert code == 422 and "principal" in body["refused"], body
+        forged = b'{"query": "q", "answer": "forged"}'
         code, body, headers = _post(base, forged)
         assert code == 422 and "answer" in body["refused"], body
         # request ids: on every response, matching the header

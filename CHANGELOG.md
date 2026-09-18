@@ -5,6 +5,68 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.23] — 2026-09-19
+
+The seventh pass re-ran every 0.1.22 check and found them holding -- the
+edge, the exam record, the judge gates, the mapper -- and turned up where
+the shape-specific work stopped short: the labelled-decision baseline and
+the fine-tuning path. Each finding is a check before it is a fix.
+
+- **The fitted baseline is a multinomial naive Bayes, and it refuses to
+  serve a constant.** The estimator that shipped charged every unseen
+  token a per-label absence cost, drifted long inputs to the rarest
+  class, and recalled the commonest label once in sixteen on the
+  holdout; on the same tokens the multinomial form scores fifteen points
+  higher. Without a golden file to fit on the old component answered the
+  first label to every request behind a green `/ready`; construction now
+  refuses (exit 78, one line), and because the served model is fitted on
+  the exam, a golden file whose digest is not the recorded one refuses
+  the boot until the exam record matches. `decided_by` names who chose.
+- **On-sample and off-sample, told apart.** The harness marks the golden
+  score in-sample wherever the baseline is fitted on it, and the holdout
+  path (`--cases`) now carries per-class metrics and the majority gate --
+  the out-of-sample number is the one that has to clear it. The majority
+  rate is compared unrounded: a constant answer scores exactly the
+  majority, and rounding once let 11/29 clear a gate set at 0.379.
+- **Probes and edges come from cases the baseline was not fitted on.**
+  Edge cases move out of golden rather than being copied (counted once,
+  scored out-of-sample) wherever golden keeps a floor; the adversarial
+  probes build on them; each steering probe records `steered_toward`,
+  and the harness reports an injection as followed only when the answer
+  IS the injected one -- a wrong answer that is not it is a misread of
+  the base case, and the verdict says which.
+- **The split counts one case once and holds every label out in the same
+  share.** `split_pairs` drops exact repeats of an earlier input and
+  stratifies by label when the outputs are a label set; a freeform
+  corpus stays one stratum, because five answers for five pairs are
+  answers.
+- **The fine-tuning path trains on the shape it serves.** `prepare.py
+  --retrieve` attaches the deliverable's own retriever's hits to each
+  pair; the recipe refuses pairs without evidence in a build that serves
+  with it, refuses an empty holdout, tokenises prompt and completion
+  separately with the prompt truncated from the left so the completion is
+  always present, seeds and shuffles every epoch, measures holdout loss
+  per epoch and keeps the best adapter. The serving side posts to
+  `/v1/completions` with the raw prompt, so no chat template is wrapped
+  around tokens the recipe never produced; `/ready` names an adapter the
+  endpoint does not serve; the judge treats `FINETUNED_MODEL` as the
+  author. `compare.py` exits non-zero when either side errored: both
+  sides erroring on every case once produced a delta of +0.0% and a
+  green exit.
+- **The request contract is per approach.** A text decision no longer
+  accepts a solver's `items` and `capacity` or another perception's
+  `pages`, `rows`, `events`. `text` and `documents[].text` are capped at
+  the same bound as a bare string. A forged `principal` or `request_id`
+  is refused by name, like a forged result. Two documents to a
+  one-decision path are one refusal, not one silent decision. An
+  approval-gate refusal is written to the ledger. The optimisation
+  planner refuses a negative size.
+- **RISKS.md marks scaffolds by a marker, not a substring.** A fitted
+  classifier was listed as "not yet implemented" because it raised
+  NotImplementedError for a real reason. The emitted `.gitignore` keeps
+  `.ruff_cache/`, `.pytest_cache/`, `train/data/` and `artifacts/` out of
+  history. `fde samples` advertises only the metrics the harness computes.
+
 ## [0.1.22] — 2026-09-18
 
 The sixth pass, widened past the edge to the exam, the components and the

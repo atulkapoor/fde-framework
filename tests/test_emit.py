@@ -796,6 +796,27 @@ def test_a_judged_harness_scores_against_a_local_judge(reg, tmp_path):
         server.shutdown()
 
 
+def test_the_served_adapter_counts_as_the_author(reg, tmp_path):
+    """The judge must not be the model that answered. In a fine-tuned
+    build that model is the adapter named by FINETUNED_MODEL, and a judge
+    pointed at the same name on the same endpoint is the author."""
+    import json as jsonlib
+
+    out = tmp_path / "p"
+    emit(architect(profile(**FREEFORM), reg), out)
+    cases = tmp_path / "cases.jsonl"
+    cases.write_text(jsonlib.dumps({"id": "c", "input": "Q?", "output": "A."}) + "\n")
+    result = subprocess.run(
+        [sys.executable, "evals/harness.py", "--cases", str(cases)],
+        cwd=out, capture_output=True, text=True,
+        env={"PATH": "/usr/bin", "LLM_ENDPOINT": "http://127.0.0.1:9",
+             "JUDGE_ENDPOINT": "http://127.0.0.1:9", "JUDGE_MODEL": "v1",
+             "FINETUNED_MODEL": "v1"},
+    )
+    assert result.returncode == 1
+    assert "the judge would be the author's own model" in result.stderr, result.stderr
+
+
 def test_a_verdict_line_outranks_the_rationale_around_it(reg, tmp_path):
     """Small judges explain themselves; the explanation says 'incorrect'
     about a detail and the verdict line says correct. The line that labels

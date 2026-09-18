@@ -46,10 +46,13 @@ def write_training(architecture: Architecture, out: Path) -> bool:
     if not components:
         return False
     module = components[0].replace(":", "_")
+    with_evidence = "retrieval" in architecture.decisions.decided()
     train = out / "train"
     train.mkdir(parents=True, exist_ok=True)
     (train / "prepare.py").write_text(_PREPARE)
-    (train / "lora.py").write_text(_LORA.replace("__COMPONENT__", module))
+    (train / "lora.py").write_text(
+        _LORA.replace("__COMPONENT__", module)
+             .replace("__WITH_EVIDENCE__", "True" if with_evidence else "False"))
     (train / "compare.py").write_text(_COMPARE)
     (train / "requirements.txt").write_text(_REQUIREMENTS)
     (train / "README.md").write_text(_README.replace("__COMPONENT__", module))
@@ -69,6 +72,12 @@ aside for a verification queue, and both files' digests go in the manifest
 so the recipe and the comparison can refuse data that changed under them.
 
     python train/prepare.py pairs.jsonl --out train/data [--seed 0] [--holdout 0.2]
+                            [--retrieve]   # attach the retrieval layer's evidence
+
+Where the build serves the adapter with evidence blocks (retrieval in front
+of reasoning), the adapter must train on that shape: --retrieve runs each
+input through the deliverable's own retriever over CORPUS_DIR and stores the
+hits on the pair, so prompt and training example are the same bytes.
 """
 
 from __future__ import annotations
@@ -80,9 +89,12 @@ import sys
 from pathlib import Path
 from typing import Any
 
+ROOT = Path(__file__).resolve().parents[1]
+
 # Below this many verified pairs an adapter memorises examples rather than
 # learning behaviour; the number is a floor, not a target.
 MIN_VERIFIED = 500
+EVIDENCE_K = 8
 
 
 def load(path: Path) -> list[dict[str, Any]]:
@@ -101,14 +113,34 @@ def load(path: Path) -> list[dict[str, Any]]:
     return pairs
 
 
+def is_label(output: Any) -> bool:
+    if isinstance(output, str):
+        return True
+    return (isinstance(output, dict) and len(output) == 1
+            and isinstance(next(iter(output.values())), str))
+
+
 def stratum(pair: dict[str, Any]) -> str:
-    """What a pair is an example of: its label, else its field set, else its layout."""
+    """What a pair is an example of: its label, else its layout."""
     output = pair.get("output")
+    if isinstance(output, dict) and len(output) == 1:
+        output = next(iter(output.values()))
     if isinstance(output, str):
         return output
-    if isinstance(output, dict):
-        return "fields:" + ",".join(sorted(output))
     return str(pair.get("layout") or "all")
+
+
+def strata_of(pairs: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    """By label when the outputs are a label set; otherwise one stratum.
+    Six hundred freeform answers are six hundred strata of one, and a
+    split by them once held nothing out."""
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for pair in pairs:
+        groups.setdefault(stratum(pair), []).append(pair)
+    few = 1 < len(groups) <= min(20, max(1, len(pairs) // 2))
+    if few and all(is_label(p.get("output")) for p in pairs):
+        return groups
+    return {"all": pairs}
 
 
 def key(value: Any) -> str:
@@ -139,9 +171,7 @@ def split(pairs: list[dict[str, Any]], seed: int, holdout: float) -> dict[str, A
         seen.add(k)
         unique.append(pair)
 
-    strata: dict[str, list[dict[str, Any]]] = {}
-    for pair in unique:
-        strata.setdefault(stratum(pair), []).append(pair)
+    strata = strata_of(unique)
 
     train: list[dict[str, Any]] = []
     held: list[dict[str, Any]] = []
@@ -154,8 +184,32 @@ def split(pairs: list[dict[str, Any]], seed: int, holdout: float) -> dict[str, A
         held += ordered[:n_held]
         train += ordered[n_held:]
         counts[label] = {"train": len(ordered) - n_held, "holdout": n_held}
+    # The recipe shuffles per epoch; the file is still written in a
+    # seeded order rather than label by label, so a reader of the file
+    # sees the mix the adapter will.
+    train.sort(key=lambda p: rank(seed + 1, str(p["id"])))
     return {"train": train, "holdout": held, "duplicates": duplicates,
             "unverified": unverified, "strata": counts}
+
+
+def attach_evidence(pairs: list[dict[str, Any]], k: int = EVIDENCE_K) -> int:
+    """Each input through the deliverable's own retriever, hits stored on
+    the pair. Returns the corpus size the hits came from."""
+    sys.path.insert(0, str(ROOT))
+    from app import pipeline
+
+    retriever = getattr(pipeline, "RETRIEVER", None)
+    if retriever is None:
+        sys.exit("this build has no retrieval layer; there is no evidence to attach")
+    documents = pipeline.load_corpus()
+    if not documents:
+        sys.exit("CORPUS_DIR holds no documents: the adapter would train on empty "
+                 "evidence blocks and serve with full ones")
+    for pair in pairs:
+        query = pair["input"] if isinstance(pair["input"], str) else json.dumps(pair["input"])
+        hits = retriever.run({"query": query, "k": k}).get("retrieved") or []
+        pair["evidence"] = [{"id": h.get("id"), "text": h.get("text", "")} for h in hits]
+    return documents
 
 
 def digest(text: str) -> str:
@@ -172,11 +226,15 @@ def main(argv: list[str] | None = None) -> int:
                         help="refuse below this many verified pairs")
     parser.add_argument("--golden", type=Path, default=Path("evals/golden.jsonl"),
                         help="the shipped golden set; holdout ids found in it are reported")
+    parser.add_argument("--retrieve", action="store_true",
+                        help="attach the retrieval layer's top hits from CORPUS_DIR to "
+                             "each pair, so the adapter trains on the shape it serves")
     args = parser.parse_args(argv)
     if not 0 < args.holdout < 1:
         parser.error("--holdout is a share strictly between 0 and 1")
 
     pairs = load(args.pairs)
+    corpus = attach_evidence(pairs) if args.retrieve else 0
     result = split(pairs, args.seed, args.holdout)
     n_verified = len(result["train"]) + len(result["holdout"]) + result["duplicates"]
     if n_verified < args.min_verified:
@@ -209,6 +267,10 @@ def main(argv: list[str] | None = None) -> int:
         "train": {"cases": len(result["train"]), "sha256": digest(train_text)},
         "holdout": {"cases": len(result["holdout"]), "sha256": digest(holdout_text)},
         "holdout_ids_in_golden": leaked,
+        # What the prompts will look like: with evidence blocks from the
+        # corpus, or bare. The recipe refuses a shape the build does not serve.
+        "evidence": {"source": "retrieved", "corpus_documents": corpus, "k": EVIDENCE_K}
+        if args.retrieve else {"source": "none"},
     }
     (args.out / "manifest.json").write_text(
         json.dumps(manifest, indent=2, sort_keys=True) + "\n")
@@ -253,8 +315,14 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+# Whether the deliverable serves the adapter with retrieved evidence in the
+# prompt (retrieval in front of reasoning). Training pairs must then carry
+# evidence -- prepare.py --retrieve -- or the adapter learns a bare shape
+# it will never be served in.
+SERVES_WITH_EVIDENCE = __WITH_EVIDENCE__
 
 HYPERPARAMETERS: dict[str, Any] = {
+    "seed": 0,
     "r": 16,
     "alpha": 32,
     "dropout": 0.05,
@@ -284,7 +352,19 @@ def load_split(data: Path) -> tuple[dict[str, Any], list[dict[str, Any]]]:
     pairs = [json.loads(line) for line in train_text.splitlines() if line.strip()]
     if not pairs:
         sys.exit("the training set is empty")
+    if not manifest.get("holdout", {}).get("cases"):
+        sys.exit("the holdout is empty: nothing would measure this adapter before it "
+                 "took traffic -- prepare with more pairs or a smaller --holdout share")
+    if SERVES_WITH_EVIDENCE and manifest.get("evidence", {}).get("source") != "retrieved":
+        sys.exit("this build serves the adapter with evidence blocks (retrieval in front "
+                 "of reasoning) and these pairs carry none -- prepare with --retrieve "
+                 "(CORPUS_DIR set) so the adapter trains on the shape it is served in")
     return manifest, pairs
+
+
+def load_holdout(data: Path) -> list[dict[str, Any]]:
+    return [json.loads(line) for line in (data / "holdout.jsonl").read_text().splitlines()
+            if line.strip()]
 
 
 def version_of(manifest: dict[str, Any], base_model: str, hyperparameters: dict) -> str:
@@ -330,12 +410,38 @@ def record(manifest: dict[str, Any], base_model: str, hp: dict[str, Any],
     }
 
 
-def train(pairs: list[dict[str, Any]], base_model: str, hp: dict[str, Any],
-          out_dir: Path, merge: bool) -> None:
+def encode(tokenizer: Any, pair: dict[str, Any], max_length: int) -> tuple[list[int], list[int]]:
+    """Token ids and labels for one example. Prompt and completion are
+    tokenised separately and joined as ids, so the mask boundary is exact
+    rather than guessed from a re-tokenised concatenation; the prompt is
+    truncated from the LEFT so the completion is always present, and an
+    example with no completion tokens is refused rather than trained on
+    as a NaN."""
+    prompt, completion = example(pair)
+    prompt_ids = tokenizer(prompt, add_special_tokens=True)["input_ids"]
+    completion_ids = tokenizer(" " + completion, add_special_tokens=False)["input_ids"]
+    completion_ids.append(tokenizer.eos_token_id)
+    if len(completion_ids) >= max_length:
+        raise ValueError(f"completion of {pair.get('id')} alone exceeds max_length")
+    room = max_length - len(completion_ids)
+    prompt_ids = prompt_ids[-room:]
+    ids = prompt_ids + completion_ids
+    labels = [-100] * len(prompt_ids) + completion_ids
+    assert any(label != -100 for label in labels)
+    return ids, labels
+
+
+def train(pairs: list[dict[str, Any]], holdout: list[dict[str, Any]], base_model: str,
+          hp: dict[str, Any], out_dir: Path, merge: bool,
+          gradient_checkpointing: bool = False) -> dict[str, Any]:
+    import random
+
     import torch
     from peft import LoraConfig, get_peft_model
     from transformers import AutoModelForCausalLM, AutoTokenizer
 
+    torch.manual_seed(hp["seed"])
+    shuffle = random.Random(hp["seed"])
     device = "cuda" if torch.cuda.is_available() else "cpu"
     tokenizer = AutoTokenizer.from_pretrained(base_model)
     if tokenizer.pad_token is None:
@@ -343,6 +449,8 @@ def train(pairs: list[dict[str, Any]], base_model: str, hp: dict[str, Any],
     model = AutoModelForCausalLM.from_pretrained(
         base_model, torch_dtype=torch.bfloat16 if device == "cuda" else torch.float32,
     )
+    if gradient_checkpointing:
+        model.gradient_checkpointing_enable()
     model = get_peft_model(model, LoraConfig(
         r=hp["r"], lora_alpha=hp["alpha"], lora_dropout=hp["dropout"],
         target_modules=hp["target_modules"], task_type="CAUSAL_LM",
@@ -352,41 +460,62 @@ def train(pairs: list[dict[str, Any]], base_model: str, hp: dict[str, Any],
     optimizer = torch.optim.AdamW(
         (p for p in model.parameters() if p.requires_grad), lr=hp["learning_rate"],
     )
-    model.train()
+    encoded = [encode(tokenizer, pair, hp["max_length"]) for pair in pairs]
+    held = [encode(tokenizer, pair, hp["max_length"]) for pair in holdout]
+
+    def loss_of(ids: list[int], labels: list[int]) -> Any:
+        return model(input_ids=torch.tensor([ids], device=device),
+                     labels=torch.tensor([labels], device=device)).loss
+
+    def holdout_loss() -> float:
+        model.eval()
+        with torch.no_grad():
+            total = sum(float(loss_of(ids, labels).item()) for ids, labels in held)
+        model.train()
+        return total / len(held)
+
+    history: list[dict[str, float]] = []
+    best = float("inf")
     step = 0
-    last = 0.0
+    model.train()
     for epoch in range(hp["epochs"]):
-        for pair in pairs:
-            prompt, completion = example(pair)
-            prompt_ids = tokenizer(prompt)["input_ids"]
-            full = tokenizer(
-                prompt + " " + completion + tokenizer.eos_token,
-                truncation=True, max_length=hp["max_length"],
-            )["input_ids"]
-            # The prompt is context, not target: its tokens are masked so the
-            # adapter learns the completion, not to echo the question.
-            masked = min(len(prompt_ids), len(full))
-            labels = [-100] * masked + full[masked:]
-            loss = model(
-                input_ids=torch.tensor([full], device=device),
-                labels=torch.tensor([labels], device=device),
-            ).loss
+        order = list(range(len(encoded)))
+        shuffle.shuffle(order)  # label-grouped order once made every step single-label
+        running = 0.0
+        for n in order:
+            ids, labels = encoded[n]
+            loss = loss_of(ids, labels)
             (loss / hp["grad_accumulation"]).backward()
-            last = float(loss.item())
+            running += float(loss.item())
             step += 1
             if step % hp["grad_accumulation"] == 0:
                 optimizer.step()
                 optimizer.zero_grad()
-        print(f"epoch {epoch + 1}/{hp['epochs']}: last loss {last:.4f}")
-    if step % hp["grad_accumulation"]:
-        optimizer.step()
-        optimizer.zero_grad()
-    model.save_pretrained(str(out_dir / "adapter"))
-    tokenizer.save_pretrained(str(out_dir / "adapter"))
-    if merge:
-        merged = model.merge_and_unload()
-        merged.save_pretrained(str(out_dir / "merged"))
-        tokenizer.save_pretrained(str(out_dir / "merged"))
+        if step % hp["grad_accumulation"]:
+            optimizer.step()
+            optimizer.zero_grad()
+        evaluated = holdout_loss()
+        history.append({"epoch": epoch + 1, "train_loss": running / len(encoded),
+                        "holdout_loss": evaluated})
+        print(f"epoch {epoch + 1}/{hp['epochs']}: train loss {running / len(encoded):.4f}, "
+              f"holdout loss {evaluated:.4f}")
+        if evaluated < best:
+            # The adapter on disk is always the best epoch by holdout loss.
+            best = evaluated
+            model.save_pretrained(str(out_dir / "adapter"))
+            tokenizer.save_pretrained(str(out_dir / "adapter"))
+            if merge:
+                merged = model.merge_and_unload()
+                merged.save_pretrained(str(out_dir / "merged"))
+                tokenizer.save_pretrained(str(out_dir / "merged"))
+                model = get_peft_model(merged, LoraConfig(
+                    r=hp["r"], lora_alpha=hp["alpha"], lora_dropout=hp["dropout"],
+                    target_modules=hp["target_modules"], task_type="CAUSAL_LM",
+                ))
+        else:
+            print("holdout loss rose: stopping, keeping the previous epoch's adapter")
+            break
+    return {"history": history, "best_holdout_loss": best}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -401,10 +530,13 @@ def main(argv: list[str] | None = None) -> int:
                         help="also save merged weights (for a server without LoRA support)")
     parser.add_argument("--dry-run", action="store_true",
                         help="print the plan and the version; train nothing")
+    parser.add_argument("--seed", type=int, default=HYPERPARAMETERS["seed"])
+    parser.add_argument("--gradient-checkpointing", action="store_true",
+                        help="trade compute for memory on a small card")
     args = parser.parse_args(argv)
 
     manifest, pairs = load_split(args.data)
-    hp = {**HYPERPARAMETERS, "epochs": args.epochs}
+    hp = {**HYPERPARAMETERS, "epochs": args.epochs, "seed": args.seed}
     version = version_of(manifest, args.base_model, hp)
     out_dir = args.out / version
     plan = record(manifest, args.base_model, hp, version, len(pairs))
@@ -416,7 +548,9 @@ def main(argv: list[str] | None = None) -> int:
               f"model, same recipe -- there is nothing new to learn", file=sys.stderr)
         return 2
     out_dir.mkdir(parents=True)
-    train(pairs, args.base_model, hp, out_dir, args.merge)
+    outcome = train(pairs, load_holdout(args.data), args.base_model, hp, out_dir,
+                    args.merge, args.gradient_checkpointing)
+    plan["training"] = outcome
     (out_dir / "adapter-manifest.json").write_text(
         json.dumps(plan, indent=2, sort_keys=True) + "\n")
     print(f"adapter {version} at {out_dir}")
@@ -502,6 +636,13 @@ def main(argv: list[str] | None = None) -> int:
 
     before = score(args.before, holdout, args.out / f"harness-{args.before}.json")
     after = score(args.after, holdout, args.out / f"harness-{args.after}.json")
+    if before["errors"] or after["errors"]:
+        # Both sides erroring on every case once produced delta +0.0% and
+        # a green exit: the comparison measured nothing.
+        print(f"errors: before {before['errors']}, after {after['errors']} -- the harness "
+              f"could not score every case, so this comparison measured nothing; "
+              f"fix the endpoint or the adapter before reading a delta", file=sys.stderr)
+        return 2
     delta = (None if before["score"] is None or after["score"] is None
              else after["score"] - before["score"])
     result = {
@@ -604,6 +745,7 @@ that changed. None of this needs a model, so all of it gates every push.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -626,13 +768,29 @@ def pairs_file(tmp_path: Path) -> Path:
     return path
 
 
-def run(*args: str):
-    return subprocess.run([sys.executable, *args], cwd=ROOT, capture_output=True, text=True)
+SERVES_WITH_EVIDENCE = "SERVES_WITH_EVIDENCE = True" in (ROOT / "train" / "lora.py").read_text()
 
 
-def prepare(tmp_path: Path, out: str = "data"):
-    result = run("train/prepare.py", str(pairs_file(tmp_path)), "--out",
-                 str(tmp_path / out), "--min-verified", "4")
+def run(*args: str, env: dict | None = None):
+    return subprocess.run([sys.executable, *args], cwd=ROOT, capture_output=True, text=True,
+                          env={**os.environ, **(env or {})})
+
+
+def corpus(tmp_path: Path) -> dict:
+    """A two-document corpus, so --retrieve has evidence to attach."""
+    root = tmp_path / "corpus"
+    root.mkdir(exist_ok=True)
+    (root / "fees.txt").write_text("A fee on the account statement is final once posted; "
+                                   "a complaint about a fee goes to the dispute form.")
+    (root / "forms.txt").write_text("The dispute form for a complaint is on the help page.")
+    return {"CORPUS_DIR": str(root)}
+
+
+def prepare(tmp_path: Path, out: str = "data", pairs: Path | None = None):
+    extra = ["--retrieve"] if SERVES_WITH_EVIDENCE else []
+    result = run("train/prepare.py", str(pairs or pairs_file(tmp_path)), "--out",
+                 str(tmp_path / out), "--min-verified", "1", *extra,
+                 env=corpus(tmp_path) if SERVES_WITH_EVIDENCE else None)
     assert result.returncode == 0, result.stderr
     return json.loads((tmp_path / out / "manifest.json").read_text())
 
@@ -657,6 +815,29 @@ def test_too_few_verified_pairs_is_a_refusal_with_the_number(tmp_path):
     assert "13 verified pairs" in result.stderr  # counted before the duplicate is dropped
 
 
+def test_the_adapter_trains_on_the_shape_it_is_served_in(tmp_path):
+    """Where retrieval sits in front of reasoning the prompt carries
+    evidence blocks; pairs without them are refused by the recipe, and
+    --retrieve attaches the deliverable's own retriever's hits."""
+    manifest = prepare(tmp_path)
+    if SERVES_WITH_EVIDENCE:
+        assert manifest["evidence"]["source"] == "retrieved"
+        assert manifest["evidence"]["corpus_documents"] == 2
+        rows = [json.loads(line) for line in
+                (tmp_path / "data" / "train.jsonl").read_text().splitlines() if line.strip()]
+        assert all("evidence" in row for row in rows)
+        assert any(row["evidence"] for row in rows), "no evidence attached to any pair"
+        bare = run("train/prepare.py", str(pairs_file(tmp_path)), "--out",
+                   str(tmp_path / "bare"), "--min-verified", "1")
+        assert bare.returncode == 0, bare.stderr
+        result = run("train/lora.py", "--dry-run", "--base-model", "base/model",
+                     "--data", str(tmp_path / "bare"))
+        assert result.returncode != 0
+        assert "carry none" in result.stderr
+    else:
+        assert manifest["evidence"]["source"] == "none"
+
+
 def test_the_recipe_plans_without_a_gpu(tmp_path):
     prepare(tmp_path)
     result = run("train/lora.py", "--dry-run", "--base-model", "base/model",
@@ -678,6 +859,34 @@ def test_the_recipe_refuses_training_data_that_changed(tmp_path):
     assert "not the file prepare.py recorded" in result.stderr
 
 
+def freeform_pairs(tmp_path: Path, n: int = 12) -> Path:
+    rows = [{"id": f"f{i}", "input": f"How do I reset device {i}?",
+             "output": f"Hold the button on device {i} for ten seconds.", "verified": True}
+            for i in range(n)]
+    path = tmp_path / "freeform.jsonl"
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    return path
+
+
+def test_freeform_answers_are_one_stratum_with_a_holdout(tmp_path):
+    """Six hundred distinct answers are not six hundred labels: stratifying
+    by them once held nothing out and the recipe trained unmeasured."""
+    manifest = prepare(tmp_path, "ff", pairs=freeform_pairs(tmp_path))
+    assert list(manifest["strata"]) == ["all"]
+    assert manifest["holdout"]["cases"] >= 2
+
+
+def test_the_recipe_refuses_an_empty_holdout(tmp_path):
+    rows = [{"id": "only", "input": "Q?", "output": "A.", "verified": True}]
+    path = tmp_path / "one.jsonl"
+    path.write_text(json.dumps(rows[0]) + "\n")
+    prepare(tmp_path, "one", pairs=path)
+    result = run("train/lora.py", "--dry-run", "--base-model", "base/model",
+                 "--data", str(tmp_path / "one"))
+    assert result.returncode != 0
+    assert "holdout is empty" in result.stderr
+
+
 def test_the_comparison_refuses_a_holdout_that_changed(tmp_path):
     prepare(tmp_path)
     with (tmp_path / "data" / "holdout.jsonl").open("a") as handle:
@@ -686,4 +895,15 @@ def test_the_comparison_refuses_a_holdout_that_changed(tmp_path):
                  "--data", str(tmp_path / "data"), "--out", str(tmp_path))
     assert result.returncode == 2
     assert "not the holdout prepare.py drew" in result.stderr
+
+
+def test_the_comparison_measures_nothing_when_no_model_answers(tmp_path):
+    """Both sides erroring on every case once produced delta +0.0% and a
+    green exit; the comparison must say it measured nothing."""
+    prepare(tmp_path)
+    result = run("train/compare.py", "--before", "base", "--after", "adapter",
+                 "--data", str(tmp_path / "data"), "--out", str(tmp_path),
+                 env={"LLM_ENDPOINT": "", "JUDGE_ENDPOINT": "", "ANTHROPIC_API_KEY": ""})
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert "measured nothing" in result.stderr
 '''

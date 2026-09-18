@@ -115,14 +115,18 @@ again on 0.1.21: green in round 2, holdout 76.7% against the original's
 63.3%, the run committed beside the original for comparison. A sixth pass,
 widened to the exam, the components and the fine-tuning path, signed off
 the freeform shape with conditions and refused the decision shape for
-reasons that were the generator's; 0.1.22 answers each as a check first.
+reasons that were the generator's; 0.1.22 answered each as a check first.
+A seventh pass found those checks holding and the shape-specific work
+stopping short -- a mis-specified baseline, an in-sample exam, a training
+recipe that trained unshuffled on a prompt it never served -- and 0.1.23
+answered again the same way.
 
 **Built**: the pipeline exists end to end — intake (prose, documents, sample
 pairs, role-scoped interview, hardware scan) → fact log with provenance →
 permutation space → seven gates → decide → architect → build (code, evals,
 deploy and ops assets, `RISKS.md`, `COMPLIANCE.md`) → retro and case
 capture. Overrides are honoured on the next run, trigger observations feed
-calibration, and a reviewed case can enter the corpus. 1080+ tests; six
+calibration, and a reviewed case can enter the corpus. 1100+ tests; seven
 fresh-eyes audit passes, every finding resolved and the fix pinned as a
 regression test; CI gates on the suite, lint, and a sanitisation scan of
 the tree *and its history*; the evidence corpus is anchored to publicly
@@ -294,13 +298,16 @@ honours the boundary, an oversized corpus refuses the boot with one line,
 readiness degrades rather than denies on a stray file, and the service
 carries a request id on every answer, a truncated query is never a silent
 miss, two processes cannot both reserve one key, a decision read off
-labelled text ships a classifier that beats the majority on its own exam
-while a constant answer is red, the exam carries steering probes and
-records its own split, an uncalibrated judge is red until asked for by
-name, and a fact learned from a person is marked asserted rather than
-established -- and the deliverable ships its own edge tests, which its CI
-runs. Six independent audit passes took it from "every request 500s" to a
-sign-off with conditions. A quality finding lands there as a check before
+labelled text ships a fitted classifier that refuses to serve a constant,
+refuses an exam that changed since the build, beats the majority on the
+holdout and says which of its scores are in-sample, the exam's probes and
+edges come from cases the baseline was not fitted on and each steering
+probe says what it steers toward, an uncalibrated judge is red until asked
+for by name, a fact learned from a person is marked asserted rather than
+established, and a fine-tuning decision ships a recipe that trains on the
+prompt it serves -- and the deliverable ships its own edge tests, which
+its CI runs. Seven independent audit passes took it from "every request
+500s" to a sign-off with conditions. A quality finding lands there as a check before
 it lands anywhere as a fix ([`tests/test_acceptance.py`](tests/test_acceptance.py),
 [`tests/test_finetune.py`](tests/test_finetune.py)).
 
@@ -564,7 +571,7 @@ Set up as in [Install → from source](#install) (python3.11+), then:
 
 ```bash
 .venv/bin/pip install -e ".[dev,documents]"
-.venv/bin/pytest -q          # 1080+ tests, ~ 60s
+.venv/bin/pytest -q          # 1100+ tests, ~ 70s
 .venv/bin/ruff check src tests
 ```
 

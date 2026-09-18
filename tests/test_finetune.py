@@ -113,10 +113,10 @@ def test_run_answers_through_the_adapter_in_the_training_prompt_shape(trained):
 import app.llm
 from app.components import reasoning
 seen = {}
-def fake_complete(prompt, timeout=None, *, endpoint=None, model=None):
+def fake_complete(prompt, timeout=None, *, model, endpoint=None):
     seen["prompt"], seen["model"] = prompt, model
     return " We are sorry, but the fee stands. "
-app.llm.complete = fake_complete
+app.llm.complete_raw = fake_complete
 out = reasoning.Reasoning().run({"query": "Refuse the refund politely.",
                                  "retrieved": [{"id": "d1", "text": "Fees are final."}]})
 assert out["answer"] == "We are sorry, but the fee stands."
@@ -148,6 +148,62 @@ print("ok")
     assert result.returncode == 0, result.stderr
 
 
+def test_the_adapter_is_served_raw_not_through_a_chat_template(trained):
+    """The recipe tokenises raw text; a chat endpoint would wrap the
+    prompt in the base model's template. The component posts to
+    /v1/completions with the prompt as built."""
+    result = run_in(trained, """
+import json, threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+seen = {}
+class Stub(BaseHTTPRequestHandler):
+    def do_POST(self):
+        seen["path"] = self.path
+        seen["body"] = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        body = json.dumps({"choices": [{"text": " Hold the button for ten seconds."}]}).encode()
+        self.send_response(200); self.send_header("Content-Length", str(len(body)))
+        self.end_headers(); self.wfile.write(body)
+    def log_message(self, *a): pass
+server = HTTPServer(("127.0.0.1", 0), Stub)
+threading.Thread(target=server.serve_forever, daemon=True).start()
+import os
+os.environ["LLM_ENDPOINT"] = f"http://127.0.0.1:{server.server_port}"
+from app.components import reasoning
+out = reasoning.Reasoning(adapter="v7").run({"query": "How do I reset it?"})
+assert out["answer"] == "Hold the button for ten seconds."
+assert seen["path"] == "/v1/completions", seen
+assert seen["body"]["model"] == "v7" and seen["body"]["prompt"].endswith("Answer:")
+assert "messages" not in seen["body"]
+print("ok")
+""")
+    assert result.returncode == 0, result.stderr
+
+
+def test_readiness_names_an_adapter_the_endpoint_does_not_serve(trained):
+    result = run_in(trained, """
+import json, os, threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+class Models(BaseHTTPRequestHandler):
+    def do_GET(self):
+        body = json.dumps({"data": [{"id": "base"}]}).encode()
+        self.send_response(200); self.send_header("Content-Length", str(len(body)))
+        self.end_headers(); self.wfile.write(body)
+    def log_message(self, *a): pass
+server = HTTPServer(("127.0.0.1", 0), Models)
+threading.Thread(target=server.serve_forever, daemon=True).start()
+os.environ["LLM_ENDPOINT"] = f"http://127.0.0.1:{server.server_port}"
+os.environ["LLM_MODEL"] = "base"
+os.environ["FINETUNED_MODEL"] = "v7"
+from app import service
+problems = service._model_problems()
+assert problems and "FINETUNED_MODEL 'v7' is not served" in problems[0], problems
+os.environ["FINETUNED_MODEL"] = "base"
+assert service._model_problems() == []
+print("ok")
+""", env={"AUTH_TOKEN": "t"})
+    assert result.returncode == 0, result.stderr
+
+
 def test_a_mapper_adapter_reports_what_it_could_not_parse(reg, tmp_path):
     """The representation side: a reply that is not JSON is reported, never
     invented, and a field the reply did not produce is unmapped."""
@@ -169,7 +225,7 @@ def test_a_mapper_adapter_reports_what_it_could_not_parse(reg, tmp_path):
 import app.llm
 from app.components.representation import Representation
 replies = iter(['{"total": "12.50", "extra": 1}', "not json at all"])
-app.llm.complete = lambda prompt, timeout=None, *, endpoint=None, model=None: next(replies)
+app.llm.complete_raw = lambda prompt, timeout=None, *, model, endpoint=None: next(replies)
 r = Representation(contract=["total", "account"], adapter="v1")
 out = r.run({"records": [{"id": "1", "raw": {"Amount": "12.50"}}, {"id": "2", "raw": {}}]})
 first, second = out["records"]

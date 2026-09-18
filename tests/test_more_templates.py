@@ -222,7 +222,8 @@ assert issubclass(Infeasible, RefusedInput)
 for bad in ({"items": ["x"], "capacity": {}},
             {"items": [{"size": 5}], "capacity": {}},
             {"items": [{"id": "a"}], "capacity": "str"},
-            {"items": [{"id": "a", "size": "big"}], "capacity": {"r": 1}}):
+            {"items": [{"id": "a", "size": "big"}], "capacity": {"r": 1}},
+            {"items": [{"id": "a", "size": -5}], "capacity": {"r": 1}}):
     try:
         Planning().run(bad)
     except RefusedInput:

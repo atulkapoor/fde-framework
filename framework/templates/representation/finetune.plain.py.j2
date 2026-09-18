@@ -92,7 +92,7 @@ class {{ class_name }}:
         self.adapter = adapter or os.environ.get("FINETUNED_MODEL") or None
 
     def run(self, payload: dict[str, Any]) -> dict[str, Any]:
-        from app.llm import ModelUnconfigured, complete
+        from app.llm import ModelUnconfigured, complete_raw
 
         records = require(payload, "records", list)
         if not self.adapter:
@@ -101,7 +101,7 @@ class {{ class_name }}:
                 "train/lora.py, serve it, and name the version here -- the base "
                 "model does not map in its place"
             )
-        mapped = [self._map(r, complete) for r in records]
+        mapped = [self._map(r, complete_raw) for r in records]
         complete_records = [r for r in mapped if not r["unmapped"]]
         return {
             **payload,
@@ -111,10 +111,10 @@ class {{ class_name }}:
             "needs_attention": [r["id"] for r in mapped if r["unmapped"]],
         }
 
-    def _map(self, record: Any, complete: Any) -> dict[str, Any]:
+    def _map(self, record: Any, complete_raw: Any) -> dict[str, Any]:
         if not isinstance(record, dict):
             raise RefusedInput("each record is an object with an id and a raw payload")
-        reply = complete(format_prompt(record.get("raw"), contract=self.contract),
+        reply = complete_raw(format_prompt(record.get("raw"), contract=self.contract),
                          model=self.adapter).strip()
         try:
             parsed = json.loads(reply)

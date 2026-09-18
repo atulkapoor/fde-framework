@@ -65,7 +65,7 @@ class {{ class_name }}:
         self.adapter = adapter or os.environ.get("FINETUNED_MODEL") or None
 
     def run(self, payload: dict[str, Any]) -> dict[str, Any]:
-        from app.llm import ModelUnconfigured, complete
+        from app.llm import ModelUnconfigured, complete_raw
 
         question = payload.get("goal") or payload.get("query")
         if not isinstance(question, str) or not question.strip():
@@ -77,7 +77,7 @@ class {{ class_name }}:
                 "model does not answer in its place"
             )
         evidence = payload.get("retrieved") or []
-        reply = complete(format_prompt(question, evidence), model=self.adapter).strip()
+        reply = complete_raw(format_prompt(question, evidence), model=self.adapter).strip()
         return {
             **payload,
             "answer": reply,

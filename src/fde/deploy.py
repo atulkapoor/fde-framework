@@ -635,6 +635,13 @@ def _write_env_example(architecture, deploy: Path) -> None:
             "# the base model does not answer in the adapter's place.",
             "FINETUNED_MODEL=",
         ]
+    else:
+        lines += [
+            "",
+            "# Read by the evaluation harness to tell the author from the judge;",
+            "# this build serves no adapter, so it stays unset.",
+            "# FINETUNED_MODEL=",
+        ]
     memory = architecture.realizations.get("memory")
     if memory is not None and memory.stack == "supermemory":
         lines += [

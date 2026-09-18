@@ -6,6 +6,7 @@ cases. A brief describes the problem; these describe the answer.
 """
 
 import json
+from collections import Counter
 
 import pytest
 
@@ -244,3 +245,57 @@ def test_one_layout_means_nothing_is_rare(reg=None):
               "input": f"doc {i}", "output": {"total": float(i)}}
              for i in range(10)]
     assert build_eval_set(pairs).edge_case == []
+
+
+# --- the split: one case once, every label on both sides ------------------
+
+
+def labelled_pairs(n: int = 30, labels=("a", "b", "c")) -> list[dict]:
+    return [{"id": f"p{i}", "input": f"text number {i} about {labels[i % 3]}",
+             "output": {"decision": labels[i % 3]}, "verified": True}
+            for i in range(n)]
+
+
+def test_a_repeated_input_is_counted_once(reg=None):
+    pairs = labelled_pairs() + [{"id": "again", "input": "text number 1 about b",
+                                 "output": {"decision": "b"}, "verified": True}]
+    split = split_pairs(pairs)
+    assert split.duplicate_ids == ["again"]
+    assert "again" not in split.golden_ids and "again" not in split.holdout_ids
+
+
+def test_the_holdout_is_stratified_by_label(reg=None):
+    """Drawn by hash alone, a holdout once held 16/15/14 of three labels
+    against a golden set of 46/36/23: every per-class number compared two
+    mixes. Each label is held out in the same share."""
+    split = split_pairs(labelled_pairs(60))
+    by_id = {p["id"]: p for p in labelled_pairs(60)}
+    held = Counter(by_id[i]["output"]["decision"] for i in split.holdout_ids)
+    assert set(held) == {"a", "b", "c"} and max(held.values()) - min(held.values()) <= 1
+
+
+def test_freeform_answers_are_not_labels(reg=None):
+    """Five answers for five pairs are answers: stratifying by them once
+    held every pair out and shipped an empty golden set."""
+    pairs = [{"id": f"q{i}", "input": f"Question {i}?", "output": f"Answer {i}.",
+              "verified": True} for i in range(10)]
+    split = split_pairs(pairs)
+    assert len(split.golden_ids) == 7 and len(split.holdout_ids) == 3
+
+
+def test_edges_move_out_of_golden_when_golden_keeps_a_floor(reg=None):
+    """A baseline fitted on the golden file would score copied edges
+    in-sample and count them twice; the probes build on the edges."""
+    suite = build_eval_set(labelled_pairs(48))
+    golden_ids = {c["id"] for c in suite.golden}
+    assert suite.edge_case and not {e["id"] for e in suite.edge_case} & golden_ids
+    assert all(not e.get("in_sample") for e in suite.edge_case)
+    assert all(not p.get("in_sample") for p in suite.adversarial)
+    steered = [p for p in suite.adversarial if "steered_toward" in p]
+    assert len(steered) == 2 and all(p["steered_toward"] != p["output"] for p in steered)
+
+
+def test_a_tiny_corpus_keeps_its_edges_in_golden_and_says_so(reg=None):
+    suite = build_eval_set(PAIRS)
+    assert suite.golden, "four pairs are four cases, not an exam with two layers"
+    assert all(e.get("in_sample") for e in suite.edge_case)

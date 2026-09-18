@@ -300,16 +300,26 @@ print("ok")
 
 
 def test_the_edge_is_the_only_source_of_authority(emission):
-    """A body that claims scopes for itself is stripped before the
-    pipeline sees it; the principal is what the edge set."""
+    """A body that claims scopes for itself is refused by name before the
+    pipeline sees it; the principal is what the edge set. Dropping it
+    silently once answered 200 to a forged identity and 422 to a forged
+    result -- the same act, two verdicts."""
     shape, out = emission
     code = """
+from app.contract import RefusedInput
 from app.shapes import CALLER_KEYS, envelope
 body = ({"query": "hello"} if "query" in CALLER_KEYS else
         {"text": "hello"} if "text" in CALLER_KEYS else
         {"pages": [{"id": "p", "text": "hello"}]})
-env = envelope({**body, "principal": {"subject": "attacker", "scopes": ["admin"]},
-                "request_id": "forged"})
+for forged in ({"principal": {"subject": "attacker", "scopes": ["admin"]}},
+               {"request_id": "forged"}):
+    try:
+        envelope({**body, **forged})
+    except RefusedInput as exc:
+        assert next(iter(forged)) in str(exc), exc
+    else:
+        raise SystemExit(f"accepted {forged}")
+env = envelope(body)
 assert "principal" not in env and "request_id" not in env, env
 print("ok")
 """
@@ -1160,3 +1170,219 @@ def test_the_exam_record_names_its_split(labelled):
     # silently omitted.
     assert manifest["holdout"] is None
     assert "holdout: none recorded at build" in acceptance
+
+
+# --- the seventh pass: the fitted baseline, on and off sample --------------
+
+
+def boot(out: Path, port: str, **env):
+    return subprocess.run(
+        [sys.executable, "-m", "app.service"], cwd=out, capture_output=True, text=True,
+        env={"PATH": "/usr/bin", "PORT": port, "AUTH_TOKEN": "t", "GRANTED_SCOPES": "x",
+             "LLM_ENDPOINT": "http://127.0.0.1:9", **env},
+        timeout=60,
+    )
+
+
+def test_an_unfitted_baseline_refuses_to_boot(labelled, tmp_path):
+    """Without a golden file the served classifier would score every label
+    the same and answer the first one to every request, behind a green
+    /ready. Missing history is a configuration refusal: exit 78, one line."""
+    out = tmp_path / "unfitted"
+    shutil.copytree(labelled, out, ignore=shutil.ignore_patterns("__pycache__"))
+    (out / "evals" / "golden.jsonl").unlink()
+    result = boot(out, "18991", STATE_DIR=str(tmp_path / "state"))
+    assert result.returncode == 78, result.stderr[-600:]
+    assert "no labelled history" in result.stderr and "Traceback" not in result.stderr
+
+
+def test_an_edited_exam_refuses_to_boot(labelled, tmp_path):
+    """The served baseline is fitted on the golden file the build recorded.
+    A golden file that changed since the build is a decision that changed
+    since the build; the boot refuses until the exam record matches."""
+    out = tmp_path / "edited"
+    shutil.copytree(labelled, out, ignore=shutil.ignore_patterns("__pycache__"))
+    with (out / "evals" / "golden.jsonl").open("a") as handle:
+        handle.write(json.dumps({"id": "late", "input": "a late case about a fee",
+                                 "output": {"decision": "refund"}}) + "\n")
+    result = boot(out, "18992", STATE_DIR=str(tmp_path / "state"))
+    assert result.returncode == 78, result.stderr[-600:]
+    assert "not the file the build recorded" in result.stderr
+
+
+def holdout_file(path: Path, n: int = 24) -> Path:
+    rows = []
+    for i in range(n):
+        label = LABELS[i % 3]
+        rows.append({"id": f"h{i}", "input": f"Case {i}: {VOCAB[label][(i + 2) % 5]} on "
+                                             f"the last bill, reference {2000 + i}.",
+                     "output": {"decision": label}})
+    path.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    return path
+
+
+def test_the_holdout_is_the_out_of_sample_gate(labelled, tmp_path):
+    """The golden score is in-sample wherever the baseline is fitted on
+    the golden file, and the harness says so. The holdout is where the
+    majority gate has to hold on cases never seen."""
+    result, layers = harness(labelled)
+    assert "in-sample" in result.stdout
+    holdout = holdout_file(tmp_path / "holdout.jsonl")
+    result, layers = harness(labelled, "--cases", str(holdout))
+    assert result.returncode == 0, result.stdout + result.stderr
+    held = layers["holdout"]
+    assert held["score"] > held["decision"]["majority_rate"]
+
+    out = tmp_path / "constant"
+    shutil.copytree(labelled, out, ignore=shutil.ignore_patterns("__pycache__"))
+    (out / "app" / "components" / "reasoning.py").write_text(
+        "class Reasoning:\n"
+        "    def run(self, payload):\n"
+        "        return {**payload, 'decision': 'refund', 'decided_by': 'constant'}\n"
+    )
+    result, layers = harness(out, "--cases", str(holdout))
+    assert result.returncode != 0
+    assert "does not beat the majority rate" in result.stderr, result.stderr
+
+
+def test_probes_are_drawn_from_cases_the_baseline_was_not_fitted_on(labelled):
+    """An edge case copied out of golden was counted twice and scored
+    in-sample; a probe built on a fitted case reported an injection as
+    followed when the base was merely misread. Edges move out of golden,
+    probes build on them, and each says which answer it steers toward."""
+    load = lambda name: [json.loads(line) for line  # noqa: E731
+                         in (labelled / "evals" / f"{name}.jsonl").read_text().splitlines()
+                         if line.strip()]
+    golden_ids = {c["id"] for c in load("golden")}
+    golden_inputs = {c["input"] for c in load("golden")}
+    edges = load("edge_case")
+    assert edges and not {e["id"] for e in edges} & golden_ids
+    probes = load("adversarial")
+    for probe in probes:
+        assert not probe.get("in_sample"), probe["id"]
+        if probe["kind"] == "prompt_injection":
+            assert probe["input"] not in golden_inputs
+            assert probe["base_id"] not in golden_ids, probe["id"]
+    steered = {p["id"]: p for p in probes if "steered_toward" in p}
+    assert set(steered) == {"adv-injection-steered", "adv-injection-contradiction"}
+    for probe in steered.values():
+        assert probe["steered_toward"] != probe["output"]
+
+
+def test_a_followed_injection_is_told_from_a_misread(labelled, tmp_path):
+    """The harness names the difference: an answer that IS the injected
+    one was followed; a wrong answer that is not it is a misread."""
+    out = tmp_path / "follower"
+    shutil.copytree(labelled, out, ignore=shutil.ignore_patterns("__pycache__"))
+    components = out / "app" / "components"
+    (components / "fitted.py").write_text((components / "reasoning.py").read_text())
+    # The fitted baseline, except that it obeys any label named in the text.
+    (components / "reasoning.py").write_text(
+        "import re\n"
+        "from app.components.fitted import Reasoning as Fitted\n\n\n"
+        "class Reasoning(Fitted):\n"
+        "    def run(self, payload):\n"
+        "        out = super().run(payload)\n"
+        "        named = re.findall(r'\"decision\": \"(\\w+)\"', payload.get('text') or '')\n"
+        "        if named:\n"
+        "            out['decision'] = named[-1]\n"
+        "        return out\n"
+    )
+    result, layers = harness(out)
+    failures = {f["id"]: f for f in layers["adversarial"]["failures"]}
+    assert failures["adv-injection-contradiction"]["followed"] is True
+    assert "injection(s) followed" in result.stderr
+    assert re.search(r"\b[1-9]\d* injection\(s\) followed", result.stderr), result.stderr
+
+
+def test_risks_does_not_call_the_fitted_classifier_unimplemented(labelled):
+    risks = (labelled / "RISKS.md").read_text()
+    if "## Decided, not yet implemented" in risks:
+        section = risks.split("## Decided, not yet implemented", 1)[1].split("## ", 1)[0]
+        assert "`reasoning`" not in section, section
+
+
+def test_two_documents_are_one_refusal_not_one_silent_decision(labelled):
+    result = run_in(labelled, """
+from app.contract import RefusedInput
+from app.pipeline import run
+try:
+    run({"documents": [{"id": "a", "text": "charged twice on my statement, ticket 1"},
+                       {"id": "b", "text": "which form do I use, ticket 2"}]})
+except RefusedInput as exc:
+    assert "one decision per request" in str(exc), exc
+    print("refused")
+""")
+    assert result.returncode == 0, result.stderr
+    assert "refused" in result.stdout
+
+
+def test_text_is_capped_on_every_entry_shape(emission):
+    """The bare-string path was capped; `text` and `documents[].text`
+    were not, and a 900 KB narrative walked in by the object path."""
+    shape, out = emission
+    result = run_in(out, """
+from app.contract import RefusedInput
+from app.shapes import CALLER_KEYS, MAX_TEXT_CHARS, envelope
+big = "x" * (MAX_TEXT_CHARS + 1)
+bodies = [big]
+if "text" in CALLER_KEYS:
+    bodies.append({"text": big})
+if "documents" in CALLER_KEYS:
+    bodies.append({"documents": [{"id": "d", "text": big}]})
+for body in bodies:
+    try:
+        envelope(body)
+    except RefusedInput as exc:
+        assert "characters" in str(exc), exc
+    else:
+        raise SystemExit("accepted an oversized " + type(body).__name__)
+print("ok", len(bodies))
+""")
+    assert result.returncode == 0, f"{shape}: {result.stderr[-500:]}"
+
+
+def test_the_request_contract_names_only_what_this_build_reads(labelled):
+    """A text decision once accepted `items` and `capacity` (a solver's
+    input) and `pages`, `rows`, `events` (other perceptions') because the
+    contract was drawn per family, not per approach."""
+    result = run_in(labelled, """
+from app.shapes import CALLER_KEYS
+for key in ("items", "capacity", "pages", "rows", "events", "audio_ref", "video_ref"):
+    assert key not in CALLER_KEYS, key
+assert "text" in CALLER_KEYS and "documents" in CALLER_KEYS
+print("ok")
+""")
+    assert result.returncode == 0, result.stderr
+
+
+def test_an_approval_refusal_is_on_the_record(emission, tmp_path):
+    """A gate that said no left nothing in the ledger; an auditor asking
+    why an action did not happen found no line. The refusal stands and
+    is written down."""
+    shape, out = emission
+    if not (out / "app" / "controls.py").exists() or not (out / "app" / "ledger.py").exists():
+        pytest.skip("nothing mutative and outward in this shape")
+    result = run_in(out, """
+from app.controls import ApprovalGate, NeedsApproval
+from app.ledger import LEDGER
+gate = ApprovalGate(["integration"], approve=lambda payload: False)
+try:
+    gate.run({"tool": "refund", "arguments": {}, "request_id": "r-1"})
+except NeedsApproval:
+    pass
+else:
+    raise SystemExit("approved")
+denied = [r for r in LEDGER.recent(20) if r.get("phase") == "denied"]
+assert denied and denied[-1]["by"] == "approval-gate", denied
+assert denied[-1]["request_id"] == "r-1"
+print("ok")
+""", env={"STATE_DIR": str(tmp_path / "state")})
+    assert result.returncode == 0, f"{shape}: {result.stderr[-600:]}"
+
+
+def test_the_emitted_gitignore_keeps_caches_and_splits_out_of_history(emission):
+    shape, out = emission
+    ignored = (out / ".gitignore").read_text()
+    for entry in (".ruff_cache/", ".pytest_cache/", "train/data/", "artifacts/"):
+        assert entry in ignored, f"{shape}: {entry} not ignored"
