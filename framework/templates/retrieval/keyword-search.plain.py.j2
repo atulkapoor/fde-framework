@@ -146,10 +146,15 @@ class {{ class_name }}:
             self.last_note = "the index is empty"
             return []
         raw = self._tokenise(query)
-        truncated = len(raw) > MAX_QUERY_TOKENS
+        # Truncation is noted on EVERY path: a miss after a cut once read
+        # byte-for-byte like a genuine miss, and the operator had no way
+        # to tell "nothing relevant" from "your question was cut off".
+        cut = ""
+        if len(raw) > MAX_QUERY_TOKENS:
+            cut = f" (query truncated to {MAX_QUERY_TOKENS} tokens)"
         tokens = [t for t in raw[:MAX_QUERY_TOKENS] if t not in STOPWORDS]
         if not tokens:
-            self.last_note = "the query is only function words"
+            self.last_note = "the query is only function words" + cut
             return []
         ceiling = UBIQUITOUS_SHARE * total
         informative = [t for t in tokens
@@ -160,9 +165,9 @@ class {{ class_name }}:
         elif known:
             scored, note = known, "no informative term; ranked by terms common to the corpus"
         else:
-            self.last_note = "none of the query's terms appear in the corpus"
+            self.last_note = "none of the query's terms appear in the corpus" + cut
             return []
-        self.last_note = note + (" (query truncated)" if truncated else "")
+        self.last_note = note + cut
         average_length = sum(self._lengths.values()) / total
         scores: dict[str, float] = defaultdict(float)
         for token in scored:

@@ -1122,14 +1122,20 @@ class Ledger:
             return
         # One append per record, fsync'd, under the directory lock: a
         # crash leaves at most one torn line, never an interleaving.
-        data = (json.dumps(record, default=str) + "\\n").encode()
         with self._locked():
-            fd = os.open(self.root / name, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
-            try:
-                os.write(fd, data)
-                os.fsync(fd)
-            finally:
-                os.close(fd)
+            self._append_unlocked(name, record)
+
+    def _append_unlocked(self, name: str, record: dict[str, Any]) -> None:
+        """The append itself; the caller holds the directory lock."""
+        if self.root is None:
+            return
+        data = (json.dumps(record, default=str) + "\\n").encode()
+        fd = os.open(self.root / name, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+        try:
+            os.write(fd, data)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
 
     # -- audit ---------------------------------------------------------------
 
@@ -1160,7 +1166,15 @@ class Ledger:
         """Take the key before acting. Returns the earlier outcome when
         this exact action already completed; raises when it was started
         and never finished; None when the key is now ours."""
-        with self._lock:
+        with self._lock, self._locked():
+            # Re-check the file under the cross-process lock: a second
+            # process on the same STATE_DIR (a debug run beside the unit,
+            # a failover before the old instance is dead) must find the
+            # key taken, not take it too.
+            if self.root is not None:
+                for line in self._read("idempotency.jsonl"):
+                    if line.get("key") == key:
+                        self._keys[key] = line
             existing = self._keys.get(key)
             if existing is not None:
                 if existing.get("digest") != digest:
@@ -1170,7 +1184,7 @@ class Ledger:
                 return existing
             record = {"key": key, "digest": digest, "at": time.time()}
             self._keys[key] = record
-            self._write("idempotency.jsonl", record)
+            self._append_unlocked("idempotency.jsonl", record)
             return None
 
     def complete(self, key: str, outcome: Any) -> None:

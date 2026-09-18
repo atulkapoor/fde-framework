@@ -984,3 +984,55 @@ print("ok")
 """
     result = run_in(out, code, env={"STATE_DIR": str(state)})
     assert result.returncode == 0, f"{shape}: {result.stderr[-600:]}"
+
+
+
+def test_a_truncated_query_is_never_a_silent_miss(emission):
+    shape, out = emission
+    if not (out / "app" / "components" / "retrieval.py").exists():
+        pytest.skip("no retrieval layer in this shape")
+    code = """
+from app.components.retrieval import Retrieval, MAX_QUERY_TOKENS
+r = Retrieval()
+r.index([{"id": "sku", "text": "SKU-88317 ships from the Leeds depot"},
+         {"id": "other", "text": "quarterly figures and the office calendar"}])
+query = " ".join(f"filler{i}" for i in range(MAX_QUERY_TOKENS + 90)) + " SKU-88317"
+assert r.retrieve(query, 5) == []
+assert "truncated" in r.last_note, r.last_note
+print("ok")
+"""
+    result = run_in(out, code)
+    assert result.returncode == 0, f"{shape}: {result.stderr[-500:]}"
+
+
+def test_two_processes_cannot_both_reserve_one_key(emission):
+    """A debug run beside the unit, or a failover before the old instance
+    is dead: two ledgers on one STATE_DIR must agree on who owns a key."""
+    shape, out = emission
+    if not (out / "app" / "ledger.py").exists():
+        pytest.skip("nothing outward in this shape")
+    state = out / "state-race"
+    state.mkdir(exist_ok=True)
+    code = """
+import threading
+from app.ledger import Ledger, KeyUnresolved
+a, b = Ledger("state-race"), Ledger("state-race")
+key = a.key_for({"tool": "pay", "arguments": {"amount": 5}})
+barrier = threading.Barrier(2)
+outcomes = []
+def attempt(ledger):
+    barrier.wait()
+    try:
+        outcomes.append(("owned", ledger.reserve(key, "d")))
+    except KeyUnresolved:
+        outcomes.append(("refused", None))
+threads = [threading.Thread(target=attempt, args=(led,)) for led in (a, b)]
+[t.start() for t in threads]; [t.join() for t in threads]
+kinds = sorted(k for k, _ in outcomes)
+assert kinds == ["owned", "refused"], outcomes
+lines = [l for l in open("state-race/idempotency.jsonl").read().splitlines() if l.strip()]
+assert len(lines) == 1, lines
+print("ok")
+"""
+    result = run_in(out, code)
+    assert result.returncode == 0, f"{shape}: {result.stderr[-600:]}"

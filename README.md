@@ -284,8 +284,11 @@ a torn line, a stopword cannot cite a document and a one-document corpus
 still answers, compaction cannot drop a live key, every eval entry point
 honours the boundary, an oversized corpus refuses the boot with one line,
 readiness degrades rather than denies on a stray file, and the service
-carries a request id on every answer -- and the deliverable ships its own
-edge tests, which its CI runs. A quality finding lands
+carries a request id on every answer, a truncated query is never a silent
+miss, and two processes cannot both reserve one key -- and the deliverable
+ships its own edge tests, which its CI runs. Five independent audit passes
+took it from "every request 500s" to a conditional sign-off. A quality
+finding lands
 there as a check before it lands anywhere as a fix
 ([`tests/test_acceptance.py`](tests/test_acceptance.py)).
 

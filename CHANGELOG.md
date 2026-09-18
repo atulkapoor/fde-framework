@@ -5,6 +5,30 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.21] — 2026-09-18
+
+The fifth-pass audit returned the first sign-off, with conditions. Two
+were the framework's, both narrow, both verified by running them; this
+release meets them, checks first. (The other two are the engagement's:
+sizing the corpus ceiling and the unit's memory cap together for the
+stated scale, and seeding the eval sets from the client's own pairs
+before any score is quoted.)
+
+- **A truncated query is never a silent miss.** The truncation note was
+  appended only on the success path, so a query cut at the token cap
+  that then matched nothing read byte-for-byte like a genuine miss. The
+  note is now on every path, with the cap it was cut to.
+- **Two processes cannot both reserve one key.** `reserve()` checked
+  only its own process's snapshot under a thread lock; a second ledger
+  on the same STATE_DIR -- a debug run beside the unit, a failover
+  before the old instance is dead -- could take a key already taken.
+  Reservation now re-reads the file under the same cross-process
+  directory lock compaction uses, and exactly one caller owns the key.
+
+The audit loop in numbers: five independent passes on successive
+emissions, criticals 5 → 2 → 1 → 0 → 0, highs 11 → 9 → 3 → 4 → 0, and
+every class of finding pinned in the acceptance suite before its fix.
+
 ## [0.1.20] — 2026-09-18
 
 The fourth-pass audit was the first to name the exact conditions for
