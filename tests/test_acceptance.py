@@ -405,3 +405,29 @@ def test_the_service_carries_a_request_id_on_every_answer(emission):
     finally:
         proc.terminate()
         assert proc.wait(timeout=20) == 0, "SIGTERM must drain and exit 0"
+
+
+def test_a_hostile_document_costs_milliseconds_not_minutes(emission):
+    """The first pipeline step once backtracked quadratically: 400KB of a
+    single non-whitespace run cost 58 minutes of CPU per unauthenticated
+    request (measured by a red team). Perception must be linear in the
+    input, whatever shape the input takes."""
+    shape, out = emission
+    perception = out / "app" / "components" / "perception.py"
+    if "documents_of" not in perception.read_text():
+        pytest.skip("this shape's perception does not read text documents")
+    code = """
+import time
+from app.components.perception import Perception
+p = Perception()
+worst = time.perf_counter()
+for text in ("a" * 400_000, ("a|" * 200_000), ("xxxxxxxxxx\\t" * 40_000), "a" + " " * 400_000):
+    started = time.perf_counter()
+    p.run({"documents": [{"id": "x", "text": text}]})
+    worst = max(worst, time.perf_counter() - started)
+print(f"{worst:.3f}")
+"""
+    result = run_in(out, code)
+    assert result.returncode == 0, f"{shape}: {result.stderr[-600:]}"
+    worst = float(result.stdout.strip().splitlines()[-1])
+    assert worst < 2.0, f"{shape}: a hostile 400KB document took {worst:.1f}s"
