@@ -2,20 +2,19 @@
 
 {{ rationale }}
 
-Two retrievers, because each fails exactly where the other works. Lexical
-matching finds part numbers, account references and names -- the tokens people
-actually search for -- and is blind to meaning. Semantic search handles a
-question phrased three different ways and fumbles an identifier. Running both
-and fusing them lifts recall well above either alone.
+One lexical tier: term frequency against inverse document frequency over a
+postings index. Unfashionable and hard to beat when the query contains the
+token the answer contains -- which is most of the time in a document
+corpus -- and it runs with no model, no vector store and no GPU, which is
+what lets it live inside a boundary.
 
-**Fusion is on rank, not score.** Two retrievers do not produce comparable
-numbers, and averaging them is the thing that looks reasonable and quietly
-breaks: one retriever's 0.8 is not the other's. Reciprocal rank fusion needs no
-scores at all, which is what lets it combine retrievers that share nothing --
-including one that has no scores to give.
+Cost is proportional to the documents a query's tokens actually appear in,
+never to the corpus: the index is a postings list per token, not a scan.
+A query is capped in tokens, because an uncapped one once cost 5.7 seconds
+of CPU per request at a tenth of the stated corpus.
 
-A document both tiers found outranks one only either found. That is the whole
-mechanism, and it is why agreement is worth more than any single score.
+Where a semantic tier is later earned, the `hybrid-search` approach fuses
+the two on rank; this module deliberately does not carry that machinery.
 """
 
 from __future__ import annotations
@@ -27,24 +26,10 @@ from typing import Any
 
 from app.shapes import require
 
-# Rank-fusion constant. Damps the top of each list so one retriever's first
-# result cannot dominate agreement between the others.
-RRF_K = 60
-
 TOKEN = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*")
-
-
-def fuse(ranked: dict[str, list[str]], k: int = RRF_K) -> list[str]:
-    """Combine ranked lists using ranks alone.
-
-    Deliberately score-free. It works across retrievers with incompatible
-    scales, and it works when one of them has no score to offer.
-    """
-    totals: dict[str, float] = defaultdict(float)
-    for results in ranked.values():
-        for position, doc_id in enumerate(results):
-            totals[doc_id] += 1.0 / (k + position + 1)
-    return sorted(totals, key=lambda d: (-totals[d], d))
+# Tokens of a query that are scored. Beyond this a question is not a
+# question; the envelope refuses over-long ones earlier, this is the floor.
+MAX_QUERY_TOKENS = 64
 
 
 class {{ class_name }}:
@@ -58,7 +43,9 @@ class {{ class_name }}:
         self._documents: dict[str, str] = {}
         self._sources: dict[str, str] = {}
         self._frequencies: dict[str, Counter] = {}
-        self._document_frequency: Counter = Counter()
+        # token -> {doc_id: count}. The postings list is what makes a
+        # query cost what it matches rather than what the corpus holds.
+        self._postings: dict[str, dict[str, int]] = defaultdict(dict)
 
     def index(self, documents: list[dict[str, Any]]) -> None:
         for document in documents:
@@ -68,13 +55,13 @@ class {{ class_name }}:
             # ranking quietly rots on every corpus refresh.
             if doc_id in self._frequencies:
                 for token in self._frequencies[doc_id]:
-                    self._document_frequency[token] -= 1
-            tokens = self._tokenise(document["text"])
+                    self._postings[token].pop(doc_id, None)
+            counts = Counter(self._tokenise(document["text"]))
             self._documents[doc_id] = document["text"]
             self._sources[doc_id] = str(document.get("source", doc_id))
-            self._frequencies[doc_id] = Counter(tokens)
-            for token in set(tokens):
-                self._document_frequency[token] += 1
+            self._frequencies[doc_id] = counts
+            for token, count in counts.items():
+                self._postings[token][doc_id] = count
 
     def __len__(self) -> int:
         return len(self._documents)
@@ -104,14 +91,13 @@ class {{ class_name }}:
         """
         total = len(self._documents) or 1
         scores: dict[str, float] = defaultdict(float)
-        for token in self._tokenise(query):
-            appearing = self._document_frequency.get(token, 0)
-            if not appearing:
+        for token in self._tokenise(query)[:MAX_QUERY_TOKENS]:
+            posting = self._postings.get(token)
+            if not posting:
                 continue
-            rarity = math.log(1 + (total / appearing))
-            for doc_id, counts in self._frequencies.items():
-                if counts.get(token):
-                    scores[doc_id] += counts[token] * rarity
+            rarity = math.log(1 + (total / len(posting)))
+            for doc_id, count in posting.items():
+                scores[doc_id] += count * rarity
         return sorted(scores, key=lambda d: (-scores[d], d))
 
     @staticmethod

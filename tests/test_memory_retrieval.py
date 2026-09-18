@@ -44,6 +44,23 @@ def built(reg, tmp_path_factory):
     return out
 
 
+@pytest.fixture(scope="module")
+def hybrid(built):
+    """hybrid-search is never the simplest applicable choice (vector-search
+    is, wherever hybrid applies), so no profile decides it unaided. The
+    fusion it carries is what these tests pin, so the template is rendered
+    beside the built project and imported from there."""
+    from jinja2 import Template
+
+    source = Template(
+        (FRAMEWORK / "templates" / "retrieval" / "hybrid-search.plain.py.j2").read_text()
+    ).render(component="retrieval", approach="hybrid-search", stack="plain-python",
+             rationale="rendered for the fusion tests", class_name="Retrieval",
+             interface="Retriever", values={}, sensitive_fields="")
+    (built / "app" / "components" / "retrieval_hybrid.py").write_text(source)
+    return built
+
+
 def run_in(project, code):
     return subprocess.run(
         [sys.executable, "-c", code], cwd=project, capture_output=True, text=True
@@ -67,11 +84,11 @@ print("ok")
     assert result.returncode == 0, result.stderr
 
 
-def test_results_are_fused_on_rank_not_on_score(built):
+def test_results_are_fused_on_rank_not_on_score(hybrid):
     """Scores from two retrievers are not on the same scale, and averaging them
     is the thing that quietly breaks in production."""
-    result = run_in(built, """
-from app.components.retrieval import fuse
+    result = run_in(hybrid, """
+from app.components.retrieval_hybrid import fuse
 fused = fuse({"lexical": ["a", "b", "c"], "semantic": ["c", "a", "d"]})
 assert fused[0] in ("a", "c"), "something in both lists should lead"
 assert set(fused) == {"a", "b", "c", "d"}
@@ -80,9 +97,9 @@ print(fused)
     assert result.returncode == 0, result.stderr
 
 
-def test_a_document_both_tiers_agree_on_outranks_one_only_either_found(built):
-    result = run_in(built, """
-from app.components.retrieval import fuse
+def test_a_document_both_tiers_agree_on_outranks_one_only_either_found(hybrid):
+    result = run_in(hybrid, """
+from app.components.retrieval_hybrid import fuse
 fused = fuse({"lexical": ["shared", "lexonly"], "semantic": ["shared", "semonly"]})
 assert fused[0] == "shared"
 print("ok")
@@ -90,10 +107,10 @@ print("ok")
     assert result.returncode == 0, result.stderr
 
 
-def test_fusion_needs_no_scores_at_all(built):
+def test_fusion_needs_no_scores_at_all(hybrid):
     """Rank-only is the point: it works across retrievers that share nothing."""
-    result = run_in(built, """
-from app.components.retrieval import fuse
+    result = run_in(hybrid, """
+from app.components.retrieval_hybrid import fuse
 assert fuse({"only": ["x", "y"]}) == ["x", "y"]
 print("ok")
 """)

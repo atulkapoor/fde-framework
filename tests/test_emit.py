@@ -766,7 +766,10 @@ def test_a_judged_harness_scores_against_a_local_judge(reg, tmp_path):
             [sys.executable, "evals/harness.py", "--min-score", "0.5"],
             cwd=out, capture_output=True, text=True,
             env={"PATH": "/usr/bin",
-                 "LLM_ENDPOINT": f"http://127.0.0.1:{server.server_port}"},
+                 "LLM_ENDPOINT": f"http://127.0.0.1:{server.server_port}",
+                 # Declared as the judge: the harness refuses an undeclared
+                 # author-grades-itself run, and this stub IS the judge.
+                 "JUDGE_ENDPOINT": f"http://127.0.0.1:{server.server_port}"},
         )
         assert result.returncode == 0, result.stdout + result.stderr
         assert "100.0%" in result.stdout
@@ -834,12 +837,23 @@ def load_corpus(directory=None):
     return 0
 
 
-def run(raw, *, request_id=None, principal=None):
+LOADED = {"documents": 0, "skipped": []}
+
+
+def run_envelope(raw, *, request_id=None, principal=None):
     if raw is None:
         raise RefusedInput("empty payload")
     if raw == "boom":
         raise RuntimeError("the implementation is broken in a way the caller must not see")
     return {"echo": raw, "seen_by": principal["subject"]}
+
+
+def output(env):
+    return env
+
+
+def run(raw, *, request_id=None, principal=None):
+    return output(run_envelope(raw, request_id=request_id, principal=principal))
 
 
 if __name__ == "__main__":
@@ -860,7 +874,7 @@ def _boot(out, env):
     port = sock.getsockname()[1]
     sock.close()
     proc = subprocess.Popen(
-        [sys.executable, "-m", "app.pipeline"], cwd=out,
+        [sys.executable, "-m", "app.service"], cwd=out,
         env={"PATH": "/usr/bin", "PORT": str(port), **env},
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
     )
@@ -977,7 +991,7 @@ def test_ready_reports_the_missing_model_health_stays_liveness(reg, tmp_path):
     (out / "app" / "pipeline.py").write_text(STUB_PIPELINE)
 
     dead = subprocess.run(
-        [sys.executable, "-m", "app.pipeline"], cwd=out, capture_output=True, text=True,
+        [sys.executable, "-m", "app.service"], cwd=out, capture_output=True, text=True,
         env={"PATH": "/usr/bin", "PORT": "18999", "AUTH_TOKEN": "t0ken"}, timeout=30,
     )
     assert dead.returncode == 78 and "LLM_ENDPOINT" in dead.stderr, dead.stderr[-400:]

@@ -121,6 +121,28 @@ def _runbook(architecture, registry) -> str:
         "run the ExecStart command by hand as the `app` user and read stderr "
         "directly.",
         "",
+        "## The ledger (builds that act on the world)",
+        "",
+        "`$STATE_DIR/audit.jsonl` and `$STATE_DIR/idempotency.jsonl` are "
+        "append-only, fsync'd, and grow without bound -- rotate them under a "
+        "retention the client signs off (they are the record of every outward "
+        "call). A key that was reserved and never completed is a call that "
+        "started and did not finish; every retry of that exact action is "
+        "refused (`KeyUnresolved`) until a person establishes what happened "
+        "and records it:",
+        "",
+        "```bash",
+        "python -m app.ledger show <key>",
+        "python -m app.ledger resolve <key> "
+        "'{\"outcome\": \"sent once, confirmed in the CRM\"}' --by <your name>",
+        "```",
+        "",
+        "## The corpus (builds with a retrieval layer)",
+        "",
+        "Ingested once at boot from `CORPUS_DIR`; files it could not read are "
+        "named in the boot log and counted in `/ready`. A corpus update is a "
+        "restart (`systemctl restart app` drains in-flight requests first).",
+        "",
         "## When the answers are wrong and nothing is obviously broken",
         "",
         f"Look at **{first_place_to_look}** first. Quality flows one direction "
@@ -523,6 +545,9 @@ def _ci(architecture, out: Path) -> None:
             "        env:\n"
             "          LLM_ENDPOINT: ${{ vars.LLM_ENDPOINT }}\n"
             "          LLM_MODEL: ${{ vars.LLM_MODEL }}\n"
+            "          # The judge is not the author: a different model or endpoint.\n"
+            "          JUDGE_ENDPOINT: ${{ vars.JUDGE_ENDPOINT }}\n"
+            "          JUDGE_MODEL: ${{ vars.JUDGE_MODEL }}\n"
             "        run: python evals/harness.py --min-score 0.0 --report harness-report.json\n"
         )
     elif _approach(architecture, "evaluation") == "judged":
@@ -535,6 +560,9 @@ def _ci(architecture, out: Path) -> None:
             "        env:\n"
             "          LLM_ENDPOINT: ${{ vars.LLM_ENDPOINT }}\n"
             "          LLM_MODEL: ${{ vars.LLM_MODEL }}\n"
+            "          # The judge is not the author: a different model or endpoint.\n"
+            "          JUDGE_ENDPOINT: ${{ vars.JUDGE_ENDPOINT }}\n"
+            "          JUDGE_MODEL: ${{ vars.JUDGE_MODEL }}\n"
             "        run: python evals/harness.py --min-score 0.0 --report harness-report.json\n"
         )
     else:

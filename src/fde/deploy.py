@@ -115,9 +115,12 @@ def _systemd(deploy: Path, boundary: bool = False) -> None:
         "Environment=PYTHONUNBUFFERED=1\n"
         "Environment=STATE_DIR=/var/lib/app\n"
         "EnvironmentFile=/etc/app/env\n"
-        "ExecStart=/opt/app/current/.venv/bin/python -m app.pipeline\n"
+        "ExecStart=/opt/app/current/.venv/bin/python -m app.service\n"
         "Restart=on-failure\n"
         "RestartSec=5\n"
+        "# Exit 78 is EX_CONFIG: the service refused its configuration with\n"
+        "# one clear line. Restarting it would only repeat the line.\n"
+        "RestartPreventExitStatus=78\n"
         "# Drain: SIGTERM lets in-flight requests finish; the kill comes later.\n"
         "KillSignal=SIGTERM\n"
         "TimeoutStopSec=45\n"
@@ -427,6 +430,10 @@ def _install_section(substrate: str | None, provisioner: str | None) -> str:
         "# Stage the package, not the working tree: no tests, no CI, no .env.\n"
         "rsync -a --exclude .git --exclude .venv --exclude tests --exclude .github \\\n"
         "      --exclude '.*' app evals pyproject.toml \"$REL/\"\n"
+        "# The documents to answer from (a build with a retrieval layer): the\n"
+        "# unit's StateDirectory owns /var/lib/app; corpus/ lives under it.\n"
+        "mkdir -p /var/lib/app/corpus && rsync -a corpus/ /var/lib/app/corpus/\n"
+        "chown -R app /var/lib/app\n"
         "python3 -m venv \"$REL/.venv\"                  # ExecStart's interpreter\n"
         "\"$REL/.venv/bin/pip\" install \"$REL\"\n"
         "ln -sfn \"$REL\" /opt/app/current               # the unit runs `current`\n"
@@ -549,6 +556,12 @@ def _write_env_example(architecture, deploy: Path) -> None:
         "# Exception text in the journal (never in a response). Off by",
         "# default: on a build with a data boundary, the text can carry data.",
         "LOG_DETAIL=0",
+        "# Audit records carry argument KEYS and a digest by default; `full`",
+        "# writes the values too (sensitive-looking keys redacted).",
+        "AUDIT_ARGUMENTS=digest",
+        "# A judged evaluation refuses to let the author grade itself unless",
+        "# this is 1 -- and says so on every run when it is.",
+        "ALLOW_SELF_JUDGE=0",
     ]
     if "retrieval" in architecture.decisions.decided():
         lines += [

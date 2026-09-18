@@ -275,9 +275,13 @@ holds every emission to the operational contract — every environment
 variable the code reads is documented, everything the systemd unit demands
 is created by a shipped installer, CI has a lane that goes green without a
 model, the smoke test passes on a fresh emission, the code is lint-clean,
-the payload path composes end to end and refuses garbage at the door, the
-boundary refuses an endpoint outside it, the ledger survives a restart, and
-the service carries a request id on every answer. A quality finding lands
+the payload path composes end to end and refuses garbage at the door, a
+caller cannot forge a result, a hostile document or a long query costs
+milliseconds, the journal stays one JSON line per event under threads, an
+error closes its connection, a bad corpus file is skipped and counted, the
+boundary refuses an endpoint outside it, the ledger survives a restart and
+a torn line, and the service carries a request id on every answer. A
+quality finding lands
 there as a check before it lands anywhere as a fix
 ([`tests/test_acceptance.py`](tests/test_acceptance.py)).
 

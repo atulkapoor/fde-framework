@@ -124,5 +124,8 @@ else that looks like registry knowledge in `src/` is a bug — report it.
   passing smoke on a fresh emission, lint-clean code, a payload path that
   composes and refuses garbage, a boundary that refuses outside
   endpoints, a ledger that survives restart, a service that carries a
-  request id on every answer (`tests/test_acceptance.py` — a quality
-  finding lands there as a check before it lands as a fix).
+  request id on every answer, a request contract that refuses forged
+  results, retrieval and perception linear in their input, a journal that
+  survives concurrency, a corpus and a ledger that survive a bad file
+  (`tests/test_acceptance.py` — a quality finding lands there as a check
+  before it lands as a fix).

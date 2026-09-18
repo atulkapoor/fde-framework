@@ -5,6 +5,68 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.18] — 2026-09-18
+
+The second-pass audit of 0.1.17 — same principal-engineer lens, no memory
+of the first round — confirmed the first-round criticals gone and found
+the layer underneath, every item verified by running it. This release
+answers that layer, checks first:
+
+- **A caller could forge an answer.** `known` and `act` rode in on the
+  request and `reasoning` returned `known[question]` as grounded, HTTP
+  200. The request contract is now an ALLOWLIST (`CALLER_KEYS` in
+  `app/shapes.py`): any key a step writes is refused by name when a
+  caller sends it. Questions are capped in length; `k` is bounded.
+- **The CPU denial of service had moved, not gone.** Retrieval scanned
+  every chunk for every query token — 5.7s per POST at a tenth of the
+  stated corpus. The lexical tier now keeps a postings list per token and
+  caps query tokens; a 3000-token query over 6000 chunks costs
+  milliseconds, and the acceptance suite times it.
+- **The journal interleaved under threads** (41% of lines unparseable
+  at eight workers): one locked write per line. **The audit misattributed
+  request ids** on the shared component: the id is passed through the
+  call, never stored on the instance. **Argument values** no longer go to
+  disk by default — keys and a digest do (`AUDIT_ARGUMENTS=full` opts in).
+- **Errors answered before the body was read desynchronised keep-alive**
+  (the unread body became the next request line): every 4xx/5xx closes
+  the connection. The body is read before a worker slot is taken, so
+  eight trickling sockets no longer make every real request a 503. Idle
+  keep-alives time out in ten seconds, so a drain does too.
+- **One bad corpus file crash-looped the boot**; unsupported and
+  mis-cased files were skipped silently. Every file is read under its own
+  try, skipped files are named in the boot log and counted in `/ready`,
+  suffixes are case-insensitive, and a corpus update is a documented
+  restart.
+- **A torn ledger line made the process unbootable**, and an unwritable
+  `STATE_DIR` was a traceback: torn lines are skipped and counted, writes
+  are one `O_APPEND` syscall, an unwritable state dir is one clear line
+  and exit 78, numeric keys are canonicalised (100 and 100.0 are one
+  payment), and a stuck key has a procedure: `python -m app.ledger
+  resolve`, in the runbook.
+- **An unapproved action paid for a model call first**: gates and critics
+  now run first on the request path. Authorisation failures answer 403,
+  a control's refusal 409, an unknown tool 400 — never 500. Answers carry
+  their `sources` and `stopped_because`.
+- **The judge may not be the author**: a judged run refuses unless
+  `JUDGE_ENDPOINT`/`JUDGE_MODEL` name a different one or
+  `ALLOW_SELF_JUDGE=1` accepts it by name; CI passes the judge variables.
+- **The documents run as written**: the README's local run sets what the
+  edge requires; the install stages the corpus; `RestartPreventExitStatus=78`
+  so a refused configuration is not restarted; ARCHITECTURE marks advisory
+  components and says the tool boundary ships unwired; RISKS records the
+  single shared principal. The boundary no longer trusts `.internal` /
+  `.local` suffixes — a host is inside only when named or private.
+- **A test caught what would have shipped**: the new `python -m
+  app.service` entrypoint had no `__main__` guard; the unit would have
+  started a process that exited 0. Perception's column detection is a
+  linear scan too; hybrid-search exposes `fuse()` and keyword-search
+  carries no fusion it does not use.
+
+Deferred, named: index memory footprint at the stated corpus size (store
+offsets, not duplicated chunk text); per-caller identity; ledger rotation
+and compaction; the MCP variant's audit; three taxonomy sources the
+harness cannot reach; SHA-pinned actions.
+
 ## [0.1.17] — 2026-09-18
 
 Four independent fresh-eyes audits of the 0.1.16 output — a principal

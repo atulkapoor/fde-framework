@@ -33,7 +33,9 @@ SEPARATOR = re.compile(r"[|	]")
 MAX_SCAN = 4000  # characters of a line worth inspecting for structure
 
 # Runs of whitespace used as column separation rather than as spacing.
-COLUMNAR = re.compile(r"\S+ {3,}\S+ {3,}\S+")
+# Three or more spaces between two runs of text -- a linear scan; the
+# earlier pattern backtracked quadratically inside each slice.
+COLUMNAR = re.compile(r"\S {3,}\S")
 
 
 class {{ class_name }}:

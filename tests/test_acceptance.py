@@ -182,7 +182,7 @@ def test_the_pipeline_chains_only_payload_components(emission):
     in STEPS is what makes a deliverable read as generated filler."""
     shape, out = emission
     steps = (out / "app" / "pipeline.py").read_text()
-    steps = steps.split("STEPS = [", 1)[1].split("]", 1)[0]
+    steps = steps.split("\nSTEPS = [", 1)[1].split("]", 1)[0]
     for component in ("deployment", "provisioning", "evaluation",
                       "observability", "governance", "accountability"):
         assert f"{component}." not in steps, (
@@ -364,7 +364,7 @@ def test_the_service_carries_a_request_id_on_every_answer(emission):
     port = sock.getsockname()[1]
     sock.close()
     proc = subprocess.Popen(
-        [sys.executable, "-m", "app.pipeline"], cwd=out,
+        [sys.executable, "-m", "app.service"], cwd=out,
         env={"PATH": "/usr/bin", "PORT": str(port), "AUTH_TOKEN": "s3cret",
              "GRANTED_SCOPES": "x", "LLM_ENDPOINT": "http://127.0.0.1:9"},
         stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
@@ -431,3 +431,210 @@ print(f"{worst:.3f}")
     assert result.returncode == 0, f"{shape}: {result.stderr[-600:]}"
     worst = float(result.stdout.strip().splitlines()[-1])
     assert worst < 2.0, f"{shape}: a hostile 400KB document took {worst:.1f}s"
+
+
+
+def test_a_caller_cannot_forge_a_result(emission):
+    """A key a step WRITES arriving from a caller is a forged result: a
+    request once carried its own `known` answer and got it back as
+    grounded, HTTP 200. The request contract is an allowlist."""
+    shape, out = emission
+    code = """
+from app.shapes import envelope
+from app.contract import RefusedInput
+for forged in ({"query": "q", "known": {"q": "yes"}}, {"query": "q", "answer": "x"},
+               {"query": "q", "decision": "approve"}, {"query": "q", "act": 1},
+               {"query": "q", "retrieved": []}, {"text": "t", "k": 10**9},
+               {"query": "x" * 5000}):
+    try:
+        envelope(forged)
+    except RefusedInput:
+        continue
+    raise SystemExit(f"accepted {sorted(forged)}")
+print("ok")
+"""
+    result = run_in(out, code)
+    assert result.returncode == 0, f"{shape}: {result.stderr[-600:]}"
+
+
+def test_a_long_query_costs_what_it_matches_not_the_corpus(emission):
+    """Retrieval once scanned every chunk for every query token: 5.7s of
+    CPU per request at a tenth of the stated corpus. Postings lists and a
+    token cap make a 3000-token query cost milliseconds."""
+    shape, out = emission
+    if not (out / "app" / "components" / "retrieval.py").exists():
+        pytest.skip("no retrieval layer in this shape")
+    code = """
+import time
+from app.components.retrieval import Retrieval
+r = Retrieval()
+r.index([{"id": str(i),
+          "text": f"chunk {i} " + " ".join(f"w{j}" for j in range(i % 50, i % 50 + 30))}
+         for i in range(6000)])
+started = time.perf_counter()
+r.retrieve(" ".join(f"w{j}" for j in range(3000)), 5)
+print(f"{time.perf_counter() - started:.3f}")
+"""
+    result = run_in(out, code)
+    assert result.returncode == 0, f"{shape}: {result.stderr[-600:]}"
+    assert float(result.stdout.strip()) < 1.0, f"{shape}: {result.stdout.strip()}s for one query"
+
+
+def test_the_journal_stays_one_json_line_per_event_under_threads(emission):
+    shape, out = emission
+    code = """
+import json, sys, threading, io
+from app import service
+buf = io.StringIO()
+sys.stderr = buf
+def burst(n):
+    for i in range(300):
+        service._log(level="info", request_id=f"{n:02d}{i:06d}", event="x" * 40)
+threads = [threading.Thread(target=burst, args=(n,)) for n in range(8)]
+[t.start() for t in threads]; [t.join() for t in threads]
+lines = [line for line in buf.getvalue().splitlines() if line]
+bad = sum(1 for line in lines if not line.startswith("{") or not line.endswith("}"))
+for line in lines:
+    json.loads(line)
+sys.stderr = sys.__stderr__
+print(len(lines), bad)
+"""
+    result = run_in(out, code)
+    assert result.returncode == 0, f"{shape}: {result.stderr[-600:]}"
+    count, bad = result.stdout.split()
+    assert count == "2400" and bad == "0", result.stdout
+
+
+def test_an_error_before_the_body_closes_the_connection(emission):
+    """A 401 answered before the body was read left the body on the
+    socket, where keep-alive parsed it as the next request line."""
+    shape, out = emission
+    import socket
+    import time
+
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    port = sock.getsockname()[1]
+    sock.close()
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "app.service"], cwd=out,
+        env={"PATH": "/usr/bin", "PORT": str(port), "AUTH_TOKEN": "s3cret",
+             "GRANTED_SCOPES": "x", "LLM_ENDPOINT": "http://127.0.0.1:9"},
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
+    )
+    try:
+        for _ in range(60):
+            try:
+                socket.create_connection(("127.0.0.1", port), timeout=1).close()
+                break
+            except OSError:
+                time.sleep(0.1)
+        body = b'"a question"'
+        raw = (b"POST / HTTP/1.1\r\nHost: x\r\nContent-Type: application/json\r\n"
+               + f"Content-Length: {len(body)}\r\n\r\n".encode() + body
+               + b"GET /health HTTP/1.1\r\nHost: x\r\n\r\n")
+        conn = socket.create_connection(("127.0.0.1", port), timeout=5)
+        conn.sendall(raw)
+        chunks = []
+        try:
+            while True:
+                chunk = conn.recv(65536)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+        except OSError:
+            pass
+        reply = b"".join(chunks).decode(errors="replace")
+        assert reply.startswith("HTTP/1.1 401"), reply[:120]
+        assert "Connection: close" in reply, reply[:400]
+        assert reply.count("HTTP/1.") == 1, "the unread body became a second request:\n" + reply
+    finally:
+        proc.terminate()
+        proc.wait(timeout=20)
+
+
+def test_a_bad_corpus_file_is_skipped_and_counted_not_fatal(emission):
+    shape, out = emission
+    if not (out / "app" / "components" / "retrieval.py").exists():
+        pytest.skip("no retrieval layer in this shape")
+    corpus = out / "corpus-bad"
+    corpus.mkdir(exist_ok=True)
+    (corpus / "good.txt").write_text("alpha beta")
+    (corpus / "REPORT.TXT").write_text("gamma delta")
+    (corpus / "broken.json").write_text("{not json")
+    (corpus / "latin.txt").write_bytes(b"caf\xe9")
+    (corpus / "scan.pdf").write_bytes(b"%PDF-1.4")
+    code = """
+from app import pipeline
+n = pipeline.load_corpus("corpus-bad")
+print(n, len(pipeline.LOADED["skipped"]), sorted(s["file"] for s in pipeline.LOADED["skipped"]))
+"""
+    result = run_in(out, code)
+    assert result.returncode == 0, f"{shape}: {result.stderr[-600:]}"
+    assert result.stdout.startswith("2 3 ['broken.json', 'latin.txt', 'scan.pdf']"), result.stdout
+
+
+def test_a_torn_ledger_line_does_not_stop_the_boot(emission):
+    shape, out = emission
+    if not (out / "app" / "ledger.py").exists():
+        pytest.skip("nothing outward in this shape")
+    state = out / "state-torn"
+    state.mkdir(exist_ok=True)
+    (state / "idempotency.jsonl").write_text(
+        '{"key": "k1", "digest": "d", "at": 1, "outcome": 1}\n{"key": "k2", "dig')
+    code = """
+from app.ledger import LEDGER
+assert LEDGER.problem is None
+assert LEDGER.reserve("k1", "d")["outcome"] == 1
+assert LEDGER.key_for({"amount": 100}) == LEDGER.key_for({"amount": 100.0})
+print("ok")
+"""
+    result = run_in(out, code, env={"STATE_DIR": str(state)})
+    assert result.returncode == 0, f"{shape}: {result.stderr[-600:]}"
+    assert "torn_lines_skipped" in result.stderr
+
+
+def test_an_unwritable_state_dir_refuses_the_boot_with_one_line(emission):
+    shape, out = emission
+    if not (out / "app" / "ledger.py").exists():
+        pytest.skip("nothing outward in this shape")
+    result = subprocess.run(
+        [sys.executable, "-m", "app.service"], cwd=out, capture_output=True, text=True,
+        env={"PATH": "/usr/bin", "PORT": "18998", "AUTH_TOKEN": "t", "GRANTED_SCOPES": "x",
+             "LLM_ENDPOINT": "http://127.0.0.1:9", "STATE_DIR": "/proc/no-such-dir/x"},
+        timeout=60,
+    )
+    assert result.returncode == 78, result.stderr[-400:]
+    assert "STATE_DIR" in result.stderr and "Traceback" not in result.stderr
+
+
+def test_an_action_is_refused_by_the_gate_before_anything_costs_money(emission):
+    """An unapproved tool call once paid for a model call first. The gates
+    run first on the request path and answer 409, not 500."""
+    shape, out = emission
+    if not (out / "app" / "controls.py").exists():
+        pytest.skip("nothing mutative in this shape")
+    pipeline = (out / "app" / "pipeline.py").read_text()
+    steps = pipeline.split("\nSTEPS = [", 1)[1].split("]", 1)[0]
+    first = steps.lstrip()
+    assert first.startswith("('approve-") or first.startswith("('critic-"), steps[:120]
+    code = """
+from app import pipeline
+from app.controls import NeedsApproval
+try:
+    pipeline.run({"query": "x", "tool": "delete", "arguments": {}})
+except NeedsApproval:
+    print("ok")
+"""
+    result = run_in(out, code, env={"LLM_ENDPOINT": "http://127.0.0.1:9"})
+    assert result.returncode == 0 and "ok" in result.stdout, result.stderr[-600:]
+
+
+def test_the_unit_does_not_restart_a_refused_configuration(emission):
+    shape, out = emission
+    unit = out / "deploy" / "systemd" / "app.service"
+    if not unit.exists():
+        pytest.skip("no unit in this shape")
+    text = unit.read_text()
+    assert "RestartPreventExitStatus=78" in text
+    assert "-m app.service" in text

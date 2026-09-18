@@ -24,6 +24,7 @@ is needed before the call.
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
@@ -97,6 +98,7 @@ class {{ class_name }}:
         subject: str,
         granted_scopes: set[str],
         actor: str | None = None,
+        request_id: str | None = None,
     ) -> Any:
         """Make an outward call, or refuse to.
 
@@ -127,13 +129,14 @@ class {{ class_name }}:
             earlier = LEDGER.reserve(key, LEDGER.key_for(arguments))
             if earlier is not None:
                 return {"result": earlier.get("outcome"), "duplicate": True, "key": key}
-        self._record("intent", tool, subject, actor, arguments)
+        self._record("intent", tool, subject, actor, arguments, request_id=request_id)
         try:
             result = tool.run(**arguments)
         except Exception as exc:
-            self._record("failed", tool, subject, actor, arguments, error=type(exc).__name__)
+            self._record("failed", tool, subject, actor, arguments,
+                         error=type(exc).__name__, request_id=request_id)
             raise
-        self._record("outcome", tool, subject, actor, arguments)
+        self._record("outcome", tool, subject, actor, arguments, request_id=request_id)
         if key is not None:
             LEDGER.complete(key, result)
         return {"result": result, "duplicate": False, "key": key}
@@ -156,13 +159,16 @@ class {{ class_name }}:
         arguments = payload.get("arguments", {})
         if not isinstance(arguments, dict):
             raise RefusedInput("'arguments' must be an object")
-        self._request_id = payload.get("request_id")
         result = self.call(
             str(payload["tool"]),
             arguments,
             subject=str(principal.get("subject", "anonymous")),
             granted_scopes=set(principal.get("scopes", [])),
             actor="pipeline",
+            # Passed through, never stored on this shared instance: under
+            # eight workers a per-request attribute misattributed half the
+            # audit records to the wrong request.
+            request_id=payload.get("request_id"),
         )
         return {**payload, "integration": result}
 
@@ -179,17 +185,26 @@ class {{ class_name }}:
                 f"{tool.name!r}: unknown arguments {unknown}, missing {missing}"
             )
 
-    def _record(self, phase, tool, subject, actor, arguments, error=None) -> None:
+    def _record(self, phase, tool, subject, actor, arguments, error=None,
+                request_id=None) -> None:
+        # Argument VALUES are the business payload; on a build whose data
+        # may not leave they do not go to disk by default. A digest proves
+        # which call this was; AUDIT_ARGUMENTS=full opts into values, with
+        # sensitive-looking keys redacted.
+        if os.environ.get("AUDIT_ARGUMENTS") == "full":
+            recorded: Any = redact(arguments)
+        else:
+            recorded = {"keys": sorted(arguments), "digest": LEDGER.key_for(arguments)}
         entry = {
             "phase": phase,
             "tool": tool.name,
             # The human is the subject; the agent is the actor. Not the reverse.
             "subject": subject,
             "actor": actor,
-            "request_id": getattr(self, "_request_id", None),
+            "request_id": request_id,
             "destructive": tool.destructive,
             "reversible": tool.reversible,
-            "arguments": redact(arguments),
+            "arguments": recorded,
             "error": error,
         }
         # A bounded tail in memory for tests and diagnosis; the ledger under

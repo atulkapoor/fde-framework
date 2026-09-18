@@ -28,6 +28,21 @@ keyword_search: Callable | None = None
 semantic_search: Callable | None = None
 
 
+def fuse(ranked: dict[str, list[str]], k: int = RRF_K) -> list[str]:
+    """Combine ranked id lists using ranks alone.
+
+    Deliberately score-free: it works across retrievers with incompatible
+    scales, and it works when one of them has no score to offer. A document
+    both tiers found outranks one only either found -- that is the whole
+    mechanism, and why agreement is worth more than any single score.
+    """
+    totals: dict[str, float] = {}
+    for results in ranked.values():
+        for position, doc_id in enumerate(results):
+            totals[doc_id] = totals.get(doc_id, 0.0) + 1.0 / (k + position + 1)
+    return sorted(totals, key=lambda d: (-totals[d], d))
+
+
 class {{ class_name }}:
     def run(self, payload: dict) -> dict:
         """Envelope in, envelope out: `query` -> `retrieved`."""
@@ -40,10 +55,9 @@ class {{ class_name }}:
                 "both retrievers must be wired -- hybrid over one index is "
                 "the single index wearing a costume"
             )
-        fused: dict[str, dict] = {}
-        for results in (keyword_search(query, CANDIDATES_PER_SIDE),
-                        semantic_search(query, CANDIDATES_PER_SIDE)):
-            for rank, item in enumerate(results):
-                entry = fused.setdefault(item["id"], {**item, "rrf": 0.0})
-                entry["rrf"] += 1.0 / (RRF_K + rank + 1)
-        return sorted(fused.values(), key=lambda e: -e["rrf"])[:top_k]
+        tiers = {"keyword": keyword_search(query, CANDIDATES_PER_SIDE),
+                 "semantic": semantic_search(query, CANDIDATES_PER_SIDE)}
+        by_id = {item["id"]: item for results in tiers.values() for item in results}
+        order = fuse({name: [item["id"] for item in results]
+                      for name, results in tiers.items()})
+        return [by_id[doc_id] for doc_id in order[:top_k]]
