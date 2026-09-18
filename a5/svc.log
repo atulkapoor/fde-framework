@@ -1,0 +1,32 @@
+{"level": "warning", "ledger": "STATE_DIR unset: audit and idempotency live in process memory and vanish on restart"}
+{"level": "info", "event": "corpus loaded", "documents": 1, "skipped": 0}
+{"level": "warning", "boot_problem": "model endpoint unreachable or malformed: URLError"}
+{"level": "info", "event": "serving on 127.0.0.1:18991", "ready_endpoint": "/ready", "needs_model": true, "authenticated": true, "workers": 8}
+{"level": "access", "request_id": "a7bfd96e", "client": "127.0.0.1", "line": "\"GET /health HTTP/1.1\" 200 -"}
+{"level": "access", "request_id": "ae8ca095", "client": "127.0.0.1", "line": "\"GET /ready HTTP/1.1\" 503 -"}
+{"level": "access", "request_id": "bfe6c1fb", "client": "127.0.0.1", "line": "\"GET /ready HTTP/1.1\" 503 -"}
+{"level": "access", "request_id": "2a354172", "client": "127.0.0.1", "line": "\"POST / HTTP/1.1\" 401 -"}
+{"failed_step": "reasoning", "request_id": "b4920257"}
+{"level": "error", "request_id": "b4920257", "client": "127.0.0.1", "error": "URLError", "ms": 513}
+{"level": "access", "request_id": "b4920257", "client": "127.0.0.1", "line": "\"POST / HTTP/1.1\" 503 -"}
+{"failed_step": "reasoning", "request_id": "20ecf66f"}
+{"level": "error", "request_id": "20ecf66f", "client": "127.0.0.1", "error": "URLError", "ms": 511}
+{"level": "access", "request_id": "20ecf66f", "client": "127.0.0.1", "line": "\"POST / HTTP/1.1\" 503 -"}
+{"level": "access", "request_id": "58106bca", "client": "127.0.0.1", "line": "\"POST / HTTP/1.1\" 422 -"}
+{"level": "access", "request_id": "dff4734c", "client": "127.0.0.1", "line": "\"POST / HTTP/1.1\" 422 -"}
+{"failed_step": "reasoning", "request_id": "0f545003"}
+{"level": "error", "request_id": "0f545003", "client": "127.0.0.1", "error": "URLError", "ms": 511}
+{"level": "access", "request_id": "0f545003", "client": "127.0.0.1", "line": "\"POST / HTTP/1.1\" 503 -"}
+{"failed_step": "approve-integration", "request_id": "338a9986"}
+{"level": "access", "request_id": "338a9986", "client": "127.0.0.1", "line": "\"POST / HTTP/1.1\" 409 -"}
+{"failed_step": "approve-integration", "request_id": "663449de"}
+{"level": "access", "request_id": "663449de", "client": "127.0.0.1", "line": "\"POST / HTTP/1.1\" 409 -"}
+{"level": "access", "request_id": "3f9c6bfa", "client": "127.0.0.1", "line": "\"POST / HTTP/1.1\" 422 -"}
+{"level": "access", "request_id": "a2d16dc4", "client": "127.0.0.1", "line": "\"POST / HTTP/1.1\" 422 -"}
+{"level": "access", "request_id": "4d7dd847", "client": "127.0.0.1", "line": "\"POST / HTTP/1.1\" 413 -"}
+{"level": "access", "request_id": "c84b95fd", "client": "127.0.0.1", "line": "\"POST / HTTP/1.1\" 501 -"}
+{"level": "access", "request_id": "e6c4a952", "client": "127.0.0.1", "line": "\"GET / HTTP/1.1\" 404 -"}
+{"level": "access", "request_id": "fe8152a3", "client": "127.0.0.1", "line": "\"PUT / HTTP/1.1\" 501 -"}
+{"level": "access", "request_id": "9f27e6ec", "client": "127.0.0.1", "line": "\"HEAD /health HTTP/1.1\" 200 -"}
+{"level": "info", "event": "sigterm: draining"}
+{"level": "info", "event": "drained; exiting"}
