@@ -420,7 +420,7 @@ def test_a_hostile_document_costs_milliseconds_not_minutes(emission):
 import time
 from app.components.perception import Perception
 p = Perception()
-worst = time.perf_counter()
+worst = 0.0
 for text in ("a" * 400_000, ("a|" * 200_000), ("xxxxxxxxxx\\t" * 40_000), "a" + " " * 400_000):
     started = time.perf_counter()
     p.run({"documents": [{"id": "x", "text": text}]})
