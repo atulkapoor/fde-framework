@@ -519,7 +519,11 @@ def samples_cmd(
         )
         typer.echo(f"  {name:24} {entry.type:8} {marks}")
 
-    typer.echo(f"\nmetric: {', '.join(infer_metrics(contract))}")
+    # The same list the harness will carry: field_coverage is inferred for
+    # a structured contract but never computed by the emitted harness, and
+    # a metric advertised here that no report ever shows is a claim.
+    metrics = [m for m in infer_metrics(contract) if m != "field_coverage"]
+    typer.echo(f"\nmetric: {', '.join(metrics)}")
     typer.echo(
         f"evals:  {len(suite.golden)} golden, {len(suite.edge_case)} edge, "
         f"{len(suite.adversarial)} adversarial"
