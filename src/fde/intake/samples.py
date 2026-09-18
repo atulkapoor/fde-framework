@@ -548,6 +548,7 @@ def _adversarial(contract: Contract, golden: list[dict[str, Any]],
             "kind": "noise",
             "input": base_input.replace(" ", " \u200b", 3) + "\u0000",
             "output": base.get("output"),
+            "base_id": base.get("id"),
         })
         return cases
     if not isinstance(base_input, dict):

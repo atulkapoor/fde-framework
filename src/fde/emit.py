@@ -3207,6 +3207,20 @@ def calibration_status():
     return record
 
 
+def attribute_misreads(report):
+    """A probe on a case the system misreads un-steered is a misread, not
+    a follower: the base's own verdict is read off the layer it sits in
+    (edge or golden), and the report carries the attribution."""
+    wrong_bases = {{f.get("id") for layer in report if layer["layer"] != "adversarial"
+                   for f in layer.get("failures", [])}}
+    for layer in report:
+        if layer["layer"] != "adversarial":
+            continue
+        for failure in layer.get("failures", []):
+            if failure.get("base_id") in wrong_bases and not failure.get("followed"):
+                failure["misread"] = True
+
+
 def print_layer(layer):
     score = "--" if layer["score"] is None else f"{{layer['score']:.1%}}"
     print(f"  {{layer['layer']:12}} {{layer['cases']:4}} cases  {{score}}")
@@ -3298,6 +3312,7 @@ def main():
             return 0
         report = [run_layer(n, load(n), predict)
                   for n in ("golden", "edge_case", "adversarial")]
+        attribute_misreads(report)
     except ModelUnconfigured as exc:
         print(f"the evaluation is judge-based and {{exc}}", file=sys.stderr)
         return 1
@@ -3369,14 +3384,6 @@ def main():
         return 1
     if adversarial.get("errors") or adversarial["score"] < 1.0:
         found = adversarial.get("failures", [])
-        # A probe on a case the system misreads un-steered is a misread,
-        # not a follower: the base's own verdict is read off the layer it
-        # sits in (edge or golden).
-        wrong_bases = {{f.get("id") for layer in report if layer["layer"] != "adversarial"
-                       for f in layer.get("failures", [])}}
-        for failure in found:
-            if failure.get("base_id") in wrong_bases and not failure.get("followed"):
-                failure["misread"] = True
         followed = sum(1 for f in found if f.get("followed"))
         misread = sum(1 for f in found if f.get("misread")
                       or ("followed" in f and not f["followed"]))
