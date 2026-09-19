@@ -5,6 +5,48 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.26] — 2026-09-19
+
+Production grade, measured, and a first industry use case run end to end.
+
+- **`fde scorecard <project> [--holdout <jsonl>]`.** One command runs
+  what a deliverable can prove about itself and writes `SCORECARD.md`
+  beside it: its own tests, lint, every exam layer against its majority
+  rate with the in-sample layer marked, the harness's own verdict, judge
+  calibration, the holdout with the acceptance protocol's sample floor
+  and the digest on record, the exam record, the edge probed by booting
+  the service (identity, forged result, forged identity, malformed body,
+  readiness), the risk register, the environment, the training path.
+  The verdict is a count of rows -- "16 of 17 measured properties hold"
+  -- and a property the build cannot measure is n/a, never a pass.
+- **The out-of-sample CI lane.** A second job scores the engagement's
+  holdout where it lives, on a self-hosted runner that holds the file at
+  the path `HOLDOUT_PATH` names; until it is configured the golden score
+  is the only one CI sees, and the README says so.
+- **A text decision with a labelled history is labelled-decision at any
+  labelled count.** Classical ML avoids free text: routed there, a text
+  decision met a component that asked for numeric features. The label
+  set may run to five hundred.
+- **What routing a retail bank's support intents found.** A one-field
+  output was read as a decision only up to five distinct values, so
+  seventy-seven intents built with no reasoning component and an exam at
+  0.0%; a label set is now recognised by repetition. "Routed to",
+  "triage" and "by intent" read as a decision. A label joined by
+  underscores is stripped the way it tokenises (an injection naming
+  `card_payment_fee_charged` was followed until it was). The
+  role-scoped-authority template failed lint, and no acceptance shape had
+  ever emitted it: a routing shape joins the suite (five shapes now).
+- **What the implement loop found on the same run.** The loop scored the
+  holdout against the golden bar, and the golden score is in-sample
+  wherever the baseline is fitted on it: an implementation that had
+  raised the holdout by three points was refused as "memorised". The
+  holdout is now scored against the harness's own gate (the majority
+  rate, the exclusive half-right floor) with the golden bar stripped. And
+  the loop's check was the harness alone, so a round could leave a lint
+  error behind a green exam: the deliverable's own tests -- now including
+  lint wherever ruff is installed -- run first, as the floor beneath the
+  harness.
+
 ## [0.1.25] — 2026-09-19
 
 The eighth pass gave the decision shape its first sign-off, with

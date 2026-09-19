@@ -318,3 +318,54 @@ def test_the_loop_reports_the_overrun_in_the_round_log(tmp_path):
                       agent_timeout=0.3)
     assert report.stopped_by == "agent failed"
     assert "budget" in (report.rounds[-1].violation or "")
+
+
+def test_the_holdout_is_not_held_to_the_golden_bar(tmp_path):
+    """The golden score is in-sample wherever the baseline is fitted on it;
+    a bar set for it once refused an implementation that had raised the
+    holdout by three points. The holdout is scored against the harness's
+    own gate, with the golden bar stripped from the check."""
+    from fde.implement import _without_bar
+
+    assert (_without_bar("python evals/harness.py --min-score 0.92 --report r.json")
+            == "python evals/harness.py --report r.json")
+    assert _without_bar("python evals/harness.py --min-score=0.9") == "python evals/harness.py"
+
+    project = toy_project(tmp_path)
+    (project / "evals" / "harness.py").write_text(
+        "import argparse, sys\n"
+        "p = argparse.ArgumentParser()\n"
+        "p.add_argument('--min-score', type=float, default=0.0)\n"
+        "p.add_argument('--cases', default=None)\n"
+        "p.add_argument('--report', default=None)\n"
+        "a = p.parse_args()\n"
+        "# golden scores 0.95; the holdout scores 0.8 -- above the harness's own\n"
+        "# floor, below the golden bar\n"
+        "score = 0.8 if a.cases else 0.95\n"
+        "sys.exit(0 if score >= max(a.min_score, 0.5) else 1)\n"
+    )
+    holdout = tmp_path / "holdout.jsonl"
+    holdout.write_text('{"id": "h", "input": "q9", "output": "A9"}\n')
+    report = run_loop(project, invoke_agent=lambda prompt: True, max_rounds=2,
+                      holdout=holdout,
+                      check="python evals/harness.py --min-score 0.92 --report r.json")
+    assert report.done, report.rounds[-1]
+    assert "holdout: green" in report.rounds[-1].check_tail
+
+
+def test_the_deliverables_own_tests_are_the_floor_beneath_the_harness(tmp_path):
+    """A round that breaks the contract, the fence or lint is red before
+    the exam is asked; an implementation once left a lint error behind a
+    green exam."""
+    project = toy_project(tmp_path)
+    (project / "evals" / "harness.py").write_text("import sys\nsys.exit(0)\n")
+    (project / "tests").mkdir(exist_ok=True)
+    (project / "tests" / "test_floor.py").write_text(
+        "def test_the_floor():\n    assert False, 'the contract is broken'\n"
+    )
+    report = run_loop(project, invoke_agent=lambda prompt: True, max_rounds=1)
+    assert not report.done
+    assert "own tests red" in report.rounds[-1].check_tail
+    (project / "tests" / "test_floor.py").write_text("def test_the_floor():\n    assert True\n")
+    report = run_loop(project, invoke_agent=lambda prompt: True, max_rounds=1)
+    assert report.done

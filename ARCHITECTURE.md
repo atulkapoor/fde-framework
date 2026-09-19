@@ -52,6 +52,7 @@ intake ──> fact log ──> permutation space ──> gates ──> decide �
 | `deploy.py` | Substrate + provisioner assets, TEARDOWN for both |
 | `ops.py` | Runbook, diagnosis walk, SLOs, rollback, CI workflow |
 | `training.py` | The fine-tuning data path emitted beside a finetune decision: recorded split, LoRA recipe, before/after on the holdout |
+| `scorecard.py` | Production grade, measured: runs what a deliverable can prove about itself and writes SCORECARD.md with a verdict that is a count of rows |
 | `scan.py` | Hardware detection; only a successful measurement earns DETECTED |
 | `costing.py` | Dated fleet sizing; naive figure beside the real one |
 | `evolution.py` | Overrides, trigger calibration, case emission |

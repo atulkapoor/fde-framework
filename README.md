@@ -132,7 +132,7 @@ pairs, role-scoped interview, hardware scan) → fact log with provenance →
 permutation space → seven gates → decide → architect → build (code, evals,
 deploy and ops assets, `RISKS.md`, `COMPLIANCE.md`) → retro and case
 capture. Overrides are honoured on the next run, trigger observations feed
-calibration, and a reviewed case can enter the corpus. 1110+ tests; eight
+calibration, and a reviewed case can enter the corpus. 1150+ tests; eight
 fresh-eyes audit passes, every finding resolved and the fix pinned as a
 regression test; CI gates on the suite, lint, and a sanitisation scan of
 the tree *and its history*; the evidence corpus is anchored to publicly
@@ -315,7 +315,10 @@ prompt it serves -- and the deliverable ships its own edge tests, which
 its CI runs. Eight independent audit passes took it from "every request
 500s" to a sign-off with conditions on the decision shape. A quality finding lands there as a check before
 it lands anywhere as a fix ([`tests/test_acceptance.py`](tests/test_acceptance.py),
-[`tests/test_finetune.py`](tests/test_finetune.py)).
+[`tests/test_finetune.py`](tests/test_finetune.py)). And the claim is
+measurable per build: `fde scorecard <project> --holdout <file>` runs what
+the deliverable can prove about itself and writes `SCORECARD.md` with a
+verdict that is a count of rows, never an adjective.
 
 ## The full lifecycle, copy-paste
 
@@ -347,6 +350,7 @@ fde ask acme --role eval_owner       # or: fde waive acme client_readiness --rea
 fde build acme --out project         # refuses until the gates truly pass
 python project/evals/harness.py      # red: empty until pairs are seeded, then red until implemented -- that's the exam
 fde implement project                # drive a coding agent until it's green
+fde scorecard project --holdout engagements/acme/artifacts/holdout.jsonl   # measure it
 ```
 
 ## Python API
@@ -399,6 +403,7 @@ the same receipts the emitted `ARCHITECTURE.md` prints.
 | `fde architect <eng>` | the design, rationale and rejections |
 | `fde build <eng> --out project` | emit; refuses while gates block |
 | `fde implement project/` | drive a coding agent until the emitted evals pass, inside guardrails |
+| `fde scorecard project/ --holdout <file>` | measure production grade: every property the deliverable can prove, with the number, in `SCORECARD.md` |
 | `fde triage --statement "..." --statement "..."` | rank candidate problems by what discovery can already decide |
 | `fde override --component X --choose Y --because "..."` | your call, recorded and honoured |
 | `fde observe / retro` | record trigger firings; capture the case |
@@ -577,7 +582,7 @@ Set up as in [Install → from source](#install) (python3.11+), then:
 
 ```bash
 .venv/bin/pip install -e ".[dev,documents]"
-.venv/bin/pytest -q          # 1110+ tests, ~ 70s
+.venv/bin/pytest -q          # 1150+ tests, ~ 90s
 .venv/bin/ruff check src tests
 ```
 

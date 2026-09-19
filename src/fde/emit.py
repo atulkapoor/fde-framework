@@ -3553,8 +3553,23 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
+
+
+def test_the_code_is_lint_clean():
+    """The deliverable is code a client's staff engineer reads. An
+    implementation round once left a zip() without strict= behind a green
+    exam; lint is part of the floor, wherever ruff is installed."""
+    pytest.importorskip("ruff")
+    result = subprocess.run(
+        [sys.executable, "-m", "ruff", "check", "--isolated", "--select", "F,E,W,I,B,UP",
+         "--line-length", "100", str(ROOT)],
+        capture_output=True, text=True, timeout=300,
+    )
+    assert result.returncode == 0, result.stdout[-1500:]
 
 
 def test_forbidden_input_has_a_name():

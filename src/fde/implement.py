@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shlex
 import subprocess
 import sys
@@ -97,6 +98,15 @@ def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _without_bar(check: str | None) -> str | None:
+    """The check command with its golden bar removed, for the holdout run.
+    The default check (None) carries its bar inside _run_check, where the
+    holdout pass never adds one."""
+    if not check:
+        return check
+    return re.sub(r"\s--min-score(?:=|\s+)\S+", "", check)
+
+
 def _holdout_provenance(project: Path, holdout: Path) -> str:
     """One line when the holdout is not the file the build recorded.
 
@@ -132,6 +142,22 @@ def _tracked_files(project: Path) -> dict[Path, str]:
     }
 
 
+def _own_tests_red(project: Path, timeout: float) -> str | None:
+    """The deliverable's own tests are the floor beneath the harness: a
+    round that breaks the contract, the fence or lint is red before the
+    exam is asked. Returns the failing tail, or None when green or absent."""
+    tests = project / "tests"
+    if not tests.is_dir() or not any(tests.glob("test_*.py")):
+        return None
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "tests/"],
+        cwd=project, capture_output=True, text=True, timeout=timeout,
+    )
+    if result.returncode == 0:
+        return None
+    return "own tests red:\n" + (result.stdout + result.stderr)[-1500:]
+
+
 def _run_check(project: Path, check: str | None,
                extra: list[str] | None = None,
                timeout: float = 1800.0) -> tuple[bool, str]:
@@ -141,8 +167,12 @@ def _run_check(project: Path, check: str | None,
     # system as a memorized exam. The loop drives to the acceptance-grade
     # bar unless the caller sets another with --check.
     command = shlex.split(check) if check else [
-        sys.executable, "evals/harness.py", "--min-score", "0.85",
+        sys.executable, "evals/harness.py", *([] if extra else ["--min-score", "0.85"]),
     ]
+    if not extra:
+        red = _own_tests_red(project, timeout)
+        if red is not None:
+            return False, red
     # The loop drives to green BEFORE a judge can be calibrated (calibration
     # needs answers to grade), so a judged build's green is provisional and
     # asked for by name; the report says so where the loop stops.
@@ -269,8 +299,13 @@ def run_loop(
 
     def green_report(number: int, tail: str) -> ImplementReport:
         if holdout is not None:
+            # The holdout is scored against the harness's own holdout gate
+            # (the majority rate, the exclusive half-right floor), never
+            # against the golden bar: the golden score is in-sample wherever
+            # the baseline is fitted on it, and a bar set for it once refused
+            # an implementation that had raised the holdout by three points.
             held, held_tail = _run_check(
-                project, check, extra=["--cases", str(Path(holdout).resolve())],
+                project, _without_bar(check), extra=["--cases", str(Path(holdout).resolve())],
                 timeout=check_timeout,
             )
             if not held:
