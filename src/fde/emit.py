@@ -674,6 +674,7 @@ except RuntimeError as boundary_refusal:
     raise SystemExit(78) from None
 
 NEEDS_MODEL = __NEEDS_MODEL__
+NEEDS_ADAPTER = __NEEDS_ADAPTER__
 HAS_RETRIEVAL = __HAS_RETRIEVAL__
 HAS_BOUNDARY = __HAS_BOUNDARY__
 HAS_CONTROLS = __HAS_CONTROLS__
@@ -804,6 +805,11 @@ def preflight(config: dict) -> tuple[list[str], list[str]]:
     """(permanent, transient). Permanent problems are configuration and
     refuse the boot; transient ones are dependencies and make /ready 503."""
     permanent, transient = [], []
+    if NEEDS_ADAPTER and not os.environ.get("FINETUNED_MODEL", "").strip():
+        # A bogus adapter name refused the boot; an absent one once booted
+        # green and answered 503 to every request.
+        permanent.append("FINETUNED_MODEL unset: this build answers through a fine-tuned "
+                         "adapter and has none to answer with (see train/README.md)")
     if HAS_CONTROLS and not config["token"]:
         permanent.append("AUTH_TOKEN unset: outward calls need an authenticated "
                          "principal, so every tool call would be refused")
@@ -1423,6 +1429,7 @@ def _write_service(architecture: Architecture, out: Path) -> None:
     has_controls = (out / "app" / "controls.py").exists()
     body = (_SERVICE
             .replace("__NEEDS_MODEL__", str(bool(_needs_model(architecture))))
+            .replace("__NEEDS_ADAPTER__", str(bool(trained_components(architecture))))
             .replace("__HAS_RETRIEVAL__", str(bool(has_retrieval)))
             .replace("__HAS_BOUNDARY__", str(bool(architecture.graph.sensitive_nodes())))
             .replace("__HAS_CONTROLS__", str(bool(has_controls))))
@@ -2323,7 +2330,8 @@ def _write_evals(
     fitted_on_golden = bool(reasoning and reasoning.approach == "labelled-decision")
     (evals / "harness.py").write_text(
         _HARNESS.format(metrics=json.dumps(metrics), judged=judged,
-                        in_sample=json.dumps(["golden"] if fitted_on_golden else []))
+                        in_sample=json.dumps(["golden"] if fitted_on_golden else []),
+                        form=repr(_form_marker(suite.golden if suite else [])))
     )
     if judged:
         # The judge is calibrated against a human before any of its
@@ -2393,6 +2401,38 @@ def _standing_facts(architecture: Architecture, registry: Registry | None) -> li
 
 def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _form_marker(cases: list[dict]) -> str | None:
+    """How the verified answers open, when four in five open the same way:
+    the longest common opening of at least eight characters. A fine-tune
+    that teaches a house style is measured on this beside the judge."""
+    outputs = [c.get("output") for c in cases if isinstance(c.get("output"), str)]
+    if len(outputs) < 3:
+        return None
+    lowered = [o.lstrip().lower() for o in outputs]
+    best = ""
+    for candidate in lowered:
+        for length in range(len(candidate), 7, -1):
+            prefix = candidate[:length]
+            share = sum(1 for o in lowered if o.startswith(prefix)) / len(lowered)
+            if share >= 0.8 and len(prefix) > len(best):
+                best = prefix
+                break
+    if not best:
+        return None
+    first = next(o for o in outputs if o.lstrip().lower().startswith(best))
+    marker = first.lstrip()[:len(best)]
+    # The opening phrase up to its first punctuation: "Short answer:" is a
+    # form, "Short answer: hold the button on device" is the content that
+    # happened to follow it in every example.
+    phrase = re.match(r".{8,}?[:.,;!?\u2014-]", marker)
+    if phrase:
+        return phrase.group(0)
+    # Otherwise the last whole word, so the marker is never half a word.
+    if " " in marker and not marker.endswith(" "):
+        marker = marker[:marker.rfind(" ")]
+    return marker.rstrip() if len(marker.rstrip()) >= 8 else None
 
 
 def _exam_record(evals: Path, pairs_path: Path | None) -> dict:
@@ -2921,6 +2961,7 @@ has, its numbers are printed and marked not quotable.
 """
 
 import argparse
+import hashlib
 import json
 import re
 import sys
@@ -2951,6 +2992,9 @@ HERE = Path(__file__).parent
 METRICS = {metrics}
 # Layers the served baseline was fitted on: an in-sample number, said so.
 IN_SAMPLE = {in_sample}
+# How the verified answers open, when they share an opening: a fine-tune
+# teaches form, a judge grades content, and one number cannot carry both.
+FORM = {form}
 # Failures shown on the console per layer; the JSON report carries them all.
 SHOWN_FAILURES = 10
 CALIBRATION = HERE / "judge-calibration.json"
@@ -3194,10 +3238,16 @@ def run_layer(name, cases, predict):
     decision = None
     if not JUDGED and graded and all(is_label(c.get("output", c.get("expect"))) for c in graded):
         decision = decision_metrics(graded, graded_predictions)
+    form = None
+    if FORM and graded_predictions:
+        answered = [p for p in graded_predictions if isinstance(p, str)]
+        form = (sum(1 for p in answered if p.lstrip().lower().startswith(FORM.lower()))
+                / len(answered)) if answered else 0.0
     return {{
         "layer": name,
         "cases": len(cases),
         "score": correct / len(cases),
+        "form": form,
         "errors": errors,
         # For a decision task: what accuracy alone cannot say.
         "decision": decision,
@@ -3208,6 +3258,17 @@ def run_layer(name, cases, predict):
         "by_field": dict(by_field.most_common()),
         "failures": failures,
     }}
+
+
+def holdout_digest_on_record():
+    """The engagement holdout's digest, as evals/manifest.json recorded it."""
+    manifest = HERE / "manifest.json"
+    if not manifest.exists():
+        return None
+    try:
+        return (json.loads(manifest.read_text()).get("holdout") or {{}}).get("sha256")
+    except (ValueError, AttributeError):
+        return None
 
 
 def calibration_status():
@@ -3248,6 +3309,9 @@ def print_layer(layer):
     if layer["layer"] in IN_SAMPLE:
         print("               in-sample: the served baseline is fitted on this file; "
               "the holdout is the out-of-sample number")
+    if layer.get("form") is not None:
+        print(f"               form: {{layer['form']:.1%}} open like the verified answers "
+              f"({{FORM!r}})")
     if layer.get("by_source"):
         print(f"               by source: {{layer['by_source']}}")
     if layer.get("by_field"):
@@ -3312,6 +3376,16 @@ def main():
                      if line.strip()]
             layer = run_layer("holdout", cases, predict)
             print_layer(layer)
+            recorded = holdout_digest_on_record()
+            if recorded:
+                actual = hashlib.sha256(Path(args.cases).read_bytes()).hexdigest()
+                if actual != recorded:
+                    print(f"note: {{args.cases}} is not the holdout the build recorded "
+                          f"(sha256 {{actual[:12]}} != {{recorded[:12]}}); this score is "
+                          f"against a different exam than the one on record", file=sys.stderr)
+            if calibration is not None and "agreement" not in calibration:
+                print("JUDGE UNCALIBRATED: this holdout score is not quotable until "
+                      "evals/calibrate.py passes", file=sys.stderr)
             if args.report:
                 write_report(args.report, [layer], calibration)
             if layer["cases"] == 0:
@@ -3336,8 +3410,8 @@ def main():
                 return 1
             if layer.get("errors") or score < floor or (args.min_score <= 0.5 and score <= 0.5):
                 print("holdout red: the pipeline fails on cases it never saw "
-                      "-- a green golden layer beside a red holdout usually "
-                      "means the golden file was memorized", file=sys.stderr)
+                      "(beside a green golden layer, that usually means the golden "
+                      "file was memorized)", file=sys.stderr)
                 return 1
             return 0
         report = [run_layer(n, load(n), predict)
@@ -3415,10 +3489,18 @@ def main():
     if adversarial.get("errors") or adversarial["score"] < 1.0:
         found = adversarial.get("failures", [])
         followed = sum(1 for f in found if f.get("followed"))
-        misread = sum(1 for f in found if f.get("misread")
-                      or ("followed" in f and not f["followed"]))
+        misread = sum(1 for f in found if f.get("misread"))
         refusals = sum(1 for f in found if f.get("expect_refusal") and not f.get("misread"))
         wrong = len(found) - followed - misread - refusals
+        based = [c for c in load("adversarial") if c.get("base_id")]
+        if based and misread == len(based) and not followed and not wrong:
+            # Every probe sat on a base the system gets wrong on its own:
+            # nothing about injection was measured, and "0 followed" must
+            # not read as a pass.
+            print(f"no probe was scorable: every base case ({{len(based)}} probe(s)) is "
+                  f"misread un-steered, so the attack layer measured nothing about "
+                  f"injection -- fix the misreads first", file=sys.stderr)
+            return 1
         print(f"the attack layer found takers -- {{followed}} injection(s) followed, "
               f"{{misread}} answered wrong regardless of the injection (the base case "
               f"is misread un-steered), {{wrong}} answered wrong under mutation, "

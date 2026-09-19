@@ -98,7 +98,6 @@ ROOT = Path(__file__).resolve().parents[1]
 # Below this many verified pairs an adapter memorises examples rather than
 # learning behaviour; the number is a floor, not a target.
 MIN_VERIFIED = 500
-EVIDENCE_K = 8
 
 
 def load(path: Path) -> list[dict[str, Any]]:
@@ -196,7 +195,7 @@ def split(pairs: list[dict[str, Any]], seed: int, holdout: float) -> dict[str, A
             "unverified": unverified, "strata": counts}
 
 
-def attach_evidence(pairs: list[dict[str, Any]], k: int = EVIDENCE_K) -> int:
+def attach_evidence(pairs: list[dict[str, Any]]) -> int:
     """Each input through the deliverable's own retriever, hits stored on
     the pair. Returns the corpus size the hits came from."""
     sys.path.insert(0, str(ROOT))
@@ -211,7 +210,11 @@ def attach_evidence(pairs: list[dict[str, Any]], k: int = EVIDENCE_K) -> int:
                  "evidence blocks and serve with full ones")
     for pair in pairs:
         query = pair["input"] if isinstance(pair["input"], str) else json.dumps(pair["input"])
-        hits = retriever.run({"query": query, "k": k}).get("retrieved") or []
+        # The same call the request path makes, with the same default k:
+        # training on eight blocks and serving five is a prompt the adapter
+        # never saw. A caller's own `k` changes the served shape; the
+        # README says so.
+        hits = retriever.run({"query": query}).get("retrieved") or []
         pair["evidence"] = [{"id": h.get("id"), "text": h.get("text", "")} for h in hits]
     return documents
 
@@ -265,6 +268,11 @@ def main(argv: list[str] | None = None) -> int:
         "holdout_share": args.holdout,
         "source": {"path": str(args.pairs), "sha256": digest(args.pairs.read_text())},
         "verified": n_verified,
+        # The floor this split was accepted against. A run at a lower floor
+        # is a smoke test and the artefacts say so; it once ran at 10 against
+        # a documented 500 and nothing on disk could tell.
+        "min_verified": args.min_verified,
+        "floor_overridden": args.min_verified != MIN_VERIFIED,
         "dropped_duplicates": result["duplicates"],
         "unverified_set_aside": len(result["unverified"]),
         "strata": result["strata"],
@@ -273,7 +281,8 @@ def main(argv: list[str] | None = None) -> int:
         "holdout_ids_in_golden": leaked,
         # What the prompts will look like: with evidence blocks from the
         # corpus, or bare. The recipe refuses a shape the build does not serve.
-        "evidence": {"source": "retrieved", "corpus_documents": corpus, "k": EVIDENCE_K}
+        "evidence": {"source": "retrieved", "corpus_documents": corpus,
+                     "k": "the pipeline's default"}
         if args.retrieve else {"source": "none"},
     }
     (args.out / "manifest.json").write_text(
@@ -314,6 +323,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Any
@@ -327,17 +337,31 @@ SERVES_WITH_EVIDENCE = __WITH_EVIDENCE__
 
 # Below this many optimizer steps a run is a smoke test, not a fine-tune.
 MIN_OPTIMIZER_STEPS = 50
+# prepare.py's floor, quoted here so the note above can name it.
+MIN_VERIFIED_NOTE = 500
 
 HYPERPARAMETERS: dict[str, Any] = {
     "seed": 0,
     "r": 16,
     "alpha": 32,
     "dropout": 0.05,
-    "target_modules": ["q_proj", "v_proj"],
-    "epochs": 2,
+    # None lets peft pick the attention projections for the architecture
+    # (q_proj/v_proj on Llama-style models, c_attn on GPT-2); a hard-coded
+    # Llama list once refused every other family. Override with
+    # --target-modules when the base model is not in peft's table.
+    "target_modules": None,
+    "epochs": 3,
     "learning_rate": 2e-4,
     "max_length": 2048,
+    # Examples per forward pass, and passes per optimizer step: the
+    # effective batch is their product (32 by default).
+    "batch_size": 4,
     "grad_accumulation": 8,
+    # Linear warm-up over the first tenth of the steps, cosine decay to a
+    # tenth of the peak over the rest; gradients clipped at norm 1.0.
+    "warmup_share": 0.1,
+    "final_lr_share": 0.1,
+    "max_grad_norm": 1.0,
 }
 
 
@@ -409,12 +433,33 @@ def record(manifest: dict[str, Any], base_model: str, hp: dict[str, Any],
         "recipe_sha256": recipe_sha256(),
         "hyperparameters": hp,
         "examples": examples,
+        "verified_pairs": manifest.get("verified"),
+        "min_verified": manifest.get("min_verified"),
+        "floor_overridden": bool(manifest.get("floor_overridden")),
+        "evidence": manifest.get("evidence"),
         "serve": {
             "vllm": f"vllm serve {base_model} --enable-lora "
                     f"--lora-modules {version}=<adapter dir>",
             "env": f"FINETUNED_MODEL={version}",
         },
     }
+
+
+def optimizer_steps(examples: int, hp: dict[str, Any]) -> int:
+    """How many times the weights move: passes per epoch (examples over the
+    batch size, rounded up) times epochs, over the accumulation."""
+    passes = -(-examples // hp["batch_size"]) * hp["epochs"]
+    return max(1, -(-passes // hp["grad_accumulation"]))
+
+
+def lr_factor(step: int, total: int, hp: dict[str, Any]) -> float:
+    """Linear warm-up, then cosine decay to a share of the peak."""
+    warmup = max(1, int(total * hp["warmup_share"]))
+    if step < warmup:
+        return (step + 1) / warmup
+    progress = min(1.0, (step - warmup) / max(1, total - warmup))
+    floor = hp["final_lr_share"]
+    return floor + (1 - floor) * 0.5 * (1 + math.cos(math.pi * progress))
 
 
 def encode(tokenizer: Any, pair: dict[str, Any], max_length: int) -> tuple[list[int], list[int]]:
@@ -462,6 +507,9 @@ def train(pairs: list[dict[str, Any]], holdout: list[dict[str, Any]], base_model
         r=hp["r"], lora_alpha=hp["alpha"], lora_dropout=hp["dropout"],
         target_modules=hp["target_modules"], task_type="CAUSAL_LM",
     ))
+    # What was actually adapted, on the record, whichever way it was chosen.
+    targeted = model.peft_config["default"].target_modules
+    hp["target_modules"] = sorted(targeted) if isinstance(targeted, (set, list)) else targeted
     model.to(device)
     model.print_trainable_parameters()
     optimizer = torch.optim.AdamW(
@@ -469,37 +517,54 @@ def train(pairs: list[dict[str, Any]], holdout: list[dict[str, Any]], base_model
     )
     encoded = [encode(tokenizer, pair, hp["max_length"]) for pair in pairs]
     held = [encode(tokenizer, pair, hp["max_length"]) for pair in holdout]
+    pad = tokenizer.pad_token_id
+    total_steps = optimizer_steps(len(encoded), hp)
+    schedule = torch.optim.lr_scheduler.LambdaLR(optimizer, lambda s: lr_factor(s, total_steps, hp))
 
-    def loss_of(ids: list[int], labels: list[int]) -> Any:
-        return model(input_ids=torch.tensor([ids], device=device),
-                     labels=torch.tensor([labels], device=device)).loss
+    def batch_loss(rows: list[tuple[list[int], list[int]]]) -> Any:
+        """One forward pass over a padded batch; padding is masked out of
+        attention and out of the loss."""
+        width = max(len(ids) for ids, _ in rows)
+        input_ids = torch.tensor(
+            [ids + [pad] * (width - len(ids)) for ids, _ in rows], device=device)
+        attention = torch.tensor(
+            [[1] * len(ids) + [0] * (width - len(ids)) for ids, _ in rows], device=device)
+        labels = torch.tensor(
+            [lab + [-100] * (width - len(lab)) for _, lab in rows], device=device)
+        return model(input_ids=input_ids, attention_mask=attention, labels=labels).loss
 
     def holdout_loss() -> float:
         model.eval()
         with torch.no_grad():
-            total = sum(float(loss_of(ids, labels).item()) for ids, labels in held)
+            total = sum(float(batch_loss(held[i:i + hp["batch_size"]]).item())
+                        * len(held[i:i + hp["batch_size"]])
+                        for i in range(0, len(held), hp["batch_size"]))
         model.train()
         return total / len(held)
 
     history: list[dict[str, float]] = []
     best = float("inf")
-    step = 0
+    passes = 0
     model.train()
     for epoch in range(hp["epochs"]):
         order = list(range(len(encoded)))
         shuffle.shuffle(order)  # label-grouped order once made every step single-label
         running = 0.0
-        for n in order:
-            ids, labels = encoded[n]
-            loss = loss_of(ids, labels)
+        batches = [order[i:i + hp["batch_size"]] for i in range(0, len(order), hp["batch_size"])]
+        for rows in batches:
+            loss = batch_loss([encoded[n] for n in rows])
             (loss / hp["grad_accumulation"]).backward()
-            running += float(loss.item())
-            step += 1
-            if step % hp["grad_accumulation"] == 0:
+            running += float(loss.item()) * len(rows)
+            passes += 1
+            if passes % hp["grad_accumulation"] == 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), hp["max_grad_norm"])
                 optimizer.step()
+                schedule.step()
                 optimizer.zero_grad()
-        if step % hp["grad_accumulation"]:
+        if passes % hp["grad_accumulation"]:
+            torch.nn.utils.clip_grad_norm_(model.parameters(), hp["max_grad_norm"])
             optimizer.step()
+            schedule.step()
             optimizer.zero_grad()
         evaluated = holdout_loss()
         history.append({"epoch": epoch + 1, "train_loss": running / len(encoded),
@@ -511,18 +576,45 @@ def train(pairs: list[dict[str, Any]], holdout: list[dict[str, Any]], base_model
             best = evaluated
             model.save_pretrained(str(out_dir / "adapter"))
             tokenizer.save_pretrained(str(out_dir / "adapter"))
-            if merge:
-                merged = model.merge_and_unload()
-                merged.save_pretrained(str(out_dir / "merged"))
-                tokenizer.save_pretrained(str(out_dir / "merged"))
-                model = get_peft_model(merged, LoraConfig(
-                    r=hp["r"], lora_alpha=hp["alpha"], lora_dropout=hp["dropout"],
-                    target_modules=hp["target_modules"], task_type="CAUSAL_LM",
-                ))
         else:
-            print("holdout loss rose: stopping, keeping the previous epoch's adapter")
+            print("holdout loss did not fall: stopping, keeping the previous epoch's adapter")
             break
-    return {"history": history, "best_holdout_loss": best}
+    if merge:
+        # Merged AFTER training, from the best adapter on disk onto a fresh
+        # base. Merging inside the loop once left the optimizer holding the
+        # old LoRA tensors: every later epoch trained nothing, and the saved
+        # adapter's B matrices were exactly zero under a versioned name.
+        from peft import PeftModel
+
+        fresh = AutoModelForCausalLM.from_pretrained(
+            base_model, torch_dtype=torch.bfloat16 if device == "cuda" else torch.float32,
+        )
+        merged = PeftModel.from_pretrained(fresh, str(out_dir / "adapter")).merge_and_unload()
+        merged.save_pretrained(str(out_dir / "merged"))
+        tokenizer.save_pretrained(str(out_dir / "merged"))
+    return {
+        "history": history,
+        "best_holdout_loss": best,
+        "environment": environment(model, device),
+    }
+
+
+def environment(model: Any, device: str) -> dict[str, Any]:
+    """What the numbers above were produced on: the same version trained
+    in bf16 on a GPU will not reproduce CPU fp32 losses, and a manifest
+    that cannot say which is which cannot say what it recorded."""
+    import peft
+    import torch
+    import transformers
+
+    return {
+        "device": device,
+        "dtype": str(next(model.parameters()).dtype),
+        "torch": torch.__version__,
+        "transformers": transformers.__version__,
+        "peft": peft.__version__,
+        "base_model_revision": getattr(getattr(model, "config", None), "_commit_hash", None),
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -538,9 +630,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dry-run", action="store_true",
                         help="print the plan and the version; train nothing")
     parser.add_argument("--seed", type=int, default=HYPERPARAMETERS["seed"])
+    parser.add_argument("--batch-size", type=int, default=HYPERPARAMETERS["batch_size"],
+                        help="examples per forward pass")
+    parser.add_argument("--target-modules", default=None,
+                        help="comma-separated module names to adapt; default is peft's "
+                             "choice for the architecture")
     parser.add_argument("--grad-accumulation", type=int,
                         default=HYPERPARAMETERS["grad_accumulation"],
-                        help="examples per optimizer step; lower it on a small corpus")
+                        help="forward passes per optimizer step; lower it on a small corpus")
     parser.add_argument("--learning-rate", type=float, default=HYPERPARAMETERS["learning_rate"])
     parser.add_argument("--gradient-checkpointing", action="store_true",
                         help="trade compute for memory on a small card")
@@ -548,20 +645,32 @@ def main(argv: list[str] | None = None) -> int:
 
     manifest, pairs = load_split(args.data)
     hp = {**HYPERPARAMETERS, "epochs": args.epochs, "seed": args.seed,
-          "grad_accumulation": args.grad_accumulation, "learning_rate": args.learning_rate}
+          "batch_size": args.batch_size, "grad_accumulation": args.grad_accumulation,
+          "learning_rate": args.learning_rate,
+          "target_modules": ([m.strip() for m in args.target_modules.split(",") if m.strip()]
+                             if args.target_modules else None)}
     version = version_of(manifest, args.base_model, hp)
     out_dir = args.out / version
     plan = record(manifest, args.base_model, hp, version, len(pairs))
     # How many times the weights actually move. Eighteen pairs, three
     # epochs and an accumulation of eight is seven steps: a run that
     # cannot teach a style, and it should say so before the GPU is booked.
-    steps = -(-len(pairs) * hp["epochs"] // hp["grad_accumulation"])
+    steps = optimizer_steps(len(pairs), hp)
     plan["optimizer_steps"] = steps
+    plan["schedule"] = (f"AdamW, linear warm-up over {max(1, int(steps * hp['warmup_share']))} "
+                        f"step(s), cosine decay to {hp['final_lr_share']:.0%} of "
+                        f"{hp['learning_rate']}, gradients clipped at {hp['max_grad_norm']}, "
+                        f"effective batch {hp['batch_size'] * hp['grad_accumulation']}")
+    if manifest.get("floor_overridden"):
+        print(f"note: the split was accepted at --min-verified {manifest.get('min_verified')} "
+              f"({manifest.get('verified')} verified pairs) below the recipe's floor of "
+              f"{MIN_VERIFIED_NOTE}: this adapter is a smoke test of the path, not a "
+              f"fine-tune, and its manifest says so", file=sys.stderr)
     if steps < MIN_OPTIMIZER_STEPS:
         print(f"note: {steps} optimizer steps ({len(pairs)} examples x {hp['epochs']} epochs "
-              f"/ accumulation {hp['grad_accumulation']}) -- fewer than {MIN_OPTIMIZER_STEPS} "
-              f"barely moves a model; lower --grad-accumulation or add --epochs",
-              file=sys.stderr)
+              f"/ batch {hp['batch_size']} / accumulation {hp['grad_accumulation']}) -- fewer "
+              f"than {MIN_OPTIMIZER_STEPS} barely moves a model; lower --grad-accumulation "
+              f"or --batch-size, or add --epochs", file=sys.stderr)
     if args.dry_run:
         print(json.dumps(plan, indent=2, sort_keys=True))
         return 0
@@ -573,6 +682,7 @@ def main(argv: list[str] | None = None) -> int:
     outcome = train(pairs, load_holdout(args.data), args.base_model, hp, out_dir,
                     args.merge, args.gradient_checkpointing)
     plan["training"] = outcome
+    plan["hyperparameters"]["target_modules"] = hp["target_modules"]
     (out_dir / "adapter-manifest.json").write_text(
         json.dumps(plan, indent=2, sort_keys=True) + "\n")
     print(f"adapter {version} at {out_dir}")
@@ -623,6 +733,11 @@ def slug(name: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("_") or "model"
 
 
+# Fewer holdout cases than this and no delta is quotable: the acceptance
+# protocol's own sample floor. Wilson 95% on 1/6 is [0.03, 0.56].
+MIN_HOLDOUT_CASES = 30
+
+
 def score(model: str, cases: Path, report: Path) -> dict[str, Any]:
     """One harness run with FINETUNED_MODEL pointed at `model`."""
     env = {**os.environ, "FINETUNED_MODEL": model}
@@ -633,13 +748,20 @@ def score(model: str, cases: Path, report: Path) -> dict[str, Any]:
     )
     if not report.exists():
         sys.exit(f"the harness wrote no report for {model}; its output above says why")
-    layer = json.loads(report.read_text())["layers"][0]
+    written = json.loads(report.read_text())
+    layer = written["layers"][0]
     errors = layer.get("errors") or 0
     return {
         "model": model,
         "score": layer.get("score"),
+        # The form metric, where the harness has one: the share of answers
+        # that open the way the verified answers open. A fine-tune teaches
+        # form; a judge grades content; one number cannot carry both.
+        "form": layer.get("form"),
         "cases": layer.get("cases"),
         "errors": len(errors) if isinstance(errors, list) else int(errors),
+        "judge_calibrated": bool((written.get("calibration") or {}).get("calibrated")),
+        "judged": bool(written.get("judged")),
     }
 
 
@@ -649,6 +771,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--after", required=True, help="the adapter version, as served")
     parser.add_argument("--data", type=Path, default=ROOT / "train" / "data")
     parser.add_argument("--out", type=Path, default=ROOT / "train")
+    parser.add_argument("--allow-small", action="store_true",
+                        help=f"write a delta on fewer than {MIN_HOLDOUT_CASES} holdout cases "
+                             f"-- a smoke test of the path, marked as such")
     args = parser.parse_args(argv)
 
     manifest = json.loads((args.data / "manifest.json").read_text())
@@ -680,14 +805,30 @@ def main(argv: list[str] | None = None) -> int:
               "check the served prompt, the stop sequences and the judge before "
               "reading anything into this", file=sys.stderr)
         return 1
+    n = manifest["holdout"]["cases"]
+    if n < MIN_HOLDOUT_CASES and not args.allow_small:
+        print(f"n={n}: fewer than {MIN_HOLDOUT_CASES} holdout cases cannot tell one score "
+              f"from another; no delta is quotable. Prepare more pairs, or --allow-small "
+              f"for a smoke test of the path", file=sys.stderr)
+        return 1
     delta = (None if before["score"] is None or after["score"] is None
              else after["score"] - before["score"])
+    form_delta = (None if before.get("form") is None or after.get("form") is None
+                  else after["form"] - before["form"])
+    quotable = n >= MIN_HOLDOUT_CASES and (not after["judged"] or after["judge_calibrated"])
     result = {
         "holdout_sha256": manifest["holdout"]["sha256"],
-        "holdout_cases": manifest["holdout"]["cases"],
+        "holdout_cases": n,
         "before": before,
         "after": after,
         "delta": delta,
+        "form_delta": form_delta,
+        # A delta is quotable only on enough cases under a calibrated judge
+        # (or no judge at all); anything else is a smoke test of the path.
+        "quotable": quotable,
+        "not_quotable_because": None if quotable else (
+            f"n={n} < {MIN_HOLDOUT_CASES}" if n < MIN_HOLDOUT_CASES
+            else "the judge is not calibrated (evals/calibrate.py)"),
     }
     (args.out / f"compare-{slug(args.after)}.json").write_text(
         json.dumps(result, indent=2, sort_keys=True) + "\n")
@@ -696,14 +837,20 @@ def main(argv: list[str] | None = None) -> int:
         value = entry["score"]
         return "no score" if value is None else f"{value:.1%}"
 
+    def form(entry: dict[str, Any]) -> str:
+        return "" if entry.get("form") is None else f", form {entry['form']:.1%}"
+
     print(f"before ({args.before}): {show(before)} on {before['cases']} cases, "
-          f"{before['errors']} error(s)")
+          f"{before['errors']} error(s){form(before)}")
     print(f"after  ({args.after}): {show(after)} on {after['cases']} cases, "
-          f"{after['errors']} error(s)")
+          f"{after['errors']} error(s){form(after)}")
     if delta is None:
         print("no delta: one side produced no score", file=sys.stderr)
         return 1
-    print(f"delta  {delta:+.1%}")
+    print(f"delta  {delta:+.1%}" + ("" if form_delta is None else f", form {form_delta:+.1%}"))
+    if not quotable:
+        print(f"not quotable: {result['not_quotable_because']} -- a smoke test of the path, "
+              f"recorded as such", file=sys.stderr)
     if delta < 0:
         print("the adapter scores below the base model -- do not serve it", file=sys.stderr)
         return 1
@@ -879,6 +1026,17 @@ the path that makes the claim checkable, in the order it has to happen.
    non-zero when either side errored or the adapter scores below the base.
 6. **Ship**: set `FINETUNED_MODEL=<version>` in `/etc/app/env` and restart.
 
+## What the numbers mean
+
+`compare.py` reports the judge's score and, where the verified answers
+share an opening, a form score: the share of answers that open the same
+way. A fine-tune teaches form; a judge grades content; neither number
+stands in for the other. A delta is quotable only on thirty or more
+holdout cases under a judge that passed `evals/calibrate.py`; below that
+the record says `quotable: false` and why. Evidence is attached with the
+pipeline's default `k`; a caller that sets its own `k` is served a prompt
+shape the adapter did not train on.
+
 ## What the split does
 
 `prepare.py` drops exact duplicate inputs (one case counted twice is a case
@@ -889,6 +1047,18 @@ hash so two runs agree. The manifest records the seed, the counts per
 stratum, and the digest of every file. It also lists holdout ids that also
 sit in `evals/golden.jsonl`: the adapter's before/after is measured on the
 holdout, and the shipped exam asks a different question.
+
+## What the recipe does
+
+AdamW on the adapter weights only, a linear warm-up over the first tenth
+of the optimizer steps and a cosine decay to a tenth of the peak rate
+over the rest, gradients clipped at norm 1.0, padded batches with the
+padding masked out of attention and loss, the prompt masked out of the
+loss so only the completion is learned, a seeded shuffle every epoch, the
+holdout loss measured after every epoch, and the best epoch's adapter
+kept -- training stops the first time the holdout loss does not fall.
+`--dry-run` prints the plan, including the optimizer-step count; below
+fifty steps it says so, because that is a smoke test, not a fine-tune.
 
 ## What a version is
 
@@ -1068,6 +1238,20 @@ def test_the_comparison_refuses_a_holdout_that_changed(tmp_path):
                  "--data", str(tmp_path / "data"), "--out", str(tmp_path))
     assert result.returncode == 2
     assert "not the holdout prepare.py drew" in result.stderr
+
+
+def test_the_floor_in_force_is_on_the_record(tmp_path):
+    """A split accepted below the recipe's floor is a smoke test, and the
+    artefacts must say so; one once ran at 10 against a floor of 500 and
+    nothing on disk could tell."""
+    manifest = prepare(tmp_path)
+    assert manifest["min_verified"] == 1 and manifest["floor_overridden"] is True
+    result = run("train/lora.py", "--dry-run", "--base-model", "base/model",
+                 "--data", str(tmp_path / "data"))
+    assert result.returncode == 0, result.stderr
+    plan = json.loads(result.stdout)
+    assert plan["floor_overridden"] is True and plan["min_verified"] == 1
+    assert "smoke test of the path" in result.stderr
 
 
 def test_the_comparison_measures_nothing_when_no_model_answers(tmp_path):

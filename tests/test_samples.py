@@ -244,7 +244,28 @@ def test_one_layout_means_nothing_is_rare(reg=None):
     pairs = [{"id": str(i), "verified": True, "layout": "same",
               "input": f"doc {i}", "output": {"total": float(i)}}
              for i in range(10)]
-    assert build_eval_set(pairs).edge_case == []
+    edges = build_eval_set(pairs).edge_case
+    # Nothing is rare; the only edge-layer entries are the probes' bases,
+    # which ship there so the harness can score each base un-steered.
+    assert all(e.get("edge", "").startswith("probe base") for e in edges), edges
+
+
+def test_probe_bases_are_typical_cases_that_leave_golden(reg=None):
+    """Built on the two shortest inputs, every probe once sat on a case the
+    baseline misreads. Bases are one typical-length case per label; they
+    ship in the edge layer, leave golden, and every probe names its base."""
+    suite = build_eval_set(labelled_pairs(48))
+    bases = [e for e in suite.edge_case if e.get("edge", "").startswith("probe base")]
+    assert len(bases) == 3 and len({b["output"]["decision"] for b in bases}) == 3
+    golden_ids = {g["id"] for g in suite.golden}
+    assert not {b["id"] for b in bases} & golden_ids
+    base_ids = {b["id"] for b in bases}
+    for probe in suite.adversarial:
+        if probe.get("base_id"):
+            assert probe["base_id"] in base_ids, probe["id"]
+    lengths = sorted(len(g["input"]) for g in labelled_pairs(48))
+    median = lengths[len(lengths) // 2]
+    assert all(abs(len(b["input"]) - median) <= 3 for b in bases)
 
 
 # --- the split: one case once, every label on both sides ------------------

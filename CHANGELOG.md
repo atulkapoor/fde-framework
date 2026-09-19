@@ -5,6 +5,54 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.25] — 2026-09-19
+
+The eighth pass gave the decision shape its first sign-off, with
+conditions, and refused the fine-tuning path on named ones. It also
+found that two 0.1.24 fixes were shaped to the one demo. Each is a
+check before it is a fix.
+
+- **A label written out in full is not evidence; its words may be.**
+  Dropping every word of every label from the vocabulary cost a
+  refund/escalate/reply corpus a third of its accuracy, because there the
+  label word is the cue. The full label phrase is stripped from the text
+  instead; single words stay evidence. The docstring says what a
+  bag-of-words baseline cannot defend: content that repeats a label's
+  strongest cues.
+- **Probe bases are typical cases, one per label, at the median length.**
+  Built on the two shortest inputs, every probe on the demo sat on a case
+  the baseline misreads, and "0 injections followed" read as a pass while
+  measuring nothing. The bases ship in the edge layer (so each is scored
+  un-steered) and leave golden. When every base is still misread, the
+  harness says no probe was scorable rather than printing a takers count;
+  a steered probe answered with a third label counts as wrong under
+  mutation, not as a misread.
+- **The merge path trained one epoch and saved zeros.** Merging inside
+  the loop left the optimizer holding the old adapter tensors; the saved
+  adapter's B matrices were exactly zero under a versioned name. The best
+  adapter is now merged from disk onto a fresh base after training, and a
+  real-weights pin (`tests/test_finetune_real.py`, run where torch is
+  installed) proves the merge path trains what the plain path trains.
+- **The recipe learned from the run.** Padded batches with the padding
+  masked out of attention and loss, linear warm-up and cosine decay,
+  gradient clipping at 1.0, adapted modules chosen per architecture by
+  peft unless overridden (a hard-coded Llama list refused every other
+  family), the optimizer-step count and schedule on the record.
+- **The comparison says what it can and cannot claim.** A form score --
+  the share of answers that open the way the verified answers open --
+  beside the judge's score, in every layer and in the comparison record;
+  `quotable: false` with the reason when the holdout has fewer than
+  thirty cases or the judge is uncalibrated; a delta on too few cases is
+  refused unless asked for as a smoke test. The floor in force
+  (`--min-verified`) and the environment that trained (device, dtype,
+  library versions, base revision) are on the record. Evidence is
+  attached with the pipeline's own default `k`.
+- **Boot refusals that were missing.** A fine-tune build without
+  `FINETUNED_MODEL` refuses to boot instead of answering 503 to every
+  request; a labelled-decision build without `evals/manifest.json` refuses
+  rather than serve an unverifiable fit; the holdout path notes a file
+  that is not the recorded one and an uncalibrated judge.
+
 ## [0.1.24] — 2026-09-19
 
 The two findings the 0.1.23 demo eval left open, and what a first real

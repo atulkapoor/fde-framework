@@ -314,3 +314,85 @@ def _corpus(tmp_path: Path) -> Path:
     root.mkdir(exist_ok=True)
     (root / "reset.txt").write_text("To reset a device, hold its button for ten seconds.")
     return root
+
+
+def test_a_delta_on_too_few_cases_is_not_quotable(trained, tmp_path):
+    """Six cases cannot tell one score from another; the record says so,
+    and a delta is written only when asked for as a smoke test."""
+    out = tmp_path / "small"
+    shutil.copytree(trained, out, ignore=shutil.ignore_patterns("__pycache__"))
+    (out / "evals" / "harness.py").write_text(
+        "import argparse, json\n"
+        "p = argparse.ArgumentParser()\n"
+        "for flag in ('--cases', '--report'):\n"
+        "    p.add_argument(flag)\n"
+        "p.add_argument('--allow-uncalibrated', action='store_true')\n"
+        "a = p.parse_args()\n"
+        "json.dump({'judged': True, 'calibration': {'calibrated': False},"
+        " 'layers': [{'layer': 'holdout', 'cases': 3, 'score': 0.5, 'form': 1.0,"
+        " 'errors': 0}]}, open(a.report, 'w'))\n"
+    )
+    prep = subprocess.run(
+        [sys.executable, "train/prepare.py", str(_pairs(tmp_path)), "--out", "train/data",
+         "--min-verified", "1", "--retrieve"], cwd=out, capture_output=True, text=True,
+        env={"PATH": "/usr/bin", "CORPUS_DIR": str(_corpus(tmp_path))},
+    )
+    assert prep.returncode == 0, prep.stderr
+    argv = [sys.executable, "train/compare.py", "--before", "base", "--after", "v1",
+            "--data", "train/data", "--out", "train"]
+    refused = subprocess.run(argv, cwd=out, capture_output=True, text=True,
+                             env={"PATH": "/usr/bin"})
+    assert refused.returncode == 1 and "fewer than 30 holdout cases" in refused.stderr
+    allowed = subprocess.run([*argv, "--allow-small"], cwd=out, capture_output=True,
+                             text=True, env={"PATH": "/usr/bin"})
+    assert allowed.returncode == 0, allowed.stdout + allowed.stderr
+    record = json.loads((out / "train" / "compare-v1.json").read_text())
+    assert record["quotable"] is False and "n=" in record["not_quotable_because"]
+    assert record["after"]["form"] == 1.0 and record["form_delta"] == 0.0
+    assert "not quotable" in allowed.stderr
+
+
+def test_a_fine_tune_build_without_an_adapter_refuses_to_boot(trained, tmp_path):
+    """A bogus adapter name refused the boot; an absent one booted green
+    and answered 503 to every request."""
+    result = subprocess.run(
+        [sys.executable, "-m", "app.service"], cwd=trained, capture_output=True, text=True,
+        env={"PATH": "/usr/bin", "PORT": "18993", "AUTH_TOKEN": "t",
+             "LLM_ENDPOINT": "http://127.0.0.1:9", "STATE_DIR": str(tmp_path / "s")},
+        timeout=60,
+    )
+    assert result.returncode == 78, result.stderr[-500:]
+    assert "FINETUNED_MODEL unset" in result.stderr
+
+
+def test_the_harness_measures_form_beside_the_judge(reg, tmp_path):
+    """A fine-tune teaches form; a judge grades content. When the verified
+    answers share an opening, the harness scores how many answers open
+    that way, and the comparison carries it."""
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text("".join(json.dumps(
+        {"id": f"q{i}", "input": f"How do I reset device {i}?", "verified": True,
+         "output": f"Short answer: hold the button on device {i}. Steps: 1. Hold it."})
+        + "\n" for i in range(12)))
+    out = tmp_path / "styled"
+    profile = Profile()
+    profile.ingest([Fact(k, v, Provenance.ARTIFACT) for k, v in HOUSE_STYLE.items()])
+    architecture = architect(
+        profile, reg, overrides={"reasoning": {"chosen": "finetune", "because": "style"}})
+    emit(architecture, out, registry=reg, pairs_path=pairs)
+    harness = (out / "evals" / "harness.py").read_text()
+    assert "FORM = 'Short answer:'" in harness, "no form marker"
+    result = run_in(out, """
+import importlib.util
+spec = importlib.util.spec_from_file_location("h", "evals/harness.py")
+h = importlib.util.module_from_spec(spec); spec.loader.exec_module(h)
+h.JUDGED = False  # the form metric is model-free; the judge is not under test here
+cases = [{"id": "a", "input": "q", "output": "Short answer: yes. Steps: 1."},
+         {"id": "b", "input": "q", "output": "Short answer: no. Steps: 1."}]
+answers = iter(["short answer: yes.", "No idea."])
+layer = h.run_layer("holdout", cases, lambda text: next(answers))
+assert layer["form"] == 0.5, layer["form"]
+print("ok")
+""")
+    assert result.returncode == 0, result.stderr
+

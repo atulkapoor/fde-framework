@@ -122,14 +122,17 @@ recipe that trained unshuffled on a prompt it never served -- and 0.1.23
 answered again the same way. 0.1.24 then ran the fine-tuning recipe for
 real on a small base model: the adapter learned the house style on cases
 it never saw, and the six defects that run exposed in the harness, the
-serving path and the comparison are fixed and pinned.
+serving path and the comparison are fixed and pinned. An eighth pass gave
+the decision shape its first sign-off, with conditions, and 0.1.25 met
+them: probes on typical cases, label phrases rather than words, a merge
+path that trains, a comparison that says what it can claim.
 
 **Built**: the pipeline exists end to end — intake (prose, documents, sample
 pairs, role-scoped interview, hardware scan) → fact log with provenance →
 permutation space → seven gates → decide → architect → build (code, evals,
 deploy and ops assets, `RISKS.md`, `COMPLIANCE.md`) → retro and case
 capture. Overrides are honoured on the next run, trigger observations feed
-calibration, and a reviewed case can enter the corpus. 1110+ tests; seven
+calibration, and a reviewed case can enter the corpus. 1110+ tests; eight
 fresh-eyes audit passes, every finding resolved and the fix pinned as a
 regression test; CI gates on the suite, lint, and a sanitisation scan of
 the tree *and its history*; the evidence corpus is anchored to publicly
@@ -309,8 +312,8 @@ probe says what it steers toward, an uncalibrated judge is red until asked
 for by name, a fact learned from a person is marked asserted rather than
 established, and a fine-tuning decision ships a recipe that trains on the
 prompt it serves -- and the deliverable ships its own edge tests, which
-its CI runs. Seven independent audit passes took it from "every request
-500s" to a sign-off with conditions. A quality finding lands there as a check before
+its CI runs. Eight independent audit passes took it from "every request
+500s" to a sign-off with conditions on the decision shape. A quality finding lands there as a check before
 it lands anywhere as a fix ([`tests/test_acceptance.py`](tests/test_acceptance.py),
 [`tests/test_finetune.py`](tests/test_finetune.py)).
 

@@ -55,11 +55,20 @@ they them their this that these those what which who where when why how
 not no so than too very can could will would should may might must there
 here up down out all any some such only same xxxx xx
 """.split())
-# The labels' own words are never evidence: "monetary" in a complaint
-# about monetary relief is the answer written into the question, and an
-# injection that spells a label out would otherwise steer the baseline
-# toward it -- the one followed injection the seventh pass found.
-LABEL_WORDS = frozenset(w for label in LABELS for w in TOKEN.findall(label.lower()))
+# A label written out in full is not evidence: an injection that spells
+# "Closed with monetary relief" into a complaint would otherwise steer the
+# baseline toward it. The PHRASE is stripped, not its words -- "monetary"
+# on its own is a complaint's own word and may be the cue; dropping every
+# constituent word once cost a refund/escalate/reply client a third of its
+# accuracy, because there the label word IS the evidence. A single-word
+# label stays evidence for the same reason. A bag-of-words baseline is
+# steerable by content by construction (repeat a label's strongest cue
+# words often enough and it moves); the exam probes injection framings,
+# not that.
+LABEL_PHRASES = tuple(sorted(
+    (re.compile(re.escape(label), re.IGNORECASE) for label in LABELS if " " in label),
+    key=lambda pattern: -len(pattern.pattern),
+))
 # Laplace smoothing keeps an unseen token from vetoing a label outright.
 SMOOTHING = 1.0
 MIN_TEXT_CHARS = 8
@@ -78,8 +87,9 @@ class ExamChanged(RuntimeError):
 
 
 def _tokens(text: str) -> list[str]:
-    return [t for t in TOKEN.findall(text.lower())
-            if t not in STOPWORDS and t not in LABEL_WORDS]
+    for phrase in LABEL_PHRASES:
+        text = phrase.sub(" ", text)
+    return [t for t in TOKEN.findall(text.lower()) if t not in STOPWORDS]
 
 
 def _label_of(output: Any) -> str | None:
@@ -119,14 +129,16 @@ class {{ class_name }}:
 
     def _check_record(self, path: Path, record: Path) -> None:
         """The served model is fitted on the exam; the exam must be the one
-        on record, or the decision has changed since the build."""
+        on record, or the decision has changed since the build. No record
+        is no check: the boot refuses rather than serve an unverifiable fit."""
         self.golden_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
-        if not record.exists():
-            return
         try:
             recorded = json.loads(record.read_text())["layers"]["golden"]["sha256"]
-        except (ValueError, KeyError, TypeError):
-            return
+        except (OSError, ValueError, KeyError, TypeError):
+            raise ExamChanged(
+                f"{record} is missing or unreadable, so {path.name} cannot be checked "
+                f"against the exam the build recorded; ship evals/ whole, or rebuild"
+            ) from None
         if recorded != self.golden_sha256:
             raise ExamChanged(
                 f"{path} is not the file the build recorded (sha256 "
