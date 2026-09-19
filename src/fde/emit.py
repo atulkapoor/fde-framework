@@ -2138,11 +2138,17 @@ def _boundary_present() -> bool:
 
 
 def complete_raw(prompt: str, timeout: float | None = None, *,
-                 model: str, endpoint: str | None = None) -> str:
+                 model: str, endpoint: str | None = None,
+                 stop: list[str] | None = None) -> str:
     """One completion against /v1/completions, the prompt sent as the bytes
     the caller built. An adapter is trained on raw text by train/lora.py;
     served through the chat endpoint it would be wrapped in the base
-    model's chat template -- tokens the recipe never produced."""
+    model's chat template -- tokens the recipe never produced.
+
+    `stop` is sent to the server AND applied here: a base model that has
+    not learned to stop continues with the next "Question:" it imagines,
+    and a server that ignores the field would hand that back as the
+    answer."""
     if timeout is None:
         timeout = float(os.environ.get("LLM_TIMEOUT", "120"))
     endpoint = endpoint or os.environ.get("LLM_ENDPOINT")
@@ -2154,6 +2160,7 @@ def complete_raw(prompt: str, timeout: float | None = None, *,
         "prompt": prompt,
         "temperature": 0,
         "max_tokens": int(os.environ.get("LLM_MAX_TOKENS", "512")),
+        **({"stop": list(stop)} if stop else {}),
     }).encode()
     headers = {"Content-Type": "application/json"}
     if os.environ.get("LLM_API_KEY"):
@@ -2167,7 +2174,10 @@ def complete_raw(prompt: str, timeout: float | None = None, *,
             with urllib.request.urlopen(request, timeout=timeout) as response:
                 reply = json.load(response)
             try:
-                return reply["choices"][0]["text"]
+                text = reply["choices"][0]["text"]
+                for marker in stop or ():
+                    text = text.split(marker, 1)[0]
+                return text
             except (KeyError, IndexError, TypeError) as exc:
                 raise ModelUnconfigured(
                     f"the model endpoint answered without a completion: "
@@ -2184,7 +2194,8 @@ def complete_raw(prompt: str, timeout: float | None = None, *,
 
 
 def complete(prompt: str, timeout: float | None = None, *,
-             endpoint: str | None = None, model: str | None = None) -> str:
+             endpoint: str | None = None, model: str | None = None,
+             max_tokens: int | None = None) -> str:
     if timeout is None:
         timeout = float(os.environ.get("LLM_TIMEOUT", "120"))
     endpoint = endpoint or os.environ.get("LLM_ENDPOINT")
@@ -2195,7 +2206,7 @@ def complete(prompt: str, timeout: float | None = None, *,
             "temperature": 0,
             # A local model with no cap holds the request for as long as
             # it feels like reasoning; a person is sometimes waiting.
-            "max_tokens": int(os.environ.get("LLM_MAX_TOKENS", "512")),
+            "max_tokens": max_tokens or int(os.environ.get("LLM_MAX_TOKENS", "512")),
         }).encode()
         headers = {"Content-Type": "application/json"}
         if os.environ.get("LLM_API_KEY"):
@@ -3006,6 +3017,10 @@ def judge_score(actual, expected):
         "Does the candidate convey the same content as the reference? "
         "Reply with exactly one word: correct, partial, or incorrect.",
         endpoint=endpoint, model=model,
+        # The judge's own budget, not the author's: a reasoning judge that
+        # thinks for two hundred tokens under a ninety-six token cap never
+        # reaches its verdict, and every case scores zero.
+        max_tokens=int(os.environ.get("JUDGE_MAX_TOKENS", "1024")),
     )
     return parse_verdict(reply)
 
@@ -3278,7 +3293,16 @@ def main():
     # The pipeline is the thing under evaluation. While its components are
     # scaffolds -- or a gate is unwired -- every case errors and this run
     # fails, which is the point: a gate that cannot say no is not a gate.
-    from app.pipeline import run as predict
+    from app import pipeline
+
+    predict = pipeline.run
+    # The served shape is retrieval in front of reasoning; scoring with an
+    # empty index answers every case without evidence and calls that the
+    # system. The corpus is loaded here as the service loads it at boot.
+    if hasattr(pipeline, "load_corpus") and pipeline.load_corpus() == 0:
+        print("note: this build retrieves and CORPUS_DIR holds no documents -- every "
+              "answer below is made without evidence; set CORPUS_DIR to score the "
+              "served shape", file=sys.stderr)
 
     calibration = calibration_status()
     try:

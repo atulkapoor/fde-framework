@@ -34,6 +34,10 @@ from app.contract import RefusedInput
 from app.shapes import require
 
 
+# Where a mapping ends: the next record the model imagines.
+STOP = ["\nRecord:", "\nJSON:"]
+
+
 class ContractMismatch(ValueError):
     """A training pair does not produce the fields the contract requires."""
 
@@ -115,7 +119,7 @@ class {{ class_name }}:
         if not isinstance(record, dict):
             raise RefusedInput("each record is an object with an id and a raw payload")
         reply = complete_raw(format_prompt(record.get("raw"), contract=self.contract),
-                         model=self.adapter).strip()
+                             model=self.adapter, stop=STOP).strip()
         try:
             parsed = json.loads(reply)
         except ValueError:

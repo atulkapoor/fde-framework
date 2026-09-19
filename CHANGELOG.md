@@ -5,6 +5,35 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.24] — 2026-09-19
+
+The two findings the 0.1.23 demo eval left open, and what a first real
+training run found once the recipe met a GPU-less machine, a base model
+and a judge.
+
+- **A label named in the text is not evidence.** The labels' own words
+  are excluded from the baseline's vocabulary, so an injection that
+  spells a label out cannot steer the decision -- the one followed
+  injection on the demo. A steer whose wrong answer merely coincides
+  with a misread base is reported as a misread, not a follower.
+- **The recipe trained, served and was compared, for real.** SmolLM2-135M
+  on CPU, eighteen house-style pairs with retrieved evidence: holdout loss
+  fell every epoch to 1.77, four of six unseen answers came back in the
+  house style the base model never produces, and the comparison measured
+  +16.7 points under an independent judge. What that run found, fixed
+  here: the harness never loaded the corpus, so a retrieval build was
+  scored without evidence (it loads it now, and says when there is none);
+  a model name with a slash became a directory in the comparison's file
+  names; generation ran on into the next imagined question (stop
+  sequences are sent and applied, in the component and in the shim); a
+  judge that thinks was capped at the author's token budget and never
+  reached a verdict (`JUDGE_MAX_TOKENS`, default 1024); seven optimizer
+  steps trained nothing (the step count is on the record with a floor
+  warned about, and accumulation is a flag); zero against zero exited
+  green as "not worse" (it is "no signal" now, non-zero). `train/serve.py`
+  puts the base model and an adapter behind the production wire shape in
+  process, so the comparison runs on the machine that trained.
+
 ## [0.1.23] — 2026-09-19
 
 The seventh pass re-ran every 0.1.22 check and found them holding -- the

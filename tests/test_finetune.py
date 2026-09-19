@@ -10,6 +10,7 @@ check here before it is a fix.
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -113,7 +114,7 @@ def test_run_answers_through_the_adapter_in_the_training_prompt_shape(trained):
 import app.llm
 from app.components import reasoning
 seen = {}
-def fake_complete(prompt, timeout=None, *, model, endpoint=None):
+def fake_complete(prompt, timeout=None, *, model, endpoint=None, stop=None):
     seen["prompt"], seen["model"] = prompt, model
     return " We are sorry, but the fee stands. "
 app.llm.complete_raw = fake_complete
@@ -225,7 +226,8 @@ def test_a_mapper_adapter_reports_what_it_could_not_parse(reg, tmp_path):
 import app.llm
 from app.components.representation import Representation
 replies = iter(['{"total": "12.50", "extra": 1}', "not json at all"])
-app.llm.complete_raw = lambda prompt, timeout=None, *, model, endpoint=None: next(replies)
+app.llm.complete_raw = (lambda prompt, timeout=None, *, model, endpoint=None, stop=None:
+                        next(replies))
 r = Representation(contract=["total", "account"], adapter="v1")
 out = r.run({"records": [{"id": "1", "raw": {"Amount": "12.50"}}, {"id": "2", "raw": {}}]})
 first, second = out["records"]
@@ -237,3 +239,78 @@ print("ok")
     assert result.returncode == 0, result.stderr
     manifest = json.loads((out / "evals" / "manifest.json").read_text())
     assert manifest["holdout"] is None  # no pairs, no holdout: recorded as such
+
+
+def test_a_completion_stops_at_the_next_question(trained):
+    """A base model that has not learned to stop continues with the next
+    question it imagines; the stop is sent to the server and applied on
+    the way back."""
+    result = run_in(trained, """
+import json, threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
+seen = {}
+class Stub(BaseHTTPRequestHandler):
+    def do_POST(self):
+        seen["body"] = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        text = (" Hold the dial for ten seconds."
+                "\\nQuestion: What colour is the ring?\\nAnswer: amber")
+        body = json.dumps({"choices": [{"text": text}]}).encode()
+        self.send_response(200); self.send_header("Content-Length", str(len(body)))
+        self.end_headers(); self.wfile.write(body)
+    def log_message(self, *a): pass
+server = HTTPServer(("127.0.0.1", 0), Stub)
+threading.Thread(target=server.serve_forever, daemon=True).start()
+import os
+os.environ["LLM_ENDPOINT"] = f"http://127.0.0.1:{server.server_port}"
+from app.components import reasoning
+out = reasoning.Reasoning(adapter="v7").run({"query": "How do I reset it?"})
+assert out["answer"] == "Hold the dial for ten seconds.", out["answer"]
+assert "\\nQuestion:" in seen["body"]["stop"], seen["body"]
+print("ok")
+""")
+    assert result.returncode == 0, result.stderr
+
+
+def test_a_comparison_with_no_signal_is_not_a_pass(trained, tmp_path):
+    """Zero against zero once exited green as 'not worse'."""
+    out = tmp_path / "nosignal"
+    shutil.copytree(trained, out, ignore=shutil.ignore_patterns("__pycache__"))
+    (out / "evals" / "harness.py").write_text(
+        "import argparse, json\n"
+        "p = argparse.ArgumentParser()\n"
+        "for flag in ('--cases', '--report'):\n"
+        "    p.add_argument(flag)\n"
+        "p.add_argument('--allow-uncalibrated', action='store_true')\n"
+        "a = p.parse_args()\n"
+        "json.dump({'layers': [{'layer': 'holdout', 'cases': 6, 'score': 0.0, 'errors': 0}]},"
+        " open(a.report, 'w'))\n"
+    )
+    run_prep = subprocess.run(
+        [sys.executable, "train/prepare.py", str(_pairs(tmp_path)), "--out", "train/data",
+         "--min-verified", "1"], cwd=out, capture_output=True, text=True,
+        env={"PATH": "/usr/bin", "CORPUS_DIR": str(_corpus(tmp_path))},
+    )
+    assert run_prep.returncode == 0, run_prep.stderr
+    result = subprocess.run(
+        [sys.executable, "train/compare.py", "--before", "base", "--after", "v1",
+         "--data", "train/data", "--out", "train"],
+        cwd=out, capture_output=True, text=True, env={"PATH": "/usr/bin"},
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    assert "no signal" in result.stderr
+
+
+def _pairs(tmp_path: Path) -> Path:
+    path = tmp_path / "pairs.jsonl"
+    path.write_text("".join(json.dumps(
+        {"id": f"q{i}", "input": f"How do I reset device {i}?",
+         "output": f"Short answer: hold the button on device {i}.", "verified": True}) + "\n"
+        for i in range(6)))
+    return path
+
+
+def _corpus(tmp_path: Path) -> Path:
+    root = tmp_path / "corpus"
+    root.mkdir(exist_ok=True)
+    (root / "reset.txt").write_text("To reset a device, hold its button for ten seconds.")
+    return root

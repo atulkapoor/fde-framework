@@ -31,6 +31,9 @@ from app.contract import RefusedInput
 
 # Evidence blocks shown to the adapter, when the pipeline retrieved any.
 MAX_EVIDENCE = 8
+# Where an answer ends: a base model that has not learned to stop
+# continues with the next question it imagines.
+STOP = ["\nQuestion:", "\nQ:", "\n=== ", "\nAnswer:"]
 
 
 def format_prompt(question: str, evidence: list[dict[str, Any]] | None = None) -> str:
@@ -77,7 +80,8 @@ class {{ class_name }}:
                 "model does not answer in its place"
             )
         evidence = payload.get("retrieved") or []
-        reply = complete_raw(format_prompt(question, evidence), model=self.adapter).strip()
+        reply = complete_raw(format_prompt(question, evidence), model=self.adapter,
+                             stop=STOP).strip()
         return {
             **payload,
             "answer": reply,

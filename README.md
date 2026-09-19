@@ -119,14 +119,17 @@ reasons that were the generator's; 0.1.22 answered each as a check first.
 A seventh pass found those checks holding and the shape-specific work
 stopping short -- a mis-specified baseline, an in-sample exam, a training
 recipe that trained unshuffled on a prompt it never served -- and 0.1.23
-answered again the same way.
+answered again the same way. 0.1.24 then ran the fine-tuning recipe for
+real on a small base model: the adapter learned the house style on cases
+it never saw, and the six defects that run exposed in the harness, the
+serving path and the comparison are fixed and pinned.
 
 **Built**: the pipeline exists end to end — intake (prose, documents, sample
 pairs, role-scoped interview, hardware scan) → fact log with provenance →
 permutation space → seven gates → decide → architect → build (code, evals,
 deploy and ops assets, `RISKS.md`, `COMPLIANCE.md`) → retro and case
 capture. Overrides are honoured on the next run, trigger observations feed
-calibration, and a reviewed case can enter the corpus. 1100+ tests; seven
+calibration, and a reviewed case can enter the corpus. 1110+ tests; seven
 fresh-eyes audit passes, every finding resolved and the fix pinned as a
 regression test; CI gates on the suite, lint, and a sanitisation scan of
 the tree *and its history*; the evidence corpus is anchored to publicly
@@ -571,7 +574,7 @@ Set up as in [Install → from source](#install) (python3.11+), then:
 
 ```bash
 .venv/bin/pip install -e ".[dev,documents]"
-.venv/bin/pytest -q          # 1100+ tests, ~ 70s
+.venv/bin/pytest -q          # 1110+ tests, ~ 70s
 .venv/bin/ruff check src tests
 ```
 

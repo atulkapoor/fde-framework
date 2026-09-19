@@ -615,6 +615,9 @@ def _write_env_example(architecture, deploy: Path) -> None:
             "# model (or endpoint) than the one the system answers with.",
             "JUDGE_ENDPOINT=",
             "JUDGE_MODEL=",
+            "# The judge's own token budget: a reasoning judge needs room to",
+            "# reach its verdict, whatever the author is capped at.",
+            "JUDGE_MAX_TOKENS=1024",
         ]
     else:
         lines += [
@@ -623,6 +626,7 @@ def _write_env_example(architecture, deploy: Path) -> None:
             "# this build's is not, so these stay unset.",
             "# JUDGE_ENDPOINT=",
             "# JUDGE_MODEL=",
+            "# JUDGE_MAX_TOKENS=",
         ]
     from fde.training import trained_components
 

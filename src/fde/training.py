@@ -325,6 +325,9 @@ ROOT = Path(__file__).resolve().parents[1]
 # it will never be served in.
 SERVES_WITH_EVIDENCE = __WITH_EVIDENCE__
 
+# Below this many optimizer steps a run is a smoke test, not a fine-tune.
+MIN_OPTIMIZER_STEPS = 50
+
 HYPERPARAMETERS: dict[str, Any] = {
     "seed": 0,
     "r": 16,
@@ -535,15 +538,30 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--dry-run", action="store_true",
                         help="print the plan and the version; train nothing")
     parser.add_argument("--seed", type=int, default=HYPERPARAMETERS["seed"])
+    parser.add_argument("--grad-accumulation", type=int,
+                        default=HYPERPARAMETERS["grad_accumulation"],
+                        help="examples per optimizer step; lower it on a small corpus")
+    parser.add_argument("--learning-rate", type=float, default=HYPERPARAMETERS["learning_rate"])
     parser.add_argument("--gradient-checkpointing", action="store_true",
                         help="trade compute for memory on a small card")
     args = parser.parse_args(argv)
 
     manifest, pairs = load_split(args.data)
-    hp = {**HYPERPARAMETERS, "epochs": args.epochs, "seed": args.seed}
+    hp = {**HYPERPARAMETERS, "epochs": args.epochs, "seed": args.seed,
+          "grad_accumulation": args.grad_accumulation, "learning_rate": args.learning_rate}
     version = version_of(manifest, args.base_model, hp)
     out_dir = args.out / version
     plan = record(manifest, args.base_model, hp, version, len(pairs))
+    # How many times the weights actually move. Eighteen pairs, three
+    # epochs and an accumulation of eight is seven steps: a run that
+    # cannot teach a style, and it should say so before the GPU is booked.
+    steps = -(-len(pairs) * hp["epochs"] // hp["grad_accumulation"])
+    plan["optimizer_steps"] = steps
+    if steps < MIN_OPTIMIZER_STEPS:
+        print(f"note: {steps} optimizer steps ({len(pairs)} examples x {hp['epochs']} epochs "
+              f"/ accumulation {hp['grad_accumulation']}) -- fewer than {MIN_OPTIMIZER_STEPS} "
+              f"barely moves a model; lower --grad-accumulation or add --epochs",
+              file=sys.stderr)
     if args.dry_run:
         print(json.dumps(plan, indent=2, sort_keys=True))
         return 0
@@ -587,6 +605,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -597,6 +616,11 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def slug(name: str) -> str:
+    """A model name as a file name: 'org/model' once became a directory."""
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", name).strip("_") or "model"
 
 
 def score(model: str, cases: Path, report: Path) -> dict[str, Any]:
@@ -638,8 +662,9 @@ def main(argv: list[str] | None = None) -> int:
         print("the holdout is empty; prepare drew nothing to compare on", file=sys.stderr)
         return 2
 
-    before = score(args.before, holdout, args.out / f"harness-{args.before}.json")
-    after = score(args.after, holdout, args.out / f"harness-{args.after}.json")
+    args.out.mkdir(parents=True, exist_ok=True)
+    before = score(args.before, holdout, args.out / f"harness-{slug(args.before)}.json")
+    after = score(args.after, holdout, args.out / f"harness-{slug(args.after)}.json")
     if before["errors"] or after["errors"]:
         # Both sides erroring on every case once produced delta +0.0% and
         # a green exit: the comparison measured nothing.
@@ -647,6 +672,14 @@ def main(argv: list[str] | None = None) -> int:
               f"could not score every case, so this comparison measured nothing; "
               f"fix the endpoint or the adapter before reading a delta", file=sys.stderr)
         return 2
+    if not before["score"] and not after["score"]:
+        # Zero against zero is not "not worse"; it is a judge, a prompt or
+        # a model that produced no signal, and a green exit here once read
+        # as an adapter cleared to serve.
+        print("no signal: neither the base model nor the adapter scored a single case; "
+              "check the served prompt, the stop sequences and the judge before "
+              "reading anything into this", file=sys.stderr)
+        return 1
     delta = (None if before["score"] is None or after["score"] is None
              else after["score"] - before["score"])
     result = {
@@ -656,7 +689,7 @@ def main(argv: list[str] | None = None) -> int:
         "after": after,
         "delta": delta,
     }
-    (args.out / f"compare-{args.after}.json").write_text(
+    (args.out / f"compare-{slug(args.after)}.json").write_text(
         json.dumps(result, indent=2, sort_keys=True) + "\n")
 
     def show(entry: dict[str, Any]) -> str:
@@ -729,14 +762,18 @@ def load(base_model: str, adapter: Path | None) -> tuple[Any, dict[str, Any]]:
     return tokenizer, models
 
 
-def generate(tokenizer: Any, model: Any, prompt: str, max_tokens: int) -> str:
+def generate(tokenizer: Any, model: Any, prompt: str, max_tokens: int,
+             stop: list[str] | None = None) -> str:
     import torch
 
     ids = tokenizer(prompt, return_tensors="pt")["input_ids"]
     with torch.no_grad():
         out = model.generate(ids, max_new_tokens=max_tokens, do_sample=False,
                              pad_token_id=tokenizer.pad_token_id)
-    return tokenizer.decode(out[0][ids.shape[1]:], skip_special_tokens=True)
+    text = tokenizer.decode(out[0][ids.shape[1]:], skip_special_tokens=True)
+    for marker in stop or ():
+        text = text.split(marker, 1)[0]
+    return text
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -776,9 +813,13 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(prompt, str):
             self._send(400, {"error": "prompt must be a string"})
             return
+        stop = body.get("stop")
+        if isinstance(stop, str):
+            stop = [stop]
         with self.lock:  # one generation at a time on a development box
             text = generate(self.tokenizer, model, prompt,
-                            int(body.get("max_tokens") or 128))
+                            int(body.get("max_tokens") or 128),
+                            stop if isinstance(stop, list) else None)
         self._send(200, {"choices": [{"text": text}]})
 
     def log_message(self, *args: Any) -> None:
