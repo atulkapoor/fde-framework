@@ -47,6 +47,16 @@ SHAPES = {
         data_residency="cannot_leave", hosting="on-prem",
         external_systems=1, human_waiting="yes", query_pattern="lookup",
         recall_span="across_sessions"),
+    # An intent router for a retail bank: a text decision with a labelled
+    # history, role-scoped authority, one outward system, an explanation
+    # owed to someone outside the team. The first industry run found a
+    # lint error in a governance module no other shape emits.
+    "routing": dict(
+        output_shape="decision", input_format="text", corpus_size=13_000,
+        labelled_count=9_999, data_residency="cannot_leave", hosting="customer-vpc",
+        external_systems=1, human_waiting="no", query_pattern="lookup",
+        access_model="role_based", interpretability_required=True, latency_budget_ms=5_000,
+        availability_target="business_hours", operates_after_handover="platform_team"),
 }
 
 
@@ -218,6 +228,7 @@ REALISTIC = {
     "decision": "The bank charged a fee I never agreed to and will not refund it.",
     "freeform": "Which status code says a resource has moved permanently?",
     "assistant": "Remind me what we decided about the deployment window.",
+    "routing": "My card still hasn't arrived after two weeks, what can I do?",
 }
 
 

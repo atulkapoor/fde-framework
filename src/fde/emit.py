@@ -341,7 +341,12 @@ def _write_package(architecture: Architecture, out: Path) -> None:
         "red on purpose. A judged evaluation needs a model; on a build whose\n"
         "data may not leave it runs only on a self-hosted runner labelled\n"
         "`inside-boundary`, never on a hosted one, and its score is not quotable\n"
-        "until `evals/calibrate.py` passes.\n"
+        "until `evals/calibrate.py` passes. The out-of-sample gate is a second\n"
+        "job that runs only on a self-hosted runner holding the engagement's\n"
+        "holdout at the path the repository variable `HOLDOUT_PATH` names; until\n"
+        "then the golden score is the only one CI sees. `fde scorecard <project>\n"
+        "--holdout <file>` measures the same things by hand and writes\n"
+        "`SCORECARD.md`.\n"
         "\n"
         "## The pieces\n"
         "\n"
@@ -1461,7 +1466,10 @@ def _label_set(pairs_path: Path | None) -> list[str]:
             output = next(iter(output.values()))
         if isinstance(output, str) and output.strip():
             counts[output] = counts.get(output, 0) + 1
-    if len(counts) < 2 or len(counts) > 50:
+    # Two labels is a decision; an intent catalogue runs to a few hundred
+    # (a retail bank's is seventy-seven). Past five hundred the outputs are
+    # answers, not labels.
+    if len(counts) < 2 or len(counts) > 500:
         return []
     return [label for label, _ in sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))]
 

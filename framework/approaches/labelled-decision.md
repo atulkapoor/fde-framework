@@ -5,7 +5,6 @@ complexity: 1
 components: [reasoning]
 applies_when: [output_shape == decision and input_format == text]
 avoid_when:
-  - output_shape == decision and labelled_count >= 1000
   - input_format == documents
   - input_format == scanned_documents
 evidence: {case_ids: [churn-scoring], confidence: medium, last_verified: 2026-09-18}

@@ -320,3 +320,20 @@ def test_a_tiny_corpus_keeps_its_edges_in_golden_and_says_so(reg=None):
     suite = build_eval_set(PAIRS)
     assert suite.golden, "four pairs are four cases, not an exam with two layers"
     assert all(e.get("in_sample") for e in suite.edge_case)
+
+
+def test_an_intent_catalogue_is_a_decision_however_many_intents(reg=None):
+    """Seventy-seven support-queue intents over thousands of messages are
+    labels: every value repeats and there are far fewer values than pairs.
+    A cap of five once read them as structured records."""
+    intents = [f"intent_{n}" for n in range(77)]
+    pairs = [{"id": f"m{i}", "input": f"message {i}", "verified": True,
+              "output": {"intent": intents[i % 77]}} for i in range(770)]
+    assert infer_contract(pairs).shape == "decision"
+
+
+def test_one_field_of_unique_values_is_still_a_record(reg=None):
+    pairs = [{"id": f"r{i}", "input": f"doc {i}", "verified": True,
+              "output": {"reference": f"INV-{i:04d}"}} for i in range(40)]
+    assert infer_contract(pairs).shape == "structured"
+

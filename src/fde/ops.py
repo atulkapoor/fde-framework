@@ -593,6 +593,16 @@ def _ci(architecture, out: Path) -> None:
             "        run: python evals/harness.py --min-score 0.0 --report harness-report.json\n"
         )
 
+    holdout_env = ""
+    if _approach(architecture, "evaluation") == "judged":
+        holdout_env = (
+            "        env:\n"
+            "          LLM_ENDPOINT: ${{ vars.LLM_ENDPOINT }}\n"
+            "          LLM_MODEL: ${{ vars.LLM_MODEL }}\n"
+            "          JUDGE_ENDPOINT: ${{ vars.JUDGE_ENDPOINT }}\n"
+            "          JUDGE_MODEL: ${{ vars.JUDGE_MODEL }}\n"
+        )
+
     workflows.joinpath("ci.yml").write_text(
         "name: ci\n"
         "on:\n"
@@ -626,6 +636,30 @@ def _ci(architecture, out: Path) -> None:
         "        with:\n"
         "          name: harness-report\n"
         "          path: harness-report.json\n"
+        "          if-no-files-found: ignore\n"
+        "\n"
+        "  # The out-of-sample gate. The holdout never ships in this repository,\n"
+        "  # so it is scored where it lives: on a self-hosted runner that holds\n"
+        "  # the engagement's artifacts/holdout.jsonl at the path the repository\n"
+        "  # variable HOLDOUT_PATH names. Until that is configured, the lane\n"
+        "  # does not run and the golden layer above is the only score -- an\n"
+        "  # in-sample one wherever the baseline is fitted on it.\n"
+        "  holdout:\n"
+        "    if: ${{ vars.HOLDOUT_PATH != '' }}\n"
+        "    runs-on: [self-hosted, holds-the-exam]\n"
+        "    steps:\n"
+        "      - uses: actions/checkout@v4\n"
+        "      - run: pip install -e .\n"
+        "      - name: Score the holdout\n"
+        f"{holdout_env}"
+        "        run: >-\n"
+        "          python evals/harness.py --cases \"${{ vars.HOLDOUT_PATH }}\"\n"
+        "          --report holdout-report.json\n"
+        "      - uses: actions/upload-artifact@v4\n"
+        "        if: always()\n"
+        "        with:\n"
+        "          name: holdout-report\n"
+        "          path: holdout-report.json\n"
         "          if-no-files-found: ignore\n"
     )
 

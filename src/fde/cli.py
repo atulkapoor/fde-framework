@@ -1872,6 +1872,52 @@ def scan_cmd(
     typer.echo("\nrecorded as detected -- outranks anything stated about this box")
 
 
+@app.command("scorecard")
+def scorecard_cmd(
+    project: Annotated[Path, typer.Argument(
+        help="An emitted project directory (holds evals/ and app/)."
+    )],
+    holdout: Annotated[Path | None, typer.Option(
+        "--holdout",
+        help="The engagement's holdout (fde samples writes <eng>/artifacts/holdout.jsonl): "
+             "the out-of-sample number.",
+    )] = None,
+    min_score: Annotated[float, typer.Option(
+        "--min-score", help="The golden floor the exam is judged at."
+    )] = 0.0,
+    timeout: Annotated[float, typer.Option(
+        "--timeout", help="Seconds one measurement may take; raise it for a judged exam "
+                          "on a local model."
+    )] = 900.0,
+    no_edge: Annotated[bool, typer.Option(
+        "--no-edge", help="Skip booting the service to probe the edge."
+    )] = False,
+) -> None:
+    """Measure production grade: run what the deliverable can prove about
+    itself and write SCORECARD.md beside it.
+
+    Exit 0 when every measured property holds, 1 otherwise. What this build
+    cannot measure is reported as n/a, never counted as held.
+    """
+    from fde.scorecard import score
+
+    if not (project / "evals").is_dir() or not (project / "app").is_dir():
+        typer.echo(f"{project} is not an emitted project (no evals/ and app/)", err=True)
+        raise typer.Exit(1)
+    passthrough = {k: v for k, v in os.environ.items()
+                   if k.startswith(("LLM_", "JUDGE_", "CORPUS_", "FINETUNED_", "BOUNDARY_"))}
+    card = score(project, holdout_path=holdout, min_score=min_score, timeout=timeout,
+                 env=passthrough or None, probe_edge=not no_edge)
+    typer.echo(f"{card.verdict}\n")
+    for row in card.rows:
+        mark = "n/a" if row.holds is None else ("ok " if row.holds else "NO ")
+        typer.echo(f"  {mark} {row.property:32} {row.measured}")
+    typer.echo(f"\nwrote {project / 'SCORECARD.md'}")
+    if card.failing:
+        typer.echo(f"not holding: {', '.join(r.property for r in card.failing)}", err=True)
+        raise typer.Exit(1)
+
+
 @app.command("implement")
 def implement_cmd(
     project: Annotated[Path, typer.Argument(

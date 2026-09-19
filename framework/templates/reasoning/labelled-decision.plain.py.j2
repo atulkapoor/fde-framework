@@ -65,8 +65,15 @@ here up down out all any some such only same xxxx xx
 # steerable by content by construction (repeat a label's strongest cue
 # words often enough and it moves); the exam probes injection framings,
 # not that.
+# A label is matched the way it tokenises: "card_arrival" written into a
+# message is the two cue words "card" and "arrival" joined by an
+# underscore, and an injection that named it once steered a bank's intent
+# router. Any label of two or more words, however joined, is stripped.
 LABEL_PHRASES = tuple(sorted(
-    (re.compile(re.escape(label), re.IGNORECASE) for label in LABELS if " " in label),
+    (re.compile(r"(?<![a-z])" + r"[\s_\-]+".join(map(re.escape, words)) + r"(?![a-z])",
+                re.IGNORECASE)
+     for words in (re.findall(r"[a-z0-9]+", label.lower()) for label in LABELS)
+     if len(words) >= 2),
     key=lambda pattern: -len(pattern.pattern),
 ))
 # Laplace smoothing keeps an unseen token from vetoing a label outright.

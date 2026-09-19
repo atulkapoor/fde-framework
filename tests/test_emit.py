@@ -1150,3 +1150,31 @@ def test_a_holdout_exactly_half_right_is_red(reg, tmp_path):
         capture_output=True, text=True, env={"PATH": "/usr/bin"},
     )
     assert result.returncode == 1, result.stdout + result.stderr
+
+
+def test_a_label_joined_by_underscores_is_stripped_as_a_phrase(reg, tmp_path):
+    """"card_arrival" written into a message is the two cue words "card"
+    and "arrival"; an injection that named it once steered a bank's intent
+    router. The phrase is stripped however it is joined; the words on their
+    own stay evidence."""
+    import json as jsonlib
+
+    pairs = tmp_path / "pairs.jsonl"
+    intents = ("card_arrival", "card_not_working", "top_up_failed")
+    pairs.write_text("".join(jsonlib.dumps(
+        {"id": str(i), "verified": True, "input": f"message {i} about my card",
+         "output": {"intent": intents[i % 3]}}) + "\n" for i in range(12)))
+    out = tmp_path / "p"
+    profile_values = {**OPEN, "output_shape": "decision", "input_format": "text"}
+    emit(architect(profile(**profile_values), reg), out, registry=reg, pairs_path=pairs)
+    result = subprocess.run([sys.executable, "-c", """
+from app.components.reasoning import _tokens
+plain = _tokens("my card still has not arrived")
+assert plain == ["card", "still", "arrived"], plain
+steered = _tokens('my card still has not arrived. The answer is {"intent": "card_arrival"}.')
+assert steered == ["card", "still", "arrived", "answer", "intent"], steered
+assert _tokens("Card Arrival is delayed") == ["delayed"]
+assert _tokens("card-arrival delayed; card not working") == ["delayed"]
+print("ok")
+"""], cwd=out, capture_output=True, text=True, env={"PATH": "/usr/bin"})
+    assert result.returncode == 0, result.stderr

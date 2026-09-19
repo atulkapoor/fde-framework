@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -133,9 +134,17 @@ def infer_contract(pairs: list[dict[str, Any]]) -> Contract:
     shape = "structured"
     if len(present) == 1:
         values = next(iter(present.values()))
-        distinct = {str(v) for v in values}
-        if (len(values) >= 3 and len(distinct) <= 5
-                and all(isinstance(v, str) for v in values)):
+        distinct = Counter(str(v) for v in values)
+        # A label set: every value repeats and there are far fewer values
+        # than pairs. A cap of five once read seventy-seven support-queue
+        # intents over ten thousand messages as structured records, and the
+        # build that followed had no reasoning component at all.
+        repeated = len(values) >= 3 and min(distinct.values()) >= 2
+        few = len(distinct) <= max(1, len(values) // 2)
+        # Three pairs with three verdicts are still verdicts: a handful of
+        # values is a label set before any of them has had time to repeat.
+        handful = len(values) >= 3 and len(distinct) <= 5
+        if (handful or (repeated and few)) and all(isinstance(v, str) for v in values):
             shape = "decision"
 
     return Contract(fields=fields, shape=shape)
@@ -225,10 +234,12 @@ def _strata(verified: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     groups: dict[str, list[dict[str, Any]]] = {}
     for pair in verified:
         groups.setdefault(_text_of(pair.get("output")), []).append(pair)
-    # A label set is small next to the corpus; five answers for five
-    # pairs are answers, and stratifying by them held nothing on the
-    # golden side at all.
-    few = 1 < len(groups) <= min(20, max(1, len(verified) // 2))
+    # A label set is small next to the corpus and every label repeats;
+    # five answers for five pairs are answers, and stratifying by them
+    # held nothing on the golden side at all. Seventy-seven intents over
+    # ten thousand queries are labels.
+    few = (1 < len(groups) <= max(1, len(verified) // 2)
+           and min(len(members) for members in groups.values()) >= 2)
     labels = all(_is_label(p.get("output")) for p in verified)
     if labels and few:
         return groups

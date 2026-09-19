@@ -18,6 +18,8 @@ recognises:
                    classification output, classification model]
   ranking: [rank, prioritise, order by relevance, shortlist]
   decision: [decide each, decide whether, choose an action, schedule, allocate, route to,
+             routed to, route each, routing, triage, assign to a queue, which queue,
+             by intent, intent routing, one of the queues, picks one of,
              output is a decision, decision output, assignments]
 ---
 What comes out decides more than what goes in.
