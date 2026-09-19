@@ -797,13 +797,17 @@ def main(argv: list[str] | None = None) -> int:
               f"could not score every case, so this comparison measured nothing; "
               f"fix the endpoint or the adapter before reading a delta", file=sys.stderr)
         return 2
-    if not before["score"] and not after["score"]:
+    moved = (before.get("form") is not None and after.get("form") is not None
+             and after["form"] != before["form"])
+    if not before["score"] and not after["score"] and not moved:
         # Zero against zero is not "not worse"; it is a judge, a prompt or
         # a model that produced no signal, and a green exit here once read
-        # as an adapter cleared to serve.
-        print("no signal: neither the base model nor the adapter scored a single case; "
-              "check the served prompt, the stop sequences and the judge before "
-              "reading anything into this", file=sys.stderr)
+        # as an adapter cleared to serve. A form score that moved IS a
+        # signal -- the one a style fine-tune is for -- and is recorded
+        # even when the judge saw nothing.
+        print("no signal: neither the base model nor the adapter scored a single case and "
+              "the form score did not move; check the served prompt, the stop sequences "
+              "and the judge before reading anything into this", file=sys.stderr)
         return 1
     n = manifest["holdout"]["cases"]
     if n < MIN_HOLDOUT_CASES and not args.allow_small:
