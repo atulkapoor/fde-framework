@@ -45,7 +45,10 @@ Production grade, measured, and a first industry use case run end to end.
   the loop's check was the harness alone, so a round could leave a lint
   error behind a green exam: the deliverable's own tests -- now including
   lint wherever ruff is installed -- run first, as the floor beneath the
-  harness.
+  harness. Under the corrected gate the loop finished green in two rounds,
+  and `fde scorecard` reports 17 of 17 measured properties holding: golden
+  95.4% in-sample, holdout 81.3% on 3,036 cases never shipped, 80.2% on
+  the vendor's own 3,079-case test split, every adversarial probe passed.
 
 ## [0.1.25] — 2026-09-19
 
