@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -428,7 +429,7 @@ def test_the_service_carries_a_request_id_on_every_answer(emission):
         code, body, headers = post(b"[" * 5000)
         assert code == 400, (code, body)
         code, body, headers = post(jsonlib.dumps(REALISTIC[shape]).encode())
-        assert code in (200, 500, 503), (code, body)
+        assert code in (200, 501, 503), (code, body)
         assert "request_id" in body and "detail" not in body, body
     finally:
         proc.terminate()
@@ -1458,3 +1459,65 @@ def test_a_steer_that_matches_a_misread_base_is_not_a_followed_injection(labelle
     assert failure["misread"] is True and failure["followed"] is False
     assert failure["coincides_with_steer"] is True
     assert "0 injection(s) followed" in result.stderr, result.stderr
+
+
+def test_the_baseline_abstains_rather_than_route_a_greeting(labelled):
+    """A greeting, gibberish, a message in another language once went to
+    the commonest queue at a 0.02-nat margin. Below the abstain margin the
+    baseline answers `unknown`, says it abstained, and a routed answer
+    says why: the top labels and the tokens that carried it."""
+    result = run_in(labelled, """
+from app.pipeline import run_envelope
+vague = run_envelope("hello there, how are you today?")
+assert vague["decision"] == "unknown" and vague["abstained"] is True, vague["decision"]
+assert vague["decided_by"] == "abstained"
+routed = run_envelope("I was charged twice on my account statement, ticket 4471.")
+assert routed["decision"] == "refund" and routed["abstained"] is False, routed["decision"]
+assert routed["why"] and routed["top"][0]["label"] == "refund", routed["why"]
+assert routed["margin"] is not None
+print("ok")
+""")
+    assert result.returncode == 0, result.stderr
+    off = run_in(labelled, """
+from app.pipeline import run_envelope
+vague = run_envelope("hello there, how are you today?")
+assert vague["abstained"] is False and vague["decision"] in ("refund", "escalate", "reply")
+print("ok")
+""", env={"ABSTAIN_MARGIN": "0"})
+    assert off.returncode == 0, off.stderr
+
+
+def test_the_response_and_the_journal_say_why(labelled, tmp_path):
+    """The brief's one explainability requirement, delivered on both
+    surfaces: the response carries the top labels, the margin and the
+    carrying tokens; the journal line carries the decision and the margin."""
+    port = "18994"
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "app.service"], cwd=labelled,
+        env={"PATH": "/usr/bin", "PORT": port, "AUTH_TOKEN": "t", "GRANTED_SCOPES": "x",
+             "STATE_DIR": str(tmp_path / "state")},
+        stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
+    )
+    import urllib.request
+    try:
+        for _ in range(100):
+            try:
+                urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=1)
+                break
+            except Exception:  # noqa: BLE001 - booting
+                time.sleep(0.1)
+        request = urllib.request.Request(
+            f"http://127.0.0.1:{port}/",
+            data=b'"I was charged twice on my account statement, ticket 4471."',
+            headers={"Content-Type": "application/json", "Authorization": "Bearer t"})
+        with urllib.request.urlopen(request, timeout=10) as response:
+            body = json.loads(response.read())
+        assert body["result"] == "refund" and body["decided_by"] == "baseline"
+        assert body["why"] and body["top"][0]["label"] == "refund" and "margin" in body
+    finally:
+        proc.terminate()
+        _, err = proc.communicate(timeout=10)
+    answered = [json.loads(line) for line in err.splitlines()
+                if line.startswith("{") and '"answered"' in line]
+    assert answered and answered[-1]["decision"] == "refund"
+    assert answered[-1]["margin"] is not None and answered[-1]["why"]

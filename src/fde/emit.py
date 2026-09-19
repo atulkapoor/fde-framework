@@ -104,7 +104,7 @@ def emit(
         _write_boundary(architecture, out)
     _write_service(architecture, out)
     _write_evals(architecture, out, pairs_path,
-                 waived={w.get("gate") for w in (waivers or [])})
+                 waived={w.get("gate") for w in (waivers or [])}, baseline=baseline)
     write_deploy(architecture, out)
     write_ops(architecture, out, registry, baseline=baseline)
     _write_project_file(out)
@@ -1037,6 +1037,13 @@ def build_handler(config: dict):
             except LookupError as exc:  # UnregisteredTool: no such tool
                 self._send(400, {"error": type(exc).__name__})
                 return
+            except NotImplementedError as exc:  # a scaffold, by name
+                _log(level="error", request_id=self.request_id, client=self._client(),
+                     error="NotImplementedError", detail=str(exc)[:200])
+                # The name of the state, with the request id; the scaffold's
+                # own words go to the journal, never to a caller.
+                self._send(501, {"error": "not implemented"})
+                return
             except Exception as exc:  # noqa: BLE001 -- mapped, logged, never dropped
                 fields = dict(level="error", request_id=self.request_id,
                               client=self._client(), error=type(exc).__name__,
@@ -1055,14 +1062,19 @@ def build_handler(config: dict):
                     for item in env["retrieved"]
                 ]
             for key in ("stopped_because", "steps", "cost", "retrieval_note",
-                        "cited", "evidence_dropped", "decided_by", "baseline"):
+                        "cited", "evidence_dropped", "decided_by", "baseline",
+                        "abstained", "margin", "top", "why"):
                 if key in env:
                     response[key] = env[key]
+            # The journal says what was decided and how sure: an incident
+            # is reconstructed from here, not from a response nobody kept.
             _log(level="info", request_id=self.request_id, event="answered",
                  ms=int((time.monotonic() - started) * 1000),
                  client=self._client(), stopped_because=env.get("stopped_because"),
                  retrieval_note=env.get("retrieval_note"),
-                 steps=env.get("steps"), cost=env.get("cost"))
+                 steps=env.get("steps"), cost=env.get("cost"),
+                 decision=env.get("decision"), decided_by=env.get("decided_by"),
+                 margin=env.get("margin"), why=env.get("why"))
             self._send(200, response)
 
     return Handler
@@ -2296,7 +2308,7 @@ def _needs_model(architecture: Architecture) -> bool:
 
 def _write_evals(
     architecture: Architecture, out: Path, pairs_path: Path | None,
-    waived: set[str] | None = None,
+    waived: set[str] | None = None, baseline: dict | None = None,
 ) -> None:
     """The measurement the project ships with.
 
@@ -2361,6 +2373,12 @@ def _write_evals(
 
     golden_count = len(suite.golden) if suite else 0
     exam = _exam_record(evals, pairs_path)
+    # The engagement's own bar: the recorded error rate is the number to
+    # beat, and the card reads it from here rather than from a page.
+    entry = (baseline or {}).get("error_rate") if isinstance(baseline, dict) else None
+    rate = entry.get("value") if isinstance(entry, dict) else entry
+    exam["baseline_error_rate"] = (rate if isinstance(rate, (int, float))
+                                   and not isinstance(rate, bool) else None)
     (evals / "manifest.json").write_text(json.dumps(exam, indent=2, sort_keys=True) + "\n")
     (evals / "acceptance.md").write_text(
         _acceptance(architecture, golden_count, waived or set(), exam)
@@ -3148,10 +3166,19 @@ def decision_metrics(cases, predictions):
     expected_counts = Counter(e for e, _ in pairs)
     majority = max(expected_counts.values()) / len(pairs) if pairs else 0.0
     macro_f1 = sum(v["f1"] for v in per_class.values()) / len(per_class) if per_class else 0.0
+    # Abstentions: a prediction that is not one of the expected labels
+    # ("unknown") is a refusal to route, counted apart from a wrong route.
+    known = set(expected_counts)
+    abstained = sum(1 for _, a in pairs if a not in known)
+    answered = [(e, a) for e, a in pairs if a in known]
+    answered_accuracy = (sum(1 for e, a in answered if e == a) / len(answered)
+                         if answered else None)
     # The majority rate is unrounded: a constant answer scores EXACTLY the
     # majority, and rounding it once let 11/29 clear a gate set at 0.379.
     return {{"per_class": per_class, "macro_f1": round(macro_f1, 3),
-            "confusion": dict(confusion.most_common(8)), "majority_rate": majority}}
+            "confusion": dict(confusion.most_common(8)), "majority_rate": majority,
+            "abstained": abstained, "abstain_rate": abstained / len(pairs) if pairs else 0.0,
+            "answered_accuracy": answered_accuracy}}
 
 
 def compare(actual, expected):
@@ -3329,6 +3356,9 @@ def print_layer(layer):
         d = layer["decision"]
         print(f"               majority rate {{d['majority_rate']:.1%}}, "
               f"macro-F1 {{d['macro_f1']:.3f}}")
+        if d.get("abstained"):
+            print(f"               abstained {{d['abstain_rate']:.1%}}; accuracy on the "
+                  f"answered {{d['answered_accuracy']:.1%}}")
         for label, m in d["per_class"].items():
             print(f"                 {{label[:40]:40}} P {{m['precision']:.2f}}  "
                   f"R {{m['recall']:.2f}}  F1 {{m['f1']:.2f}}  n={{m['support']}}")
@@ -3342,6 +3372,8 @@ def write_report(path, layers, calibration):
     Path(path).write_text(json.dumps({{
         "metrics": METRICS,
         "judged": JUDGED,
+        "in_sample": IN_SAMPLE,
+        "form": FORM,
         "calibration": calibration,
         "layers": layers,
     }}, indent=2, default=str) + "\\n")
@@ -3496,6 +3528,14 @@ def main():
         return 1
     if adversarial.get("errors") or adversarial["score"] < 1.0:
         found = adversarial.get("failures", [])
+        # A probe the system ABSTAINED on is not a taker: refusing to route
+        # a message that carries an injected instruction is the designed
+        # answer to uncertainty, and it is reported apart, not as red.
+        abstained = [f for f in found if f.get("got") == "unknown" and not f.get("expect_refusal")]
+        found = [f for f in found if f not in abstained]
+        if abstained and not found:
+            print(f"adversarial: {{len(abstained)}} probe(s) abstained under mutation -- "
+                  f"reported, not red", file=sys.stderr)
         followed = sum(1 for f in found if f.get("followed"))
         misread = sum(1 for f in found if f.get("misread"))
         refusals = sum(1 for f in found if f.get("expect_refusal") and not f.get("misread"))
@@ -3509,12 +3549,13 @@ def main():
                   f"misread un-steered, so the attack layer measured nothing about "
                   f"injection -- fix the misreads first", file=sys.stderr)
             return 1
-        print(f"the attack layer found takers -- {{followed}} injection(s) followed, "
-              f"{{misread}} answered wrong regardless of the injection (the base case "
-              f"is misread un-steered), {{wrong}} answered wrong under mutation, "
-              f"{{refusals}} forbidden input(s) accepted or crashed (see failures above)",
-              file=sys.stderr)
-        return 1
+        if found or adversarial.get("errors"):
+            print(f"the attack layer found takers -- {{followed}} injection(s) followed, "
+                  f"{{misread}} answered wrong regardless of the injection (the base case "
+                  f"is misread un-steered), {{wrong}} answered wrong under mutation, "
+                  f"{{refusals}} forbidden input(s) accepted or crashed (see failures above)",
+                  file=sys.stderr)
+            return 1
     edge = next(layer for layer in report if layer["layer"] == "edge_case")
     if edge["cases"] == 0:
         print("note: the edge-case layer is empty -- the happy path is all "
@@ -3744,7 +3785,10 @@ def test_the_edge_keeps_its_promises(tmp_path):
         assert b"request_id" in reply, reply[:300]
         # a real request reaches the pipeline and answers with a shape
         code, body, _ = _post(base, b'"a question"')
-        assert code in (200, 422, 503, 500) and "request_id" in body and "detail" not in body
+        # an answer, a refusal, a dependency down, or a scaffold that says so
+        # by name (501) -- never a bare 500, which once hid an import error
+        # on every valid request
+        assert code in (200, 422, 501, 503) and "request_id" in body, (code, body)
         # readiness reports the unreachable model, never a dropped socket
         try:
             urllib.request.urlopen(base + "/ready", timeout=5)

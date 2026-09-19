@@ -630,6 +630,16 @@ def _write_env_example(architecture, deploy: Path) -> None:
         ]
     from fde.training import trained_components
 
+    reasoning = architecture.decisions.get("reasoning")
+    if reasoning is not None and reasoning.approach == "labelled-decision":
+        lines += [
+            "",
+            "# The fitted baseline abstains below this top-two margin (nats) and",
+            "# answers `unknown`; the abstained share is measured beside the score.",
+            "# 0 disables. A greeting or a message in another language once went",
+            "# to the commonest queue at a 0.02-nat margin.",
+            "ABSTAIN_MARGIN=0.5",
+        ]
     if trained_components(architecture):
         lines += [
             "",

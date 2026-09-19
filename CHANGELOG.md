@@ -5,6 +5,45 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.27] — 2026-09-19
+
+The ninth pass reproduced every number 0.1.26 printed and showed what
+they hid: the scorecard measured self-consistency, not fitness, and the
+banking deliverable routed a greeting to the commonest queue with a
+0.02-nat margin. Each finding is a check before it is a fix.
+
+- **The scorecard has fitness rows.** A generalisation-gap row (golden
+  in-sample minus holdout, capped at twenty points); an external-exam row
+  (`--external <jsonl>`, a second out-of-sample set nobody at the
+  engagement chose -- the row a component that memorises the golden and
+  holdout files cannot pass); a "beats the baseline error rate" row read
+  from the engagement's recorded baseline; a valid request through the
+  edge, and whether the answer says why; readiness judged where nothing
+  external is needed; a regression row against the last card; floors on
+  the edge and adversarial layers. The card says which rows are fitness
+  and which are self-consistency, and that the service was booted on the
+  measuring machine, not in the unit.
+- **The baseline abstains and explains.** Below a top-two margin
+  (`ABSTAIN_MARGIN`, default 0.5 nats) the labelled-decision baseline
+  answers `unknown` and says it abstained; the harness reports the
+  abstained share and the accuracy on what was answered; every routed
+  answer carries the top labels with scores, the margin and the tokens
+  that carried it, in the response and in the journal. A build with no
+  model seam no longer turns every valid request into a 500 when a model
+  endpoint sits in its environment. A scaffold answers 501 by name, never
+  a bare 500.
+- **A label is stripped only where it is dictated.** Quoted, braced, or
+  after an instruction cue. Stripping every occurrence cost two points on
+  real customers who were stating the intent in their own words.
+- **The loop's fence covers the tests and the contract.** An agent that
+  deleted the lint test and hollowed out `app/contract.py` once reported
+  green with no violation. The shipped baseline's holdout is measured
+  before any round, and a round that lands below it is refused: it
+  traded generalisation for the exam.
+- **The decision shape survives one rare label.** Nine in ten pairs
+  carrying a repeated value is a label set; a singleton intent is learned
+  from, never held out. A definition that says "stated" is marked stated.
+
 ## [0.1.26] — 2026-09-19
 
 Production grade, measured, and a first industry use case run end to end.

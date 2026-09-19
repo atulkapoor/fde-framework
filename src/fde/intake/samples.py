@@ -139,7 +139,10 @@ def infer_contract(pairs: list[dict[str, Any]]) -> Contract:
         # than pairs. A cap of five once read seventy-seven support-queue
         # intents over ten thousand messages as structured records, and the
         # build that followed had no reasoning component at all.
-        repeated = len(values) >= 3 and min(distinct.values()) >= 2
+        # Nine in ten pairs carry a value that repeats: one intent seen
+        # once must not turn seventy-six repeating ones back into records.
+        repeating = sum(c for c in distinct.values() if c >= 2)
+        repeated = len(values) >= 3 and repeating / len(values) >= 0.9
         few = len(distinct) <= max(1, len(values) // 2)
         # Three pairs with three verdicts are still verdicts: a handful of
         # values is a label set before any of them has had time to repeat.
@@ -196,13 +199,15 @@ def split_pairs(
     golden_ids: list[str] = []
     holdout_ids: list[str] = []
     strata = _strata(verified)
-    for members in strata.values():
+    for label, members in strata.items():
         ranked = sorted(members, key=lambda p: _stable_hash(f"{seed}:{p['id']}"))
         cut = int(len(ranked) * (1 - holdout))
         if len(strata) > 1:
             # A label with one example is an example to learn from, not
             # to hold out: golden sees every label the corpus has.
             cut = max(cut, 1)
+        if label == "__singletons__":
+            cut = len(ranked)
         golden_ids += [p["id"] for p in ranked[:cut]]
         holdout_ids += [p["id"] for p in ranked[cut:]]
     order = {p["id"]: n for n, p in enumerate(verified)}
@@ -238,11 +243,18 @@ def _strata(verified: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     # five answers for five pairs are answers, and stratifying by them
     # held nothing on the golden side at all. Seventy-seven intents over
     # ten thousand queries are labels.
+    repeating = sum(len(m) for m in groups.values() if len(m) >= 2)
     few = (1 < len(groups) <= max(1, len(verified) // 2)
-           and min(len(members) for members in groups.values()) >= 2)
+           and repeating / max(1, len(verified)) >= 0.9)
     labels = all(_is_label(p.get("output")) for p in verified)
     if labels and few:
-        return groups
+        # A label seen once is an example to learn from, not to hold out:
+        # singletons ride with golden, under one stratum of their own.
+        strata = {label: m for label, m in groups.items() if len(m) >= 2}
+        singletons = [p for m in groups.values() if len(m) == 1 for p in m]
+        if singletons:
+            strata["__singletons__"] = singletons
+        return strata
     return {"all": verified}
 
 

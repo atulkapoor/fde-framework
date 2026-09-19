@@ -35,8 +35,11 @@ from pathlib import Path
 # what was decided. Globs, resolved at start.
 PROTECTED = (
     "evals/*",
+    "tests/*",
     "app/boundary.py",
     "app/controls.py",
+    "app/contract.py",
+    "pyproject.toml",
     "ARCHITECTURE.md",
     "RISKS.md",
     "COMPLIANCE.md",
@@ -96,6 +99,29 @@ def _protected_files(project: Path) -> list[Path]:
 
 def _digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _holdout_score(project: Path, holdout: Path | str, timeout: float) -> float | None:
+    """The harness's own holdout score for the project as it stands, read
+    from a report the harness writes; None when it cannot be measured."""
+    import tempfile
+
+    harness = project / "evals" / "harness.py"
+    if not harness.exists():
+        return None
+    with tempfile.TemporaryDirectory() as scratch:
+        report = Path(scratch) / "holdout.json"
+        try:
+            subprocess.run(
+                [sys.executable, "evals/harness.py", "--cases", str(Path(holdout).resolve()),
+                 "--report", str(report), "--allow-uncalibrated"],
+                cwd=project, capture_output=True, text=True, timeout=timeout,
+            )
+            layer = json.loads(report.read_text())["layers"][0]
+        except (subprocess.TimeoutExpired, OSError, ValueError, KeyError, IndexError):
+            return None
+    score = layer.get("score")
+    return float(score) if isinstance(score, (int, float)) else None
 
 
 def _without_bar(check: str | None) -> str | None:
@@ -297,6 +323,11 @@ def run_loop(
         lambda prompt: _run_agent(project, agent_cmd, prompt, agent_timeout))
     rounds: list[Round] = []
 
+    # The shipped baseline's own holdout score, measured before any round:
+    # a round that clears the golden bar and lands BELOW it has traded
+    # generalisation for the exam, whatever the harness's floor says.
+    baseline_holdout = _holdout_score(project, holdout, check_timeout) if holdout else None
+
     def green_report(number: int, tail: str) -> ImplementReport:
         if holdout is not None:
             # The holdout is scored against the harness's own holdout gate
@@ -317,7 +348,20 @@ def run_loop(
                                               "finished; not accepting this"))
                 return ImplementReport(rounds, done=False,
                                        stopped_by="holdout red")
+            achieved = _holdout_score(project, holdout, check_timeout)
+            if (baseline_holdout is not None and achieved is not None
+                    and achieved < baseline_holdout - 0.005):
+                rounds.append(Round(number, False, held_tail,
+                                    violation=f"the holdout fell from the shipped baseline's "
+                                              f"{baseline_holdout:.1%} to {achieved:.1%}: "
+                                              f"the round traded generalisation for the "
+                                              f"exam; not accepting this"))
+                return ImplementReport(rounds, done=False, stopped_by="holdout below baseline")
             tail += "\nholdout: green (cases the implementer never saw)"
+            if achieved is not None:
+                tail += f" -- {achieved:.1%}"
+                if baseline_holdout is not None:
+                    tail += f" (shipped baseline {baseline_holdout:.1%})"
             tail += _holdout_provenance(project, Path(holdout))
         rounds.append(Round(number, True, tail))
         provisional = ((project / "evals" / "calibrate.py").exists()

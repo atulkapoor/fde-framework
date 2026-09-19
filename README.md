@@ -125,14 +125,19 @@ it never saw, and the six defects that run exposed in the harness, the
 serving path and the comparison are fixed and pinned. An eighth pass gave
 the decision shape its first sign-off, with conditions, and 0.1.25 met
 them: probes on typical cases, label phrases rather than words, a merge
-path that trains, a comparison that says what it can claim.
+path that trains, a comparison that says what it can claim. A ninth pass
+read the first industry run and the scorecard that measured it, and found
+the card measuring self-consistency rather than fitness; 0.1.27 gave it
+fitness rows -- the generalisation gap, an external exam a memoriser cannot
+pass, the engagement's own error-rate bar -- and gave the routed decision
+an abstain path and a reason on every answer.
 
 **Built**: the pipeline exists end to end — intake (prose, documents, sample
 pairs, role-scoped interview, hardware scan) → fact log with provenance →
 permutation space → seven gates → decide → architect → build (code, evals,
 deploy and ops assets, `RISKS.md`, `COMPLIANCE.md`) → retro and case
 capture. Overrides are honoured on the next run, trigger observations feed
-calibration, and a reviewed case can enter the corpus. 1150+ tests; eight
+calibration, and a reviewed case can enter the corpus. 1160+ tests; nine
 fresh-eyes audit passes, every finding resolved and the fix pinned as a
 regression test; CI gates on the suite, lint, and a sanitisation scan of
 the tree *and its history*; the evidence corpus is anchored to publicly
@@ -316,9 +321,10 @@ its CI runs. Eight independent audit passes took it from "every request
 500s" to a sign-off with conditions on the decision shape. A quality finding lands there as a check before
 it lands anywhere as a fix ([`tests/test_acceptance.py`](tests/test_acceptance.py),
 [`tests/test_finetune.py`](tests/test_finetune.py)). And the claim is
-measurable per build: `fde scorecard <project> --holdout <file>` runs what
-the deliverable can prove about itself and writes `SCORECARD.md` with a
-verdict that is a count of rows, never an adjective.
+measurable per build: `fde scorecard <project> --holdout <file> --external
+<file>` runs what the deliverable can prove about itself and writes
+`SCORECARD.md` with a verdict that is a count of rows, never an adjective,
+and says which rows measure fitness and which measure self-consistency.
 
 ## The full lifecycle, copy-paste
 
@@ -582,7 +588,7 @@ Set up as in [Install → from source](#install) (python3.11+), then:
 
 ```bash
 .venv/bin/pip install -e ".[dev,documents]"
-.venv/bin/pytest -q          # 1150+ tests, ~ 90s
+.venv/bin/pytest -q          # 1160+ tests, ~ 100s
 .venv/bin/ruff check src tests
 ```
 

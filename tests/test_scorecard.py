@@ -133,3 +133,103 @@ def test_what_cannot_be_measured_is_not_counted(labelled):
     assert rows["holdout"].holds is None
     assert all(r.holds is not None for r in card.measured)
     assert len(card.measured) < len(card.rows)
+
+
+# --- the ninth pass: fitness rows, not self-consistency -----------------
+
+
+def memoriser(out: Path, *files: Path) -> None:
+    """A component that answers from a lookup over every file it is given
+    -- golden, edge, adversarial and the holdout the harness hands it --
+    and the majority label otherwise. It scored 17 of 17 once."""
+    listing = ", ".join(repr(str(f)) for f in files)
+    (out / "app" / "components" / "reasoning.py").write_text(
+        "import json\n"
+        "from pathlib import Path\n"
+        f"FILES = [{listing}]\n"
+        "TABLE = {}\n"
+        "for name in FILES:\n"
+        "    for line in Path(name).read_text().splitlines():\n"
+        "        if line.strip():\n"
+        "            case = json.loads(line)\n"
+        "            out = case.get('output')\n"
+        "            if isinstance(case.get('input'), str) and isinstance(out, dict):\n"
+        "                TABLE[case['input']] = next(iter(out.values()))\n\n\n"
+        "class Reasoning:\n"
+        "    def run(self, payload):\n"
+        "        text = payload.get('text') or ''\n"
+        "        return {**payload, 'decision': TABLE.get(text, 'refund')}\n"
+    )
+
+
+def test_a_memoriser_is_caught_by_the_external_exam(labelled, tmp_path):
+    out = tmp_path / "memoriser"
+    shutil.copytree(labelled, out, ignore=shutil.ignore_patterns("__pycache__"))
+    holdout = pairs_file(tmp_path / "holdout.jsonl", n=36, offset=500)
+    external = pairs_file(tmp_path / "external.jsonl", n=36, offset=900)
+    memoriser(out, *(out / "evals" / f"{n}.jsonl" for n in ("golden", "edge_case", "adversarial")),
+              holdout)
+    card = score(out, holdout_path=holdout, external_path=external, timeout=300,
+                 probe_edge=False)
+    rows = rows_of(card)
+    assert rows["exam: golden"].holds is True and rows["holdout"].holds is True
+    assert rows["external exam"].holds is False, rows["external exam"].measured
+    assert rows["generalisation gap"].holds is True  # memorised both sides: the gap is silent
+    assert any(r.property == "external exam" for r in card.failing)
+
+
+def test_a_golden_only_memoriser_is_caught_by_the_gap(labelled, tmp_path):
+    out = tmp_path / "golden-memoriser"
+    shutil.copytree(labelled, out, ignore=shutil.ignore_patterns("__pycache__"))
+    holdout = pairs_file(tmp_path / "holdout.jsonl", n=36, offset=500)
+    memoriser(out, out / "evals" / "golden.jsonl", out / "evals" / "edge_case.jsonl",
+              out / "evals" / "adversarial.jsonl")
+    card = score(out, holdout_path=holdout, timeout=300, probe_edge=False)
+    rows = rows_of(card)
+    assert rows["exam: golden"].holds is True
+    assert rows["generalisation gap"].holds is False, rows["generalisation gap"].measured
+
+
+def test_a_valid_request_and_the_reason_are_on_the_card(labelled):
+    card = score(labelled, timeout=300)
+    rows = rows_of(card)
+    assert rows["edge: a valid request"].holds is True, rows["edge: a valid request"].measured
+    assert rows["edge: the answer says why"].holds is True
+    assert rows["edge: readiness"].holds is True  # no model seam: judged, not merely reported
+
+
+def test_the_baseline_error_rate_is_the_bar_when_recorded(tmp_path):
+    reg = load_registry(FRAMEWORK)
+    out = tmp_path / "barred"
+    pairs = pairs_file(tmp_path / "pairs.jsonl")
+    profile = Profile()
+    profile.ingest([Fact(k, v, Provenance.ARTIFACT) for k, v in dict(
+        output_shape="decision", input_format="text", corpus_size=5_000,
+        data_residency="may_leave", hosting="customer-vpc", external_systems=3,
+        human_waiting="no", query_pattern="lookup", recall_span="within_turn").items()])
+    baseline = {"error_rate": {"value": 0.02, "unit": "share",
+                               "definition": "first-pass errors (measured on 200 cases)"}}
+    emit(architect(profile, reg), out, registry=reg, pairs_path=pairs, baseline=baseline)
+    manifest = json.loads((out / "evals" / "manifest.json").read_text())
+    assert manifest["baseline_error_rate"] == 0.02
+    holdout = pairs_file(tmp_path / "holdout.jsonl", n=36, offset=500)
+    card = score(out, holdout_path=holdout, timeout=300, probe_edge=False)
+    rows = rows_of(card)
+    assert "beats the baseline error rate" in rows
+    assert "98.0%" in rows["beats the baseline error rate"].measured
+
+
+def test_a_regression_from_the_last_card_is_named(labelled, tmp_path):
+    out = tmp_path / "regressed"
+    shutil.copytree(labelled, out, ignore=shutil.ignore_patterns("__pycache__"))
+    (out / "scorecard.json").unlink(missing_ok=True)  # an earlier test's card came along
+    first = score(out, timeout=300, probe_edge=False)
+    assert rows_of(first)["regression from the last card"].holds is None
+    (out / "app" / "components" / "reasoning.py").write_text(
+        "class Reasoning:\n"
+        "    def run(self, payload):\n"
+        "        return {**payload, 'decision': 'refund'}\n"
+    )
+    second = score(out, timeout=300, probe_edge=False)
+    row = rows_of(second)["regression from the last card"]
+    assert row.holds is False and "exam: golden" in row.measured

@@ -79,6 +79,23 @@ LABEL_PHRASES = tuple(sorted(
 # Laplace smoothing keeps an unseen token from vetoing a label outright.
 SMOOTHING = 1.0
 MIN_TEXT_CHARS = 8
+# Below this top-two margin (in nats) the baseline abstains instead of
+# routing: a greeting, a message in another language, gibberish, all once
+# went to the commonest queue at a 0.02-nat margin while correct routes sat
+# at a median of 7.85. ABSTAIN_MARGIN overrides; 0 disables. The abstained
+# share and the accuracy on what was answered are both measured.
+ABSTAIN_LABEL = "unknown"
+DEFAULT_ABSTAIN_MARGIN = 0.5
+# A label phrase is stripped only where it is being DICTATED: inside quotes,
+# braces or brackets, or after an instruction cue. A customer who writes
+# "exchange rate" is stating the intent; stripping it there cost two points
+# on real messages.
+INSTRUCTION_CUE = re.compile(
+    r"(?:answer is|answer:|ignore|disregard|instruction|output|reply with|respond with|"
+    r"route (?:this|it|to)|classify|label(?:led)? as|intent[\"']?\s*[:=]|decision[\"']?\s*[:=])"
+    r"[^.]{0,60}$",
+    re.IGNORECASE,
+)
 
 
 class NotALabel(RefusedInput):
@@ -93,10 +110,30 @@ class ExamChanged(RuntimeError):
     """The golden file is not the one the build recorded."""
 
 
-def _tokens(text: str) -> list[str]:
+def _strip_dictated_labels(text: str) -> str:
+    def framed(match: re.Match) -> str:
+        before = text[max(0, match.start() - 80):match.start()]
+        after = text[match.end():match.end() + 2]
+        wrapped = (before.rstrip().endswith(('"', "'", "{", "[", ":"))
+                   or after[:1] in ('"', "'", "}", "]"))
+        return " " if wrapped or INSTRUCTION_CUE.search(before) else match.group(0)
+
     for phrase in LABEL_PHRASES:
-        text = phrase.sub(" ", text)
+        text = phrase.sub(framed, text)
+    return text
+
+
+def _tokens(text: str) -> list[str]:
+    text = _strip_dictated_labels(text)
     return [t for t in TOKEN.findall(text.lower()) if t not in STOPWORDS]
+
+
+def abstain_margin() -> float:
+    raw = os.environ.get("ABSTAIN_MARGIN", "").strip()
+    try:
+        return float(raw) if raw else DEFAULT_ABSTAIN_MARGIN
+    except ValueError:
+        return DEFAULT_ABSTAIN_MARGIN
 
 
 def _label_of(output: Any) -> str | None:
@@ -214,6 +251,30 @@ class {{ class_name }}:
         best = max(LABELS, key=lambda label: (ranked[label], -LABELS.index(label)))
         return best, ranked
 
+    @staticmethod
+    def margin(ranked: dict[str, float]) -> float:
+        """The gap between the best and the second label, in nats."""
+        top = sorted(ranked.values(), reverse=True)
+        return (top[0] - top[1]) if len(top) > 1 else float("inf")
+
+    def why(self, text: str, chosen: str, ranked: dict[str, float], n: int = 5) -> list[str]:
+        """The tokens that carried the decision: those that separate the
+        chosen label from the runner-up most, in order."""
+        if not self._prior or chosen not in ranked:
+            return []
+        others = [label for label in LABELS if label != chosen]
+        if not others:
+            return []
+        runner_up = max(others, key=lambda label: ranked[label])
+        present = Counter(t for t in _tokens(text) if t in self._vocabulary)
+        pull = {
+            token: count * (self._log_prob[chosen].get(token, self._unseen[chosen])
+                            - self._log_prob[runner_up].get(token, self._unseen[runner_up]))
+            for token, count in present.items()
+        }
+        return [token for token, weight in sorted(pull.items(), key=lambda kv: -kv[1])
+                if weight > 0][:n]
+
     # -- the model seam -------------------------------------------------------
 
     def decide_with_model(self, text: str) -> str | None:
@@ -221,7 +282,13 @@ class {{ class_name }}:
         no model is configured or it named anything else."""
         if not (os.environ.get("LLM_ENDPOINT") or os.environ.get("ANTHROPIC_API_KEY")):
             return None
-        from app.llm import complete
+        try:
+            from app.llm import complete
+        except ImportError:
+            # A build with no model seam ignores a model endpoint in its
+            # environment; importing one that is not there once turned
+            # every valid request into a 500.
+            return None
 
         options = "\n".join(f"- {label}" for label in LABELS)
         reply = complete(
@@ -257,16 +324,27 @@ class {{ class_name }}:
         if not isinstance(text, str) or len(text.strip()) < MIN_TEXT_CHARS:
             raise RefusedInput("nothing to decide on: no text, or too little of it")
         baseline, ranked = self.decide(text)
-        by_model = self.decide_with_model(text)
-        chosen = by_model or baseline
-        if chosen not in LABELS:
+        margin = self.margin(ranked)
+        threshold = abstain_margin()
+        abstained = bool(self.fitted_on and threshold > 0 and margin < threshold)
+        by_model = None if abstained else self.decide_with_model(text)
+        chosen = ABSTAIN_LABEL if abstained else (by_model or baseline)
+        if not abstained and chosen not in LABELS:
             raise NotALabel(f"{chosen!r} is not one of the {len(LABELS)} labels")
+        top = sorted(ranked.items(), key=lambda kv: -kv[1])[:3]
         return {
             **payload,
             "decision": chosen,
-            "decided_by": "model" if by_model is not None else "baseline",
+            "decided_by": ("abstained" if abstained
+                           else "model" if by_model is not None else "baseline"),
+            "abstained": abstained,
+            "margin": round(margin, 4) if margin != float("inf") else None,
             "model_agreed": (by_model == baseline) if by_model is not None else None,
             "baseline": baseline,
+            # Why: the top labels with their scores and the tokens that
+            # carried the choice -- the route says why on every answer.
+            "top": [{"label": label, "score": round(score, 4)} for label, score in top],
+            "why": self.why(text, baseline, ranked),
             "scores": {label: round(score, 4) for label, score in ranked.items()},
             "fitted_on": self.fitted_on,
         }

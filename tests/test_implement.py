@@ -369,3 +369,65 @@ def test_the_deliverables_own_tests_are_the_floor_beneath_the_harness(tmp_path):
     (project / "tests" / "test_floor.py").write_text("def test_the_floor():\n    assert True\n")
     report = run_loop(project, invoke_agent=lambda prompt: True, max_rounds=1)
     assert report.done
+
+
+def test_the_tests_and_the_contract_are_inside_the_fence(tmp_path):
+    """An agent that deleted the lint test and hollowed out app/contract.py
+    once reported green with no violation: tests/ and the contract are
+    fenced like the exam."""
+    from fde.implement import PROTECTED
+
+    assert "tests/*" in PROTECTED and "app/contract.py" in PROTECTED
+    project = toy_project(tmp_path)
+    (project / "evals" / "harness.py").write_text("import sys\nsys.exit(0)\n")
+    (project / "tests").mkdir(exist_ok=True)
+    (project / "tests" / "test_floor.py").write_text(
+        "def test_the_floor():\n    assert False, 'red until the agent does the work'\n"
+    )
+
+    def cheat(prompt):
+        (project / "tests" / "test_floor.py").write_text("def test_the_floor():\n    pass\n")
+        return True
+
+    report = run_loop(project, invoke_agent=cheat, max_rounds=2)
+    assert not report.done
+    assert any(r.violation and "tests/test_floor.py" in r.violation for r in report.rounds), \
+        [r.violation for r in report.rounds]
+
+
+def test_a_round_that_lowers_the_holdout_below_the_shipped_baseline_is_refused(tmp_path):
+    """The shipped baseline's holdout is measured before any round; a round
+    that clears the golden bar and lands below it traded generalisation
+    for the exam."""
+
+    project = toy_project(tmp_path)
+    marker = project / "app" / "tuned"
+    (project / "evals" / "harness.py").write_text(
+        "import argparse, json, sys\n"
+        "from pathlib import Path\n"
+        "p = argparse.ArgumentParser()\n"
+        "p.add_argument('--min-score', type=float, default=0.0)\n"
+        "p.add_argument('--cases', default=None)\n"
+        "p.add_argument('--report', default=None)\n"
+        "p.add_argument('--allow-uncalibrated', action='store_true')\n"
+        "a = p.parse_args()\n"
+        f"tuned = Path({str(marker)!r}).exists()\n"
+        "# untouched: golden 0.7, holdout 0.8; after the agent: golden 0.99, holdout 0.6\n"
+        "score = (0.6 if tuned else 0.8) if a.cases else (0.99 if tuned else 0.7)\n"
+        "if a.report:\n"
+        "    json.dump({'layers': [{'layer': 'holdout' if a.cases else 'golden',\n"
+        "               'cases': 10, 'score': score, 'errors': 0}]}, open(a.report, 'w'))\n"
+        "sys.exit(0 if score >= max(a.min_score, 0.5 if a.cases else 0) else 1)\n"
+    )
+    holdout = tmp_path / "holdout.jsonl"
+    holdout.write_text('{"id": "h", "input": "q", "output": "A"}\n')
+
+    def overfit(prompt):
+        marker.write_text("tuned")
+        return True
+
+    report = run_loop(project, invoke_agent=overfit, max_rounds=2, holdout=holdout,
+                      check="python evals/harness.py --min-score 0.9 --report r.json")
+    assert not report.done
+    assert report.stopped_by == "holdout below baseline", report.rounds[-1]
+    assert "80.0%" in (report.rounds[-1].violation or "") and "60.0%" in report.rounds[-1].violation

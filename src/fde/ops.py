@@ -371,7 +371,8 @@ def _baseline_lines(baseline) -> list[str]:
             line += f" ({definition})"
         # A definition that calls itself an estimate, a scenario or an
         # assumption is a number somebody said, and the file says so.
-        if re.search(r"estimat|scenario|assum|guess|approx", definition, re.I):
+        if re.search(r"estimat|scenario|assum|guess|approx|\bstated\b|not measured|"
+                     r"reported by|said\b", definition, re.I):
             line += " — **stated, not measured**"
             stated += 1
         lines.append(line)

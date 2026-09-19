@@ -337,3 +337,17 @@ def test_one_field_of_unique_values_is_still_a_record(reg=None):
               "output": {"reference": f"INV-{i:04d}"}} for i in range(40)]
     assert infer_contract(pairs).shape == "structured"
 
+
+
+def test_one_rare_label_does_not_turn_a_catalogue_into_records(reg=None):
+    """Seventy-seven repeating intents plus one seen once are still a label
+    set; requiring every value to repeat once flipped the shape and built
+    with no reasoning component."""
+    intents = [f"intent_{n}" for n in range(77)]
+    pairs = [{"id": f"m{i}", "input": f"message {i}", "verified": True,
+              "output": {"intent": intents[i % 77]}} for i in range(770)]
+    pairs.append({"id": "rare", "input": "a message like no other", "verified": True,
+                  "output": {"intent": "intent_rare"}})
+    assert infer_contract(pairs).shape == "decision"
+    split = split_pairs(pairs)
+    assert "rare" in split.golden_ids  # a singleton is learned from, never held out
