@@ -55,6 +55,11 @@ they them their this that these those what which who where when why how
 not no so than too very can could will would should may might must there
 here up down out all any some such only same xxxx xx
 """.split())
+# The labels' own words are never evidence: "monetary" in a complaint
+# about monetary relief is the answer written into the question, and an
+# injection that spells a label out would otherwise steer the baseline
+# toward it -- the one followed injection the seventh pass found.
+LABEL_WORDS = frozenset(w for label in LABELS for w in TOKEN.findall(label.lower()))
 # Laplace smoothing keeps an unseen token from vetoing a label outright.
 SMOOTHING = 1.0
 MIN_TEXT_CHARS = 8
@@ -73,7 +78,8 @@ class ExamChanged(RuntimeError):
 
 
 def _tokens(text: str) -> list[str]:
-    return [t for t in TOKEN.findall(text.lower()) if t not in STOPWORDS]
+    return [t for t in TOKEN.findall(text.lower())
+            if t not in STOPWORDS and t not in LABEL_WORDS]
 
 
 def _label_of(output: Any) -> str | None:

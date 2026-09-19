@@ -14,6 +14,9 @@ every step refusing to proceed on data nothing accounts for:
 - `train/compare.py` scores the base model and the adapter on the holdout
   the split held back, through the deliverable's own harness, and refuses a
   holdout that is not the one in the manifest.
+- `train/serve.py` puts the base model and an adapter behind the same wire
+  shape production uses (`/v1/models`, `/v1/completions`), in-process, so
+  the comparison can run on the machine that trained.
 - `tests/test_train.py` proves the first and third of those model-free, so
   the deliverable's CI covers the data path even where no GPU ever will.
 
@@ -54,6 +57,7 @@ def write_training(architecture: Architecture, out: Path) -> bool:
         _LORA.replace("__COMPONENT__", module)
              .replace("__WITH_EVIDENCE__", "True" if with_evidence else "False"))
     (train / "compare.py").write_text(_COMPARE)
+    (train / "serve.py").write_text(_SERVE)
     (train / "requirements.txt").write_text(_REQUIREMENTS)
     (train / "README.md").write_text(_README.replace("__COMPONENT__", module))
     tests = out / "tests"
@@ -678,6 +682,131 @@ if __name__ == "__main__":
 '''
 
 
+_SERVE = r'''"""A development server for the comparison: the base model and an adapter
+behind an OpenAI-compatible /v1/completions, in-process, on whatever this
+machine has. Not the production path -- that is vLLM with --lora-modules --
+but the same wire shape, so train/compare.py and the harness run here
+unchanged.
+
+    python train/serve.py --base-model <id> [--adapter artifacts/adapters/<version>/adapter]
+                          [--port 8091]
+
+The base model is served under its own name and the adapter under its
+version (the adapter directory's parent), so FINETUNED_MODEL=<version>
+selects the adapter and `compare.py --before <id>` selects the base.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+import threading
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from typing import Any
+
+
+def load(base_model: str, adapter: Path | None) -> tuple[Any, dict[str, Any]]:
+    import torch
+    from transformers import AutoModelForCausalLM, AutoTokenizer
+
+    tokenizer = AutoTokenizer.from_pretrained(base_model)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+    base = AutoModelForCausalLM.from_pretrained(base_model, torch_dtype=torch.float32)
+    base.eval()
+    models: dict[str, Any] = {base_model: base}
+    if adapter is not None:
+        from peft import PeftModel
+
+        adapted = PeftModel.from_pretrained(
+            AutoModelForCausalLM.from_pretrained(base_model, torch_dtype=torch.float32),
+            str(adapter),
+        )
+        adapted.eval()
+        models[Path(adapter).resolve().parent.name] = adapted
+    return tokenizer, models
+
+
+def generate(tokenizer: Any, model: Any, prompt: str, max_tokens: int) -> str:
+    import torch
+
+    ids = tokenizer(prompt, return_tensors="pt")["input_ids"]
+    with torch.no_grad():
+        out = model.generate(ids, max_new_tokens=max_tokens, do_sample=False,
+                             pad_token_id=tokenizer.pad_token_id)
+    return tokenizer.decode(out[0][ids.shape[1]:], skip_special_tokens=True)
+
+
+class Handler(BaseHTTPRequestHandler):
+    tokenizer: Any = None
+    models: dict[str, Any] = {}
+    lock = threading.Lock()
+
+    def _send(self, code: int, body: dict[str, Any]) -> None:
+        data = json.dumps(body).encode()
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
+
+    def do_GET(self) -> None:  # noqa: N802 - the stdlib's name
+        if self.path.rstrip("/") == "/v1/models":
+            self._send(200, {"data": [{"id": name} for name in self.models]})
+            return
+        self._send(404, {"error": "not found"})
+
+    def do_POST(self) -> None:  # noqa: N802 - the stdlib's name
+        if self.path.rstrip("/") != "/v1/completions":
+            self._send(404, {"error": "only /v1/completions is served here"})
+            return
+        try:
+            body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))))
+        except (ValueError, TypeError):
+            self._send(400, {"error": "a JSON object with model and prompt"})
+            return
+        model = self.models.get(body.get("model"))
+        if model is None:
+            self._send(404, {"error": f"model {body.get('model')!r} is not served; "
+                                      f"served: {sorted(self.models)}"})
+            return
+        prompt = body.get("prompt")
+        if not isinstance(prompt, str):
+            self._send(400, {"error": "prompt must be a string"})
+            return
+        with self.lock:  # one generation at a time on a development box
+            text = generate(self.tokenizer, model, prompt,
+                            int(body.get("max_tokens") or 128))
+        self._send(200, {"choices": [{"text": text}]})
+
+    def log_message(self, *args: Any) -> None:
+        pass
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--base-model", required=True)
+    parser.add_argument("--adapter", type=Path, default=None,
+                        help="an adapter directory written by train/lora.py")
+    parser.add_argument("--port", type=int, default=8091)
+    args = parser.parse_args(argv)
+    Handler.tokenizer, Handler.models = load(args.base_model, args.adapter)
+    server = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    print(f"serving {sorted(Handler.models)} on http://127.0.0.1:{args.port}", flush=True)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
+'''
+
+
 _REQUIREMENTS = """# Training-time only. The service never imports these.
 torch>=2.4
 transformers>=4.45
@@ -701,9 +830,12 @@ the path that makes the claim checkable, in the order it has to happen.
    exists: same data, same base, same recipe, nothing new to learn.
 4. **Serve**: `vllm serve <id> --enable-lora
    --lora-modules <version>=artifacts/adapters/<version>/adapter`.
-5. **Compare**: `python train/compare.py --before <id> --after <version>`.
-   Refuses a holdout whose digest changed, and exits non-zero when the
-   adapter scores below the base model.
+5. **Compare**: `python train/compare.py --before <id> --after <version>`,
+   with `LLM_ENDPOINT` pointed at the server from step 4 (or, on the
+   machine that trained, at `python train/serve.py --base-model <id>
+   --adapter artifacts/adapters/<version>/adapter`, which serves both under
+   the same wire shape). Refuses a holdout whose digest changed, exits
+   non-zero when either side errored or the adapter scores below the base.
 6. **Ship**: set `FINETUNED_MODEL=<version>` in `/etc/app/env` and restart.
 
 ## What the split does
