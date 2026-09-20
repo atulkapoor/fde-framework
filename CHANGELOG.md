@@ -5,6 +5,37 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.29] — 2026-09-20
+
+The operating loop from 0.1.28 has now run in public: on the banking
+demo, two field streams through the delivered build, a drift incident
+opened and closed on the record, a value document. This release adds
+the layers around it that could be built honestly without a client.
+
+- **The stakeholder map.** `fde stakeholders` reads the engagement's
+  people off the record: which of the five roles has been heard (every
+  session carries the role and, when given, the name), who signed what,
+  which roles were never asked, and what is on the record with nobody's
+  name on it. `fde stakeholder add` names the people who have not spoken
+  yet. It is a map, not a contact list.
+- **Names on the record.** `--by` on `data-access`, `security-review`,
+  `waive`, `deployed`, `outcome` and `incident close` records who signed;
+  the entry is honest state without it, and the map points at it.
+- **Exports as the connector.** `fde import` turns a client export --
+  csv, tsv, jsonl, json, the client's column names -- into the pairs the
+  intake reads, and reports what it kept, skipped, dropped as duplicate
+  and counts as verified. Nothing is verified unless the caller says
+  which column and value means a person checked it. Live connectors are
+  not here: an export is what a client can hand over inside their own
+  boundary, and the only interface testable without their credentials.
+- **A bench, not a benchmark.** `fde bench` reads the same figures off
+  every engagement record side by side -- stage, the out-of-sample rows,
+  the gap, incidents, days to pilot -- and writes `BENCH.md`, which says
+  how many rows it has. The repository's own `BENCH.md` is the four
+  public demos.
+- **The history page.** `fde history` prints every dated entry on the
+  record in order, the undated ones above it, one line each.
+
 ## [0.1.28] — 2026-09-20
 
 An outside reading of the repository put it plainly: a strong engineering
