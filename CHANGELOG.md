@@ -43,6 +43,15 @@ banking deliverable routed a greeting to the commonest queue with a
 - **The decision shape survives one rare label.** Nine in ten pairs
   carrying a repeated value is a label set; a singleton intent is learned
   from, never held out. A definition that says "stated" is marked stated.
+- **The banking run, again, under these rules.** Rebuilt on 0.1.27 the
+  shipped baseline abstains on 16% of the holdout and answers 87.9% of the
+  rest correctly, a tenth of a point under the bank's recorded 88%
+  first-pass accuracy; the implement loop, fenced and guarded, took the
+  holdout from 73.7% to 77.5% in two rounds. At a one-nat margin the
+  finished deliverable answers 90.2% of what it routes correctly and hands
+  18% to a person: the engagement's bar is met in assist mode and the card
+  says so, with the vendor's own test split as the external exam beside
+  it. It is not an autonomous router, and nothing on the card claims it is.
 
 ## [0.1.26] — 2026-09-19
 
