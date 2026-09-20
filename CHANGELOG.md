@@ -5,6 +5,28 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.32] — 2026-09-21
+
+Stop is a legitimate outcome, and an engagement that cannot say what
+would stop it cannot be stopped by evidence.
+
+- **Stop conditions.** `fde stop-when` records, on the outcome contract,
+  what evidence would stop the engagement -- `answered_accuracy < 0.88`,
+  `abstain_rate > 0.25`, `adoption < 0.4` -- over figures the record
+  measures: the scorecard's out-of-sample rows, the field journal, the
+  outcomes recorded in the field. Each is judged against what was
+  measured; a figure not on the record leaves its condition unjudged and
+  says so. A triggered condition makes STOP the engagement's stage, on
+  the record with the trigger and the threshold, until the condition is
+  restated with a reason, the build is changed and scored again, or the
+  case is captured.
+- **Sessions carry their date.** Every interview, frame and samples
+  session now records the day it was taken, and `fde debt` ages a fact a
+  person said where a measurement was possible from that day.
+- **The diagram is drawn from the code.** `assets/how-it-fits.py` reads
+  the gate count off the gates module and the registry counts off
+  `framework/`, so the image cannot drift from the repository again.
+
 ## [0.1.31] — 2026-09-20
 
 - `fde debt` no longer lists a standing waiver as blocking production. A
