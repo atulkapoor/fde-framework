@@ -316,6 +316,11 @@ def validate_outcome_contract(contract: dict[str, Any] | None) -> Result:
     """
     if not contract or not isinstance(contract, dict):
         return Result(False, "no outcome contract was recorded")
+    # Stop conditions live in the same file and can be recorded first. They
+    # are not a contract: the gate's reason must not change under a waiver
+    # granted against "no outcome contract", or the waiver silently lapses.
+    if not any(contract.get(f) not in (None, "", {}, []) for f in OUTCOME_FIELDS):
+        return Result(False, "no outcome contract was recorded")
     missing = [f for f in OUTCOME_FIELDS if contract.get(f) in (None, "", {}, [])]
     if missing:
         return Result(False, f"the outcome contract lacks {', '.join(missing)}")

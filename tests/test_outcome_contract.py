@@ -29,6 +29,14 @@ def test_a_contract_is_six_fields_and_two_numbers():
     assert "method says nothing" in validate_outcome_contract(empty).reason
 
 
+def test_stop_conditions_alone_are_not_a_contract():
+    """Recording what would stop the engagement must not change the gate's
+    reason: a waiver granted against "no outcome contract" stayed covering
+    on the banking demo only once this held."""
+    only_stops = {"stop_when": ["answered_accuracy < 0.88"], "stop_when_recorded": []}
+    assert validate_outcome_contract(only_stops).reason == "no outcome contract was recorded"
+
+
 def test_the_gate_blocks_without_a_contract_and_names_the_remedy():
     status = input_status(Profile(), baseline=None, data_access=True)
     gate = status.gate("outcome_contract")

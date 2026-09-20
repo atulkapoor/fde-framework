@@ -77,6 +77,17 @@ def test_a_triggered_condition_makes_stop_the_stage(tmp_path):
     assert written["stage"] == "stopped" and written["stopped"]
 
 
+def test_recording_stop_conditions_keeps_a_waived_gate_waived(tmp_path):
+    eng, project = scored(tmp_path)
+    root = str(tmp_path / "acme")
+    runner.invoke(app, ["waive", root, "outcome_contract", "--reason", "target after the pilot"])
+    before = runner.invoke(app, ["status", root]).output
+    record_conditions(eng, ["abstain_rate > 0.35"])
+    after = runner.invoke(app, ["status", root]).output
+    assert ("outcome_contract" in before) == ("outcome_contract" in after)
+    assert "outcome_contract" not in after.split("blocked by")[-1].split("\n")[0]
+
+
 def test_a_condition_the_record_has_not_measured_is_unjudged_not_triggered(tmp_path):
     eng, project = scored(tmp_path)
     record_conditions(eng, ["adoption < 0.4"])
