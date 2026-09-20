@@ -39,6 +39,10 @@ ALLOWED = (
     # The llms.txt convention: a root file describing the project for AI
     # crawlers. Authored framework material, same rules as the README.
     "llms.txt",
+    # The framework's own bench of its public engagements, computed by
+    # `fde bench` off their records -- numbers the framework measured, not
+    # material anyone supplied.
+    "BENCH.md",
     "CITATION.cff",
     ".editorconfig",
     "ARCHITECTURE.md",
