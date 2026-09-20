@@ -5,6 +5,19 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.33] — 2026-09-21
+
+- Stop conditions alone are not an outcome contract. Recording them
+  created the contract file, which changed the eighth gate's reason from
+  "no outcome contract was recorded" to "the contract lacks owner, ...",
+  and a waiver granted against the first reason lapsed -- the banking
+  record dropped from production to discovery the moment its stop
+  conditions went on. The gate now reads a file with only stop
+  conditions as no contract, pinned by test.
+- The bench and the README carry the banking record after its stop
+  drill: stopped once by its own condition at the default margin, cleared
+  at the shipped 1.0-nat margin, 90.2% on the answered.
+
 ## [0.1.32] — 2026-09-21
 
 Stop is a legitimate outcome, and an engagement that cannot say what
