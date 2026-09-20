@@ -145,7 +145,13 @@ def exam(card: Scorecard, project: Path, timeout: float, min_score: float,
             continue
         score = layer.get("score")
         note = ""
-        holds = True
+        # A layer with cases and no correct answer does not hold: 0.0% on
+        # seventy-seven golden receipts once read "ok" because no majority
+        # gate applied to an extraction shape.
+        holds = bool(score) and score > 0
+        if layer.get("errors"):
+            holds = False
+            note = f"{layer['errors']} errored"
         if layer.get("decision"):
             majority = layer["decision"]["majority_rate"]
             note = f"majority {majority:.1%}"

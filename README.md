@@ -131,6 +131,16 @@ the card measuring self-consistency rather than fitness; 0.1.27 gave it
 fitness rows -- the generalisation gap, an external exam a memoriser cannot
 pass, the engagement's own error-rate bar -- and gave the routed decision
 an abstain path and a reason on every answer.
+[fde-demo-banking](https://github.com/atulkapoor/fde-demo-banking) —
+an industry use case: support intent routing for a retail bank over
+13,083 real messages and seventy-seven queues (Banking77). The framework's
+own reading of a seventy-seven-way decision, its brief parser, its label
+rule and one governance template each failed on it and were fixed before
+a number was quoted; the finished deliverable is an assist-mode router
+that abstains and says why, at 90.2% on what it routes with 18% handed to
+a person, scored on a 3,036-case holdout and the vendor's own test split,
+with `fde scorecard` saying which rows measure fitness and which measure
+self-consistency.
 
 **Built**: the pipeline exists end to end — intake (prose, documents, sample
 pairs, role-scoped interview, hardware scan) → fact log with provenance →
@@ -574,7 +584,7 @@ no approach can serve yet.
 | See a real transcript with expected output | [Worked example](https://github.com/atulkapoor/fde-framework/tree/main/examples/invoice-extraction) |
 | Understand the moving parts | [ARCHITECTURE.md](https://github.com/atulkapoor/fde-framework/blob/main/ARCHITECTURE.md) |
 | Understand a gate that just refused me | `fde status <eng>` — every gate names its remedy and its clearing command |
-| See complete engagements on real data, refusals preserved | [fde-demo-receipts](https://github.com/atulkapoor/fde-demo-receipts) · [fde-demo-complaints](https://github.com/atulkapoor/fde-demo-complaints) · [fde-demo-rfc-qa](https://github.com/atulkapoor/fde-demo-rfc-qa) |
+| See complete engagements on real data, refusals preserved | [fde-demo-receipts](https://github.com/atulkapoor/fde-demo-receipts) · [fde-demo-complaints](https://github.com/atulkapoor/fde-demo-complaints) · [fde-demo-rfc-qa](https://github.com/atulkapoor/fde-demo-rfc-qa) · [fde-demo-banking](https://github.com/atulkapoor/fde-demo-banking) |
 | Pick a local model with receipts | [Local models, measured](https://atulkapoor.github.io/fde-framework/models.html) |
 | Add a dimension / approach / template | [CONTRIBUTING.md](https://github.com/atulkapoor/fde-framework/blob/main/CONTRIBUTING.md) — incl. the template context table |
 | Use it as a library | [Python API](#python-api) |
