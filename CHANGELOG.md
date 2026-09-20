@@ -5,6 +5,15 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.31] — 2026-09-20
+
+- `fde debt` no longer lists a standing waiver as blocking production. A
+  waiver is accepted risk with a name and a date on it and ships in
+  RISKS.md; the stage proceeds past it. It stays on the debt list because
+  it stands in for a condition, and it ages. The banking demo showed the
+  contradiction: `fde stage` said production while `fde debt` said two
+  items blocked it.
+
 ## [0.1.30] — 2026-09-20
 
 A second outside reading, this time of the source, agreed with the

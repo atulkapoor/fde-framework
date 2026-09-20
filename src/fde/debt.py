@@ -8,7 +8,8 @@ where a measurement was possible, two people disagreeing, an attestation
 with no name on it, a role never asked, an incident open, a component
 nothing serves -- read off the record, never declared. An item blocks the
 build, blocks production, or is informational, and ages from the date it
-went on the record where the record has one.
+went on the record where the record has one. A waiver is not a block -- it
+is accepted risk with a name on it -- but it is debt, and it ages.
 """
 
 from __future__ import annotations
@@ -59,9 +60,12 @@ def collect(engagement, status, architecture, registry, as_of: str | None = None
     raw = engagement._raw_gate_state() if hasattr(engagement, "_raw_gate_state") else {}
     for waiver in (raw.get("overrides") or []) if isinstance(raw, dict) else []:
         if isinstance(waiver, dict) and waiver.get("gate"):
+            # A waiver is accepted risk with a name and a date on it, not a
+            # block: it ships in RISKS.md and the stage proceeds. It is debt
+            # because it stands in for a condition, and it ages.
             items.append(Item("waiver", f"{waiver['gate']}: {waiver.get('reason', '')}",
                               waiver.get("by") or GATE_OWNERS.get(waiver["gate"], "sponsor"),
-                              "production", waiver.get("at"),
+                              "", waiver.get("at"),
                               "meet the gate, or restate the waiver if it still holds"))
     profile = engagement.profile
     referenced = set()
