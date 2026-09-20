@@ -5,6 +5,43 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.28] — 2026-09-20
+
+An outside reading of the repository put it plainly: a strong engineering
+framework, not yet an operating system for the engagement, because the
+record stopped at the build. This release carries the record through
+deployment, the field, and the client's figures. Nothing in it is
+declared by the tool; each fact is computed from evidence or attested by
+a named person.
+
+- **The stage is computed, never declared.** `fde stage` reads the record
+  against per-stage criteria -- discovery, validation, prototype, pilot,
+  production, adoption, retrospective -- and appends each transition to
+  `lifecycle.jsonl` with its evidence. Production needs a deployment on
+  record and no open incident; adoption needs a figure measured in the
+  field; retrospective needs a case. `fde outcomes` prints what the trail
+  shows: transitions, days to pilot, loop rounds, reversals, incidents.
+- **The field is read against the exam.** `fde drift` reads the deployed
+  service's journal -- the `answered` lines it already writes -- and
+  compares abstention, decision mix, errors and margins with the golden
+  set and the last scorecard. Past a threshold it opens an incident on
+  the record and exits 1; an open incident pulls production back to
+  pilot until `fde incident close` records what was done. Fewer than
+  thirty events is a sample of nothing, said as such.
+- **Value in the client's own figures.** `fde value` writes `VALUE.md`
+  from the recorded baseline and the holdout row: automated share,
+  accuracy on the automated, residual human work, errors added and
+  removed, hours and money, build and run cost, payback, a Wilson
+  interval on the accuracy. Every line carries its basis -- measured,
+  stated, assumed, derived -- and the document names the stated and
+  assumed lines before any total.
+- **Attestations, not inferences.** `fde deployed` and `fde outcome`
+  record where the system runs and what the client measured; the
+  lifecycle reads them and nothing infers them from a build.
+- The README says what the operating loop still is not: a stakeholder
+  graph, enterprise connectors, a benchmark of engagements. Those need
+  engagements that have not happened yet.
+
 ## [0.1.27] — 2026-09-19
 
 The ninth pass reproduced every number 0.1.26 printed and showed what
