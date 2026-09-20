@@ -5,6 +5,37 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.30] — 2026-09-20
+
+A second outside reading, this time of the source, agreed with the
+README's own verdict -- built and demonstrated, not proven -- and named
+the gap that is not another feature: the causal chain from a business
+outcome to an architecture, and the assumptions an engagement quietly
+rests on. This release makes both legible on the record.
+
+- **The eighth gate: an outcome contract.** `fde outcome-contract`
+  records who owns the number the system exists to move, what it is,
+  its value today, its target, how it is measured and over what window.
+  Nothing builds until that is on the record or waived with a reason that
+  ships in RISKS.md; a target nobody set is refused rather than filled
+  in. The adoption stage reads the contracted metric back from what was
+  measured in the field.
+- **Decision debt.** `fde debt` lists everything the engagement rests on
+  that nobody has settled: a gate still failing, a waiver standing in for
+  a condition, a fact the framework guessed or a person merely said where
+  a measurement was possible, two people disagreeing, an attestation with
+  nobody's name on it, a role never asked, an incident open, a component
+  nothing serves -- each with an owner, what it blocks, and its age.
+- **`fde next` says what hangs on the question.** When the next move is
+  an interview question, the command prints the evidence already on
+  record for that dimension, every candidate answer tried as the
+  framework's own guess, and the decisions that turn on it.
+- **The claim ladder.** The README's status is now six claims, each
+  marked verified, partial or unverified with the evidence and where it
+  stops, so the project cannot be over-read in either direction.
+- The example walkthroughs and their pinned transcripts carry the eighth
+  gate.
+
 ## [0.1.29] — 2026-09-20
 
 The operating loop from 0.1.28 has now run in public: on the banking
