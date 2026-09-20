@@ -1,6 +1,6 @@
 """What has to be true before building is worth starting.
 
-Seven gates. Six block and accept an override with a recorded reason, because
+Eight gates. Seven block and accept an override with a recorded reason, because
 an FDE on site can see things a checklist cannot. One does not: you can design
 around a missing baseline, and you cannot design around credentials you do not
 have. Waiting is the only move there, and pretending otherwise wastes weeks.
@@ -110,7 +110,11 @@ def test_everything_satisfied_means_proceed(reg=None):
               Fact("hosting", "on-prem", Provenance.DETECTED,
                    respondent=Respondent(role="admin", name="B"))])
     status = input_status(p, baseline=GOOD_BASELINE, data_access=True,
-                          security_review=True)
+                          security_review=True, outcome_contract={
+                              "owner": "AP director", "metric": "cycle_time",
+                              "baseline": {"value": 300, "unit": "s"},
+                              "target": {"value": 120, "unit": "s"},
+                              "method": "the dashboard", "window": "90 days"})
     assert status.can_proceed
     assert status.blocked_by() == []
 

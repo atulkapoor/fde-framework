@@ -28,6 +28,7 @@ fde baseline triage --file examples/support-triage/baseline.yaml
 fde data-access triage --note "CRM replica returned 5,214 labelled complaints"
 fde security-review triage --note "client infosec reviewed tool scopes and egress"
 fde waive triage client_readiness --reason "triage lead named as eval owner, confirms Thursday"
+fde outcome-contract triage --owner "the triage lead" --metric complaint_age_at_decision --baseline 26 --unit hours --target 8 --method "CRM timestamps, weekly" --window "60 days after go-live"
 
 fde architect triage
 # topology customer-vpc   [74a1b3d849c01c57]

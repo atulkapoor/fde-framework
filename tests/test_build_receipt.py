@@ -52,6 +52,10 @@ def satisfied_engagement(tmp_path, monkeypatch):
             }) + "\n")
     ingest = runner.invoke(app, ["samples", "acme", "--file", str(pairs)])
     assert "golden" in ingest.output, ingest.output
+    runner.invoke(app, ["outcome-contract", "acme", "--owner", "ops lead",
+                     "--metric", "cycle_time", "--baseline", "180", "--unit", "s",
+                     "--target", "60", "--method", "ticket timestamps",
+                     "--window", "60 days after go-live"])
 
     baseline = tmp_path / "baseline.yaml"
     baseline.write_text(yaml.safe_dump({

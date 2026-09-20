@@ -246,6 +246,7 @@ def input_status(
     registry=None,
     licences: dict[str, str] | None = None,
     security_review: bool | None = None,
+    outcome_contract: dict[str, Any] | None = None,
 ) -> Status:
     """Known, assumed, missing -- and whether this is worth starting.
 
@@ -262,6 +263,7 @@ def input_status(
         gates=[
             _data_access(data_access),
             _baseline(baseline),
+            _outcome_contract(outcome_contract),
             _client_readiness(profile),
             _scope_drift(original_statement, current_statement),
             _offline_evaluability(profile, registry),
@@ -297,6 +299,54 @@ def _data_access(data_access: bool | None) -> Gate:
                "then record it: `fde data-access <eng> --note \"what "
                "returned rows\"`. Promised access is not access.",
         hard=True,
+    )
+
+
+OUTCOME_FIELDS = ("owner", "metric", "baseline", "target", "method", "window")
+
+
+def validate_outcome_contract(contract: dict[str, Any] | None) -> Result:
+    """Whether somebody has agreed which number this system exists to move.
+
+    Six fields, none of them a score: who owns the number, what it is, what
+    it is today, what it must become, how it will be measured, and by when.
+    A target nobody set is not a target, so an empty contract is refused
+    rather than filled in; if the client will not set one yet, the gate is
+    waived with that reason and the waiver ships in RISKS.md.
+    """
+    if not contract or not isinstance(contract, dict):
+        return Result(False, "no outcome contract was recorded")
+    missing = [f for f in OUTCOME_FIELDS if contract.get(f) in (None, "", {}, [])]
+    if missing:
+        return Result(False, f"the outcome contract lacks {', '.join(missing)}")
+    for side in ("baseline", "target"):
+        entry = contract[side]
+        value = entry.get("value") if isinstance(entry, dict) else entry
+        if not isinstance(value, (int, float)) or isinstance(value, bool):
+            return Result(False, f"the outcome contract's {side} is not a number")
+    for prose in ("owner", "metric", "method", "window"):
+        if not says_something(str(contract[prose])):
+            return Result(False, f"the outcome contract's {prose} says nothing")
+    return Result(True)
+
+
+def _outcome_contract(contract: dict[str, Any] | None) -> Gate:
+    result = validate_outcome_contract(contract)
+    if result.ok:
+        return Gate("outcome_contract", True)
+    return Gate(
+        "outcome_contract",
+        False,
+        reason=f"Nobody has agreed which number this system exists to move: "
+               f"{result.reason}.",
+        remedy=(
+            "Name the owner, the metric, its value today and its target, how "
+            "it will be measured and over what window: `fde outcome-contract "
+            "<eng> --owner \"...\" --metric ... --baseline 300 --unit s --target "
+            "120 --method \"...\" --window \"...\"`. A target nobody set is not "
+            "a target; if the client will not set one yet, waive this gate "
+            "with that reason."
+        ),
     )
 
 

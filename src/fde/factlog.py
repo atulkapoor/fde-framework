@@ -179,6 +179,21 @@ class Engagement:
             return None
         return yaml.safe_load(self.baseline_path.read_text()) or None
 
+    @property
+    def outcome_path(self) -> Path:
+        return self.root / "outcome.yaml"
+
+    def record_outcome_contract(self, fields: dict[str, Any]) -> None:
+        """The number this system exists to move -- owner, metric, baseline,
+        target, method, window. Validity is the gate's judgement, as with
+        the baseline: a partial contract on disk is honest state."""
+        self.outcome_path.write_text(yaml.safe_dump(fields, sort_keys=False))
+
+    def outcome_contract(self) -> dict[str, Any] | None:
+        if not self.outcome_path.exists():
+            return None
+        return yaml.safe_load(self.outcome_path.read_text()) or None
+
     def record_data_access(self, note: str, at: str, by: str = "") -> None:
         state = self._raw_gate_state()
         state["data_access"] = _signed({"note": note, "at": at}, by)

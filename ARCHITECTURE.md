@@ -12,7 +12,7 @@ knowledge that leaked from data into code.
 
 ```
 intake ──> fact log ──> permutation space ──> gates ──> decide ──> architect ──> emit
- prose        │            prunes as            seven    simplest      joins       code,
+ prose        │            prunes as            eight    simplest      joins       code,
  documents    │            facts arrive         gates,   applicable    decisions   evals,
  samples      │                                 one      approach,     to graph,   deploy,
  interview    └── provenance decides,           hard     cites         topology,   ops,
@@ -44,7 +44,7 @@ intake ──> fact log ──> permutation space ──> gates ──> decide �
 | `factlog.py` | Append-only engagement store; sessions, statements, gate state |
 | `space.py` | The permutation space; facts prune candidates to a fixed point |
 | `predicate.py` | The tiny predicate grammar (`always`, `==`, `and`, comparisons) |
-| `gates.py` | Seven gates before building; one hard, six waivable with reasons |
+| `gates.py` | Eight gates before building; one hard, seven waivable with reasons; the eighth is the outcome contract |
 | `implement.py` | Bounded agent loop: harness as stop condition, evals/boundary/contract hashed as a fence, holdout against memorized greens |
 | `intake/llm_reader.py` | Optional model-proposed facts at weakest provenance; registry-derived schema; boundary-gated |
 | `decide.py` | Simplest applicable approach per component, evidence cited, rejections named |
@@ -65,6 +65,8 @@ intake ──> fact log ──> permutation space ──> gates ──> decide �
 | `importer.py` | Client exports (csv/tsv/jsonl/json) into pairs by column, with a report; nothing verified unless the caller says how |
 | `bench.py` | The same figures off every engagement record, side by side, in BENCH.md |
 | `history.py` | Every dated entry on the record in order, undated ones above, one line each |
+| `debt.py` | Decision debt read off the record: gates, waivers, guessed and stated facts, disagreements, unsigned entries, unheard roles, incidents, undecided components, each with owner and age |
+| `impact.py` | What an answer would change: the evidence on record for a dimension and the decisions that turn on each candidate, tried as the framework's own guess and never written |
 | `scan.py` | Hardware detection; only a successful measurement earns DETECTED |
 | `costing.py` | Dated fleet sizing; naive figure beside the real one |
 | `evolution.py` | Overrides, trigger calibration, case emission |

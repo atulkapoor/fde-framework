@@ -27,7 +27,7 @@ fde frame helpdesk --file examples/policy-qa/brief.md
 
 fde samples helpdesk --file examples/policy-qa/pairs.jsonl
 fde status helpdesk
-# blocked by 5 -- the usual four, plus offline_evaluability: freeform output
+# blocked by 6 -- the usual five, plus offline_evaluability: freeform output
 # needs a judge, and nothing may leave here. The remedy names the plan and
 # the command.
 
@@ -35,6 +35,7 @@ fde baseline helpdesk --file examples/policy-qa/baseline.yaml
 fde data-access helpdesk --note "document store returned 40,112 rows over the search API"
 fde security-review helpdesk --note "client infosec reviewed retrieval paths and egress"
 fde waive helpdesk client_readiness --reason "eval owner named, starts Monday"
+fde outcome-contract helpdesk --owner "the helpdesk lead" --metric mean_time_to_accepted_answer --baseline 11 --unit hours --target 2 --method "ticket timestamps, weekly" --window "60 days after go-live"
 fde waive helpdesk offline_evaluability --reason "local judge planned: qwen on Ollama, calibrated against the eval owner before any quoted number"
 
 fde architect helpdesk

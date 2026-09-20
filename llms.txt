@@ -21,8 +21,9 @@ Key facts:
   statements about the environment; stated requirements outrank
   measurements. Two respondents disagreeing is reported as a finding, not
   silently resolved.
-- Seven gates precede building: verified data access (hard — cannot be
-  waived), a re-measurable baseline, a named evaluation owner, scope drift
+- Eight gates precede building: verified data access (hard — cannot be
+  waived), a re-measurable baseline, an outcome contract (owner, metric,
+  baseline, target, method, window), a named evaluation owner, scope drift
   measured against the original statement, offline evaluability for
   air-gapped systems, licence compatibility against what the client
   intends to ship, and a client security review whenever the system lives

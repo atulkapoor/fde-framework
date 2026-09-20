@@ -99,6 +99,7 @@ def test_the_build_carries_the_obligations(tmp_path):
     runner.invoke(app, ["baseline", str(root), "--file", str(tmp_path / "b.yaml")])
     runner.invoke(app, ["data-access", str(root), "--note", "rows returned"])
     runner.invoke(app, ["waive", str(root), "client_readiness", "--reason", "soon"])
+    runner.invoke(app, ["waive", str(root), "outcome_contract", "--reason", "after the pilot"])
     result = runner.invoke(app, ["build", str(root), "--out", str(tmp_path / "out")])
     assert result.exit_code == 0, result.output
 
@@ -152,6 +153,7 @@ def test_a_forgotten_pack_refuses_the_build_rather_than_shipping_silence(tmp_pat
     runner.invoke(app, ["baseline", str(root), "--file", str(tmp_path / "b.yaml")])
     runner.invoke(app, ["data-access", str(root), "--note", "rows returned"])
     runner.invoke(app, ["waive", str(root), "client_readiness", "--reason", "soon"])
+    runner.invoke(app, ["waive", str(root), "outcome_contract", "--reason", "after the pilot"])
     result = runner.invoke(app, ["build", str(root), "--out", str(tmp_path / "out")])
     assert result.exit_code == 1
     assert "atlantis" in result.output

@@ -844,6 +844,9 @@ def _overrides(engagement) -> dict[str, dict]:
 GATE_COMMANDS = {
     "data_access": 'fde data-access {name} --note "what returned rows"',
     "baseline_capture": "fde baseline {name} --file baseline.yaml",
+    "outcome_contract": ('fde outcome-contract {name} --owner "..." --metric ... '
+                         '--baseline <today> --unit ... --target <goal> --method "..." '
+                         '--window "..."'),
     "client_readiness": "fde ask {name} --role eval_owner",
     "security_review": 'fde security-review {name} --note "who looked, at what"',
     "offline_evaluability": ('fde waive {name} offline_evaluability '
@@ -956,6 +959,20 @@ def next_cmd(
     command, why = _next_action(root, engagement, registry)
     typer.echo(f"next: {command}")
     typer.echo(f"  {why}")
+    if command.startswith("fde ask "):
+        # What the answer would change, so the question is asked knowing
+        # what hangs on it -- and what the record already holds on it.
+        from fde.impact import decision_impact, render_impact
+
+        try:
+            space = Space.from_registry(registry).apply(engagement.profile)
+            questions = remaining_questions(space, engagement.profile, registry)
+            if questions:
+                typer.echo(render_impact(
+                    decision_impact(questions[0].resolves, engagement.profile, registry,
+                                    space)))
+        except Exception:  # noqa: BLE001 -- the hint must never break the command
+            pass
 
 
 def _gate_status(engagement, registry=None):
@@ -980,6 +997,7 @@ def _gate_status(engagement, registry=None):
         baseline=engagement.baseline(),
         data_access=bool(state.get("data_access")),
         security_review=bool(state.get("security_review")),
+        outcome_contract=engagement.outcome_contract(),
         registry=registry,
         licences=licences,
         original_statement=(
@@ -2088,6 +2106,77 @@ def value_cmd(
     if target is not None and target.exists():
         (target / "VALUE.md").write_text(document)
         typer.echo(f"wrote {target / 'VALUE.md'}")
+
+
+@app.command("outcome-contract")
+def outcome_contract_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    file: Annotated[Path | None, typer.Option(
+        "--file", help="A YAML with owner, metric, baseline, target, method, window."
+    )] = None,
+    owner: Annotated[str, typer.Option(help="Who signs off on the number.")] = "",
+    metric: Annotated[str, typer.Option(help="The number this system exists to move.")] = "",
+    baseline: Annotated[float | None, typer.Option(help="Its value today.")] = None,
+    unit: Annotated[str, typer.Option(help="The unit of baseline and target.")] = "",
+    target: Annotated[float | None, typer.Option(help="What it must become.")] = None,
+    method: Annotated[str, typer.Option(help="How it will be measured.")] = "",
+    window: Annotated[str, typer.Option(help="Over what period, from when.")] = "",
+    by: Annotated[str, typer.Option(help="Who signs this: a name for the record.")] = "",
+    today: Annotated[str, typer.Option(help="For the record; defaults to today.")] = "",
+) -> None:
+    """Record the outcome contract: owner, metric, baseline, target, method,
+    window. The eighth gate reads it; the adoption stage reads the metric
+    back from what was measured in the field."""
+    from fde.gates import validate_outcome_contract
+
+    engagement = _engagement(root)
+    if file is not None:
+        try:
+            fields = yaml.safe_load(file.read_text()) or {}
+        except (OSError, yaml.YAMLError) as exc:
+            typer.echo(f"{file}: {exc}", err=True)
+            raise typer.Exit(1) from exc
+        if not isinstance(fields, dict):
+            typer.echo(f"{file}: expected a mapping", err=True)
+            raise typer.Exit(1)
+    else:
+        fields = {"owner": owner, "metric": metric,
+                  "baseline": {"value": baseline, "unit": unit},
+                  "target": {"value": target, "unit": unit},
+                  "method": method, "window": window}
+    fields["recorded"] = today or date.today().isoformat()
+    if by.strip():
+        fields["by"] = by.strip()
+    result = validate_outcome_contract(fields)
+    engagement.record_outcome_contract(fields)
+    if result.ok:
+        typer.echo("outcome contract recorded")
+    else:
+        typer.echo(f"outcome contract recorded, incomplete: {result.reason} -- the gate "
+                   "stays blocked until it is complete", err=True)
+    _echo_next(root, engagement)
+
+
+@app.command("debt")
+def debt_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    registry_root: Annotated[Path, typer.Option("--registry")] = DEFAULT_ROOT,
+    as_of: Annotated[str, typer.Option("--as-of", help="Ages are counted to this date.")] = "",
+) -> None:
+    """Decision debt: everything the engagement rests on that nobody has
+    settled -- failing gates, waivers, guessed or merely stated facts,
+    disagreements, unsigned attestations, unheard roles, open incidents,
+    undecided components -- each with an owner and an age."""
+    from fde.debt import collect, render
+
+    registry = _registry(registry_root)
+    engagement = _engagement(root)
+    status = _gate_status(engagement, registry)
+    architecture = build_architecture(engagement.profile, registry,
+                                      overrides=_overrides(engagement),
+                                      already_running=_reuse(engagement))
+    items = collect(engagement, status, architecture, registry, as_of=as_of or None)
+    typer.echo(render(items, engagement.root.name, as_of or None))
 
 
 @app.command("stakeholder")

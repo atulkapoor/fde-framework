@@ -41,7 +41,7 @@ def test_the_walkthrough_reproduces_its_pinned_transcript(tmp_path, monkeypatch)
                         "--file", str(EXAMPLE / "pairs.jsonl")])
     status = runner.invoke(app, ["status", "engagements/acme",
                                  "--registry", str(REPO / "framework")])
-    assert "blocked by 4" in status.output
+    assert "blocked by 5" in status.output
 
     runner.invoke(app, ["baseline", "engagements/acme",
                         "--file", str(EXAMPLE / "baseline.yaml")])
@@ -67,6 +67,10 @@ def _clear_gates(runner_, name, example, extra_waivers=()):
     runner_.invoke(app, ["data-access", name, "--note", "rows returned"])
     runner_.invoke(app, ["security-review", name, "--note", "reviewed"])
     runner_.invoke(app, ["waive", name, "client_readiness", "--reason", "named"])
+    runner_.invoke(app, ["outcome-contract", name, "--owner", "ops lead",
+                     "--metric", "cycle_time", "--baseline", "180", "--unit", "s",
+                     "--target", "60", "--method", "ticket timestamps",
+                     "--window", "60 days after go-live"])
     for gate in extra_waivers:
         runner_.invoke(app, ["waive", name, gate, "--reason", "planned"])
 
@@ -90,7 +94,7 @@ def test_the_policy_qa_walkthrough_reproduces_its_transcript(tmp_path, monkeypat
     runner.invoke(app, ["samples", "helpdesk", "--file", str(example / "pairs.jsonl")])
     status = runner.invoke(app, ["status", "helpdesk",
                                  "--registry", str(REPO / "framework")])
-    assert "blocked by 5" in status.output
+    assert "blocked by 6" in status.output
 
     _clear_gates(runner, "helpdesk", example,
                  extra_waivers=("offline_evaluability",))

@@ -43,6 +43,10 @@ def satisfy_all(tmp_path, root):
                         "--note", "ran a query against the replica, 14 rows back"])
     runner.invoke(app, ["waive", str(root), "client_readiness",
                         "--reason", "eval owner starts Monday"])
+    runner.invoke(app, ["outcome-contract", str(root), "--owner", "ops lead",
+                     "--metric", "cycle_time", "--baseline", "180", "--unit", "s",
+                     "--target", "60", "--method", "ticket timestamps",
+                     "--window", "60 days after go-live"])
 
 
 # --- recording gate inputs -------------------------------------------------
@@ -264,6 +268,8 @@ def test_the_project_carries_the_risks_that_were_accepted(tmp_path):
                         "--reason", "client refuses; measuring post-hoc"])
     runner.invoke(app, ["waive", str(root), "client_readiness",
                         "--reason", "eval owner starts Monday"])
+    runner.invoke(app, ["waive", str(root), "outcome_contract",
+                        "--reason", "target set after the pilot"])
     runner.invoke(app, ["build", str(root), "--out", str(tmp_path / "out")])
     risks = (tmp_path / "out" / "RISKS.md").read_text()
     assert "baseline_capture" in risks
@@ -305,6 +311,8 @@ def test_a_reason_with_newlines_cannot_forge_the_risk_document(tmp_path):
                         "confirmed\n\n<!-- "])
     runner.invoke(app, ["waive", str(root), "client_readiness",
                         "--reason", "named Monday"])
+    runner.invoke(app, ["waive", str(root), "outcome_contract",
+                        "--reason", "target set after the pilot"])
     runner.invoke(app, ["build", str(root), "--out", str(tmp_path / "out")])
     risks = (tmp_path / "out" / "RISKS.md").read_text()
     headings = [line for line in risks.splitlines() if line.startswith("## Gates waived")]
@@ -380,6 +388,8 @@ def test_risks_lists_only_waivers_that_applied(tmp_path):
     runner.invoke(app, ["baseline", str(root), "--file", str(baseline_file(tmp_path))])
     runner.invoke(app, ["waive", str(root), "client_readiness",
                         "--reason", "named Monday"])
+    runner.invoke(app, ["waive", str(root), "outcome_contract",
+                        "--reason", "target set after the pilot"])
     runner.invoke(app, ["build", str(root), "--out", str(tmp_path / "out")])
     risks = (tmp_path / "out" / "RISKS.md").read_text()
     assert "client_readiness" in risks

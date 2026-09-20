@@ -41,7 +41,7 @@ pip install fde-framework
 fde start acme --statement "Extract fields from supplier invoices."
 fde ask acme --role admin        # role-scoped discovery interview
 fde architect acme               # topology + chosen approaches (rationale lands in ARCHITECTURE.md)
-fde build acme --out project     # refuses: seven gates guard the build
+fde build acme --out project     # refuses: eight gates guard the build
 # ...verify data access, capture the baseline, name the eval owner (each gate prints its remedy), then:
 fde build acme --out project     # code + evals + deploy assets + runbook
 ```
@@ -56,7 +56,7 @@ access — no build. The remedies ship with every gate.*
 | | |
 |---|---|
 | **Discovery that compounds** | Prose, PDFs, sample pairs, a role-scoped interview and a hardware scan all feed one profile — provenance decides conflicts, never arrival order, and disagreement between people is surfaced as a finding |
-| **Gates before building** | Seven checks with remedies; verified data access cannot be waived, and every waiver ships in the project's `RISKS.md` with its reason |
+| **Gates before building** | Eight checks with remedies; verified data access cannot be waived, and every waiver ships in the project's `RISKS.md` with its reason |
 | **Decisions with receipts** | Simplest applicable approach per component, cited evidence, named rejected alternatives — and `fde override` records your call and honours it on every later run |
 | **A real project out** | Pipeline in topological order — multi-modal inputs fan out one perception path per modality — fail-closed approval gates and critics, an eval harness CI can gate on — recall@K for the retrieval layer alone where one exists — deploy assets for the substrate that was actually earned, a runbook with a diagnosis walk, SLOs carrying the captured baseline, teardown A decision read off labelled text ships a fitted classifier that must beat the majority; a fine-tuning decision ships its data path -- recorded split, LoRA recipe, before/after on the holdout. |
 | **Deterministic by design** | The decision path never calls an LLM: same profile, byte-identical project — a diff between builds means a decision changed. Model assistance exists only as opt-in commands, and the boundary doctrine governs them |
@@ -67,7 +67,7 @@ access — no build. The remedies ship with every gate.*
 
 ## How it fits together
 
-<img src="https://raw.githubusercontent.com/atulkapoor/fde-framework/main/assets/how-it-fits.png" alt="statement to typed facts to answer space to seven gates, then decide, architect, emit, implement — registry as data, deterministic builds" width="800">
+<img src="https://raw.githubusercontent.com/atulkapoor/fde-framework/main/assets/how-it-fits.png" alt="statement to typed facts to answer space to the gates, then decide, architect, emit, implement — registry as data, deterministic builds" width="800">
 
 Discovery narrows an answer space; gates decide whether building is honest
 yet; the decision engine picks the simplest applicable approach per component
@@ -90,9 +90,19 @@ implemented. The full design is in [ARCHITECTURE.md](https://github.com/atulkapo
 
 ## Status: built, demonstrated, unproven
 
-Three different claims, and the differences are the point.
+Three different claims, and the differences are the point. Read as a
+ladder, so nothing here can be over-read:
 
-**Demonstrated**: three complete engagements have run end to end on real
+| Claim | Status | The evidence, and where it stops |
+|---|---|---|
+| The framework is implemented | verified | 1,246 tests on three Pythons in CI; lint clean; every audit finding pinned as a check before it was fixed |
+| A build is reproducible | verified | byte-identical rebuild pinned by test; each public demo carries a Reproduce section and its digests |
+| The decisions generalise | partial | four shapes (extraction, freeform QA, a labelled decision, seventy-seven-way routing) on real data; one industry set; `fde kb sweep` names the shapes nothing serves |
+| The deliverable is production-reliable | unverified | no production engagement; the banking operating loop ran on a laptop and its record says so |
+| A business outcome moved | unverified | every VALUE.md rests on stated figures; no outcome has been recorded on any engagement |
+| An FDE is faster or righter with it | unverified | no comparison against an engineer working without it |
+
+**Demonstrated**: four complete engagements have run end to end on real
 data, all public with every refusal preserved.
 [fde-demo-receipts](https://github.com/atulkapoor/fde-demo-receipts) —
 626 scanned receipts through gates, build, and an agent-driven implement
@@ -145,7 +155,7 @@ self-consistency.
 
 **Built**: the pipeline exists end to end — intake (prose, documents, sample
 pairs, role-scoped interview, hardware scan) → fact log with provenance →
-permutation space → seven gates → decide → architect → build (code, evals,
+permutation space → eight gates → decide → architect → build (code, evals,
 deploy and ops assets, `RISKS.md`, `COMPLIANCE.md`) → retro and case
 capture. Overrides are honoured on the next run, trigger observations feed
 calibration, and a reviewed case can enter the corpus. 1160+ tests; nine
@@ -402,6 +412,20 @@ declared by the tool.
 - **`fde history`** prints every dated entry on the record in order, the
   undated ones above it, one line each -- the page to read when picking an
   engagement up.
+- **`fde outcome-contract`** is the eighth gate: owner, metric, its value
+  today, its target, how it is measured and over what window. Nobody builds
+  until somebody has agreed which number the system exists to move, or
+  waived that with a reason that ships in RISKS.md. The adoption stage then
+  reads the contracted metric back from what was measured in the field.
+- **`fde debt`** is the decision debt: everything the engagement rests on
+  that nobody has settled -- a gate still failing, a waiver standing in for
+  a condition, a fact the framework guessed or a person merely said where a
+  measurement was possible, two people disagreeing, an attestation with no
+  name on it, a role never asked, an incident open, a component nothing
+  serves -- each with an owner, what blocks on it, and its age.
+- **`fde next`** now says what hangs on the question it asks: the evidence
+  already on record for that dimension, every candidate answer tried, and
+  the decisions that turn on it -- so the question is asked knowing why.
 
 What this still is not: a live connector to a ticketing or data system
 (an export is the interface, and the only one testable without a client's
@@ -510,6 +534,8 @@ the same receipts the emitted `ARCHITECTURE.md` prints.
 | `fde import <eng> --file tickets.csv --input body --output queue --verified-when checked=yes` | a client export into pairs, with a report; then `fde samples` |
 | `fde bench <eng>=<project> ...` | the same figures off every record, side by side, in `BENCH.md` |
 | `fde history <eng>` | every dated entry on the record in order, one line each |
+| `fde outcome-contract <eng> --owner --metric --baseline --unit --target --method --window` | the eighth gate: which number this system exists to move, from what to what, measured how, by when |
+| `fde debt <eng>` | decision debt: what nobody has settled, with an owner, what it blocks, and its age |
 | `--by "<name>"` on data-access, security-review, waive, deployed, outcome, incident close | the signer's name on the record; the stakeholder map points at entries without one |
 | `fde triage --statement "..." --statement "..."` | rank candidate problems by what discovery can already decide |
 | `fde override --component X --choose Y --because "..."` | your call, recorded and honoured |

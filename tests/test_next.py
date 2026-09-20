@@ -80,6 +80,10 @@ def clear_gates(tmp_path):
     runner.invoke(app, ["data-access", "acme", "--note", "626 real rows"])
     runner.invoke(app, ["waive", "acme", "client_readiness", "--reason", "demo"])
     runner.invoke(app, ["security-review", "acme", "--note", "self-review"])
+    runner.invoke(app, ["outcome-contract", "acme", "--owner", "ops lead",
+                     "--metric", "cycle_time", "--baseline", "180", "--unit", "s",
+                     "--target", "60", "--method", "ticket timestamps",
+                     "--window", "60 days after go-live"])
 
 
 def test_an_unsatisfied_gate_is_always_the_move(engagement):

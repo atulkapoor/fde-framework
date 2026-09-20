@@ -166,6 +166,10 @@ def satisfied(tmp_path):
     runner.invoke(app, ["waive", str(root), "client_readiness", "--reason", "named next week"])
     runner.invoke(app, ["security-review", str(root), "--note",
                         "client infosec walked the data paths on a call"])
+    runner.invoke(app, ["outcome-contract", str(root), "--owner", "ops lead",
+                     "--metric", "cycle_time", "--baseline", "180", "--unit", "s",
+                     "--target", "60", "--method", "ticket timestamps",
+                     "--window", "60 days after go-live"])
     return root
 
 

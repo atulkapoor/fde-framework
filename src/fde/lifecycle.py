@@ -165,11 +165,19 @@ def assess(engagement, blocked_gates: list[str] | None, project: Path | None = N
                   "none open" if not incidents
                   else f"{len(incidents)} open: " + ", ".join(i.get("id", "?") for i in incidents)),
     ])
-    adoption_rows = [o for o in outcomes if o.get("metric") == "adoption"]
+    contract = engagement.outcome_contract() if hasattr(engagement, "outcome_contract") \
+        else None
+    contracted = str(contract.get("metric", "")) if isinstance(contract, dict) else ""
+    wanted = contracted or "adoption"
+    measured_rows = [o for o in outcomes if o.get("metric") == wanted]
+    target = contract.get("target") if isinstance(contract, dict) else None
+    target = target.get("value") if isinstance(target, dict) else target
     adoption = Stage("adoption", [
-        Criterion("an adoption figure measured in the field", bool(adoption_rows),
-                  f"adoption {adoption_rows[-1].get('value')} ({adoption_rows[-1].get('at')})"
-                  if adoption_rows else "none: fde outcome <eng> --metric adoption=<share>"),
+        Criterion(f"the contracted metric measured in the field ({wanted})" if contracted
+                  else "an adoption figure measured in the field", bool(measured_rows),
+                  (f"{wanted} {measured_rows[-1].get('value')} ({measured_rows[-1].get('at')})"
+                   + (f"; target {target}" if contracted and target is not None else ""))
+                  if measured_rows else f"none: fde outcome <eng> --metric {wanted}=<value>"),
     ])
     retrospective = Stage("retrospective", [
         Criterion("a retrospective captured as a case", (root / "case.json").exists(),

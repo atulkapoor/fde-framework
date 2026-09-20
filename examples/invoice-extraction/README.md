@@ -36,13 +36,14 @@ fde samples engagements/acme --file examples/invoice-extraction/pairs.jsonl
 # 3 pairs, 2 fields — the pairs settle the output shape and seed the golden set
 
 fde status engagements/acme
-# blocked by 4: [hard] data_access, baseline_capture, client_readiness, security_review
+# blocked by 5: [hard] data_access, baseline_capture, outcome_contract, client_readiness, security_review
 # build refuses until these clear -- the hard one has no waiver
 
 fde baseline engagements/acme --file examples/invoice-extraction/baseline.yaml
 fde data-access engagements/acme --note "read replica returned 14 rows from the invoices table"
 fde security-review engagements/acme --note "client infosec reviewed data paths and egress"
 fde waive engagements/acme client_readiness --reason "eval owner named, starts Monday"
+fde outcome-contract engagements/acme --owner "the AP director" --metric days_receipt_to_posting --baseline 9 --unit days --target 3 --method "posting dates in the AP system, monthly" --window "90 days after go-live"
 
 fde architect engagements/acme
 # topology on-prem   [de84a4cea7cc42b9]
