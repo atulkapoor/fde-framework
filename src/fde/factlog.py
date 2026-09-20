@@ -116,6 +116,15 @@ class Statement:
     reason: str | None = None
 
 
+def _signed(entry: dict[str, Any], by: str) -> dict[str, Any]:
+    """An attestation with the signer's name when one was given. The name
+    is part of the evidence, never a required field: an unsigned entry is
+    honest state the stakeholder map will point at."""
+    if by and by.strip():
+        entry["by"] = by.strip()
+    return entry
+
+
 @dataclass
 class Engagement:
     root: Path
@@ -170,24 +179,25 @@ class Engagement:
             return None
         return yaml.safe_load(self.baseline_path.read_text()) or None
 
-    def record_data_access(self, note: str, at: str) -> None:
+    def record_data_access(self, note: str, at: str, by: str = "") -> None:
         state = self._raw_gate_state()
-        state["data_access"] = {"note": note, "at": at}
+        state["data_access"] = _signed({"note": note, "at": at}, by)
         self._write_gate_state(state)
 
-    def record_deployed(self, note: str, at: str) -> None:
+    def record_deployed(self, note: str, at: str, by: str = "") -> None:
         """The deployment, attested like data access: where it runs and who
         put it there. The lifecycle reads it; nothing else infers it."""
         state = self._raw_gate_state()
-        state["deployed"] = {"note": note, "at": at}
+        state["deployed"] = _signed({"note": note, "at": at}, by)
         self._write_gate_state(state)
 
-    def record_security_review(self, note: str, at: str) -> None:
+    def record_security_review(self, note: str, at: str, by: str = "") -> None:
         state = self._raw_gate_state()
-        state["security_review"] = {"note": note, "at": at}
+        state["security_review"] = _signed({"note": note, "at": at}, by)
         self._write_gate_state(state)
 
-    def record_waiver(self, gate: str, reason: str, at: str, against: str = "") -> None:
+    def record_waiver(self, gate: str, reason: str, at: str, against: str = "",
+                      by: str = "") -> None:
         """One waiver per gate, bound to the state it was granted against.
 
         Replaces rather than appends: waiving twice is one decision restated,
@@ -200,7 +210,8 @@ class Engagement:
             w for w in state.get("overrides", [])
             if not (isinstance(w, dict) and w.get("gate") == gate)
         ]
-        waivers.append({"gate": gate, "reason": reason, "at": at, "against": against})
+        waivers.append(_signed({"gate": gate, "reason": reason, "at": at,
+                                "against": against}, by))
         state["overrides"] = waivers
         self._write_gate_state(state)
 

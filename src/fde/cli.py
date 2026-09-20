@@ -1087,6 +1087,7 @@ def data_access_cmd(
     note: Annotated[str, typer.Option(
         help="What was connected to and what came back. Promised access is not access."
     )],
+    by: Annotated[str, typer.Option(help="Who signs this: a name for the record.")] = "",
 ) -> None:
     """Attest that credentials returned real data.
 
@@ -1102,7 +1103,7 @@ def data_access_cmd(
         )
         raise typer.Exit(1)
     engagement = _engagement(root)
-    engagement.record_data_access(note=note, at=date.today().isoformat())
+    engagement.record_data_access(note=note, at=date.today().isoformat(), by=by)
     typer.echo("data access recorded")
     _echo_next(root, engagement)
 
@@ -1114,6 +1115,7 @@ def security_review_cmd(
         help="Who reviewed it and what they looked at. A meeting that is "
              "scheduled is not a review that happened."
     )],
+    by: Annotated[str, typer.Option(help="Who signs this: a name for the record.")] = "",
 ) -> None:
     """Record that the client's security function reviewed the design.
 
@@ -1128,7 +1130,7 @@ def security_review_cmd(
         )
         raise typer.Exit(1)
     engagement = _engagement(root)
-    engagement.record_security_review(note=note, at=date.today().isoformat())
+    engagement.record_security_review(note=note, at=date.today().isoformat(), by=by)
     typer.echo("security review recorded")
     _echo_next(root, engagement)
 
@@ -1138,6 +1140,7 @@ def waive_cmd(
     root: Annotated[Path, typer.Argument(help="The engagement directory.")],
     gate: Annotated[str, typer.Argument(help="Which gate to wave through.")],
     reason: Annotated[str, typer.Option(help="Why. Lands in the risk section.")],
+    by: Annotated[str, typer.Option(help="Who signs this: a name for the record.")] = "",
 ) -> None:
     """Override a soft gate, with the reason recorded.
 
@@ -1161,7 +1164,7 @@ def waive_cmd(
         raise typer.Exit(1) from None
 
     engagement.record_waiver(
-        gate=gate, reason=reason, at=date.today().isoformat(), against=against
+        gate=gate, reason=reason, at=date.today().isoformat(), against=against, by=by
     )
     typer.echo(f"waived {gate} -- recorded, and carried into the project's RISKS.md")
     typer.echo(f"  covers: {against}")
@@ -1919,6 +1922,7 @@ def deployed_cmd(
     root: Annotated[Path, typer.Argument(help="The engagement directory.")],
     note: Annotated[str, typer.Option(help="Where it runs and who put it there.")],
     today: Annotated[str, typer.Option(help="For the record; defaults to today.")] = "",
+    by: Annotated[str, typer.Option(help="Who signs this: a name for the record.")] = "",
 ) -> None:
     """Attest that the deliverable is deployed. The lifecycle's production
     stage reads this; nothing infers it from a build."""
@@ -1926,7 +1930,7 @@ def deployed_cmd(
     if not note.strip():
         typer.echo("a deployment attestation needs a note", err=True)
         raise typer.Exit(1)
-    engagement.record_deployed(note, today or date.today().isoformat())
+    engagement.record_deployed(note, today or date.today().isoformat(), by=by)
     typer.echo("deployment recorded")
 
 
@@ -1968,6 +1972,7 @@ def incident_cmd(
     incident_id: Annotated[str, typer.Argument(help="The incident id, for close.")] = "",
     note: Annotated[str, typer.Option(help="What was done, for close.")] = "",
     today: Annotated[str, typer.Option(help="For the record; defaults to today.")] = "",
+    by: Annotated[str, typer.Option(help="Who signs this: a name for the record.")] = "",
 ) -> None:
     """Incidents on the engagement record: list them, or close one by name
     with what was done. An open incident holds the stage at pilot."""
@@ -1987,7 +1992,7 @@ def incident_cmd(
         if not incident_id or not note.strip():
             typer.echo("close needs an incident id and --note", err=True)
             raise typer.Exit(1)
-        if not close_incident(engagement, incident_id, note, today or None):
+        if not close_incident(engagement, incident_id, note, today or None, by=by):
             typer.echo(f"no open incident {incident_id}", err=True)
             raise typer.Exit(1)
         typer.echo(f"{incident_id} closed")
@@ -2004,6 +2009,7 @@ def outcome_cmd(
     )],
     note: Annotated[str, typer.Option(help="How it was measured.")] = "",
     today: Annotated[str, typer.Option(help="For the record; defaults to today.")] = "",
+    by: Annotated[str, typer.Option(help="Who signs this: a name for the record.")] = "",
 ) -> None:
     """Record an outcome measured in the field -- adoption, time to first
     value, incidents, customer figures. The adoption stage reads
@@ -2021,8 +2027,10 @@ def outcome_cmd(
                 value: object = float(raw)
             except ValueError:
                 value = raw
-            handle.write(json.dumps({"metric": name.strip(), "value": value, "at": when,
-                                     "note": note}) + "\n")
+            entry = {"metric": name.strip(), "value": value, "at": when, "note": note}
+            if by.strip():
+                entry["by"] = by.strip()
+            handle.write(json.dumps(entry) + "\n")
             written += 1
     typer.echo(f"recorded {written} outcome(s)")
 
@@ -2080,6 +2088,131 @@ def value_cmd(
     if target is not None and target.exists():
         (target / "VALUE.md").write_text(document)
         typer.echo(f"wrote {target / 'VALUE.md'}")
+
+
+@app.command("stakeholder")
+def stakeholder_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    action: Annotated[str, typer.Argument(help="add")],
+    name: Annotated[str, typer.Option(help="The person, as they will sign.")] = "",
+    role: Annotated[str, typer.Option(
+        help="sponsor | eval_owner | user | admin | skeptic, or a role of the client's."
+    )] = "",
+    stake: Annotated[str, typer.Option(help="What they own or decide.")] = "",
+    note: Annotated[str, typer.Option()] = "",
+    today: Annotated[str, typer.Option(help="For the record; defaults to today.")] = "",
+) -> None:
+    """Name a person on the record with their role and stake. The map
+    (`fde stakeholders`) reads names off sessions and signatures too; this
+    is for the people who have not spoken yet."""
+    from fde.stakeholders import add
+
+    engagement = _engagement(root)
+    if action != "add":
+        typer.echo("action is add", err=True)
+        raise typer.Exit(1)
+    if not name.strip() or not role.strip():
+        typer.echo("add needs --name and --role", err=True)
+        raise typer.Exit(1)
+    entry = add(engagement, name, role, stake, today or None, note)
+    typer.echo(f"recorded: {entry['name']} ({entry['role']})")
+
+
+@app.command("stakeholders")
+def stakeholders_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+) -> None:
+    """Who has been heard, who owns what, who signed for what, and which of
+    the five roles the engagement has never spoken to."""
+    from fde.stakeholders import build, render
+
+    engagement = _engagement(root)
+    typer.echo(render(build(engagement), engagement.root.name))
+
+
+@app.command("import")
+def import_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    file: Annotated[Path, typer.Option("--file", help="The export: .csv, .tsv, .jsonl, .json.")],
+    input_col: Annotated[list[str], typer.Option(
+        "--input", help="Column(s) that make the input. Repeatable; several become a dict."
+    )],
+    output_col: Annotated[list[str], typer.Option(
+        "--output", help="Column(s) that make the output. Repeatable."
+    )],
+    id_col: Annotated[str, typer.Option("--id", help="Column carrying the row's id.")] = "",
+    verified_when: Annotated[str, typer.Option(
+        "--verified-when", help="column=value that means a person checked the row."
+    )] = "",
+    all_verified: Annotated[bool, typer.Option(
+        "--all-verified", help="The client attests every label was checked."
+    )] = False,
+    output_text: Annotated[bool, typer.Option(
+        "--output-text", help="The one output column is prose, not a field."
+    )] = False,
+    delimiter: Annotated[str, typer.Option(help="For .csv; sniffed when omitted.")] = "",
+    out: Annotated[Path | None, typer.Option(
+        "--out", help="Where to write the pairs; defaults to artifacts/imported-pairs.jsonl."
+    )] = None,
+) -> None:
+    """A client export into input/output pairs, with a report of what was
+    kept, skipped and verified. Then `fde samples` reads the pairs."""
+    from fde.importer import ExportError, read_rows, to_pairs, write_pairs
+
+    engagement = _engagement(root)
+    try:
+        rows = read_rows(file, delimiter or None)
+        pairs, report = to_pairs(rows, input_cols=input_col, output_cols=output_col,
+                                 id_col=id_col or None, verified_when=verified_when or None,
+                                 all_verified=all_verified, output_text=output_text)
+    except ExportError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+    target = write_pairs(pairs, out or (engagement.artifacts_dir / "imported-pairs.jsonl"))
+    typer.echo(f"read {report['rows']} rows: kept {report['kept']}, skipped "
+               f"{report['skipped_empty']} with an empty side, dropped {report['duplicates']} "
+               f"duplicate inputs; {report['verified']} verified")
+    if report["verified"] == 0:
+        typer.echo("  none verified: pass --verified-when column=value, or --all-verified "
+                   "when the client attests the labels")
+    typer.echo(f"wrote {target}")
+    typer.echo(f"next: fde samples {root} --file {target}")
+
+
+@app.command("bench")
+def bench_cmd(
+    targets: Annotated[list[str], typer.Argument(
+        help="Engagement directories, each as <eng> or <eng>=<project>."
+    )],
+    out: Annotated[Path, typer.Option("--out", help="Where to write the table.")] = Path(
+        "BENCH.md"),
+) -> None:
+    """The same figures read off every engagement's record, side by side:
+    stage, the out-of-sample rows, the gap, incidents, days to pilot."""
+    from fde.bench import measure, render
+
+    rows = []
+    for target in targets:
+        eng, _, project = target.partition("=")
+        engagement = _engagement(Path(eng))
+        rows.append(measure(engagement, _project_of(engagement, Path(project) if project
+                                                    else None)))
+    document = render(rows)
+    typer.echo(document)
+    out.write_text(document)
+    typer.echo(f"wrote {out}")
+
+
+@app.command("history")
+def history_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+) -> None:
+    """Everything dated on the record, in order, one line each -- the page
+    to read when picking the engagement up."""
+    from fde.history import render
+
+    engagement = _engagement(root)
+    typer.echo(render(engagement, engagement.root.name))
 
 
 @app.command("scorecard")

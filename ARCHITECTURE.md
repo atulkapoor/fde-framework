@@ -61,6 +61,10 @@ intake ──> fact log ──> permutation space ──> gates ──> decide �
 | `lifecycle.py` | The engagement's stage, computed from the record against per-stage criteria; transitions appended with evidence; outcome metrics read off the trail |
 | `drift.py` | The production loop: the service's journal read against the exam and the last card; incidents opened and closed on the record |
 | `value.py` | The business-value estimate from the recorded baseline and the holdout row, every line labelled measured, stated, assumed or derived |
+| `stakeholders.py` | The stakeholder map read off sessions and signatures: roles heard, names, what each signed, roles never asked |
+| `importer.py` | Client exports (csv/tsv/jsonl/json) into pairs by column, with a report; nothing verified unless the caller says how |
+| `bench.py` | The same figures off every engagement record, side by side, in BENCH.md |
+| `history.py` | Every dated entry on the record in order, undated ones above, one line each |
 | `scan.py` | Hardware detection; only a successful measurement earns DETECTED |
 | `costing.py` | Dated fleet sizing; naive figure beside the real one |
 | `evolution.py` | Overrides, trigger calibration, case emission |

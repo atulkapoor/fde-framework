@@ -169,6 +169,23 @@ framework than any feature.
 
 ---
 
+**Side by side.** [`BENCH.md`](https://github.com/atulkapoor/fde-framework/blob/main/BENCH.md)
+reads the same figures off all four records with `fde bench`: stage, the
+out-of-sample rows on each card, the gap, incidents. The banking run is the
+one where the whole operating loop has run in public -- two field streams
+through the delivered build, a drift incident opened and closed on the
+record, a value document -- and its
+[README](https://github.com/atulkapoor/fde-demo-banking#the-operating-loop-closed)
+says what the deployment was (a laptop) and what the campaign was (a
+drill).
+
+| Engagement | Stage | Card | Holdout | On the answered | External |
+|---|---|---|---|---|---|
+| receipts | pilot | 17/22 | 56.7% on 30 | 56.7% | -- |
+| complaints | pilot | 17/22 | 73.9% on 46 | 75.6% | -- |
+| rfc-qa | prototype | 16/23 | 30.0% on 10 | 30.0% | -- |
+| banking | production (a laptop, attested as such) | 23/24 | 77.5% on 3,036 | 86.6% | 75.8% on 3,079 |
+
 ## Two rules
 
 Every intake surface — prose, interviews, scans, sample pairs, the client's
@@ -366,11 +383,31 @@ declared by the tool.
   who put it there; adoption, time to first value, whatever the client
   measured. **`fde outcomes`** prints what the record shows without anyone's
   opinion -- transitions, days to pilot, loop rounds, reversals, incidents.
+- **`fde stakeholders`** maps the engagement's people as the record shows
+  them: which of the five roles has been heard (every session carries the
+  role and, when given, the name), who signed what (`--by` on data-access,
+  security-review, waive, deployed, outcome and incident close), which roles
+  were never asked, and what is on the record with nobody's name on it.
+  `fde stakeholder add` names the people who have not spoken yet. It is a
+  map, not a contact list.
+- **`fde import`** turns a client export -- `.csv`, `.tsv`, `.jsonl`, `.json`,
+  with the client's column names -- into the pairs the intake reads, and
+  reports what it kept, skipped for an empty side, dropped as a duplicate,
+  and counts as verified. Nothing is verified unless the caller says which
+  column and value means a person checked it.
+- **`fde bench`** reads the same figures off every engagement record, side
+  by side: stage, the out-of-sample rows on its card, the gap, incidents,
+  days to pilot. [`BENCH.md`](https://github.com/atulkapoor/fde-framework/blob/main/BENCH.md)
+  is the four public demos, computed this way.
+- **`fde history`** prints every dated entry on the record in order, the
+  undated ones above it, one line each -- the page to read when picking an
+  engagement up.
 
-What this is not: a stakeholder graph, a connector to the client's ticketing
-or data systems, or a benchmark of engagements. Those need engagements that
-have not happened yet, and the framework says so rather than shipping a
-placeholder.
+What this still is not: a live connector to a ticketing or data system
+(an export is the interface, and the only one testable without a client's
+credentials); a benchmark corpus (four public demos are four rows, and the
+bench says so); collaboration beyond a git-native record with names on it.
+Each waits for engagements that have not happened yet.
 
 ## The full lifecycle, copy-paste
 
@@ -469,6 +506,11 @@ the same receipts the emitted `ARCHITECTURE.md` prints.
 | `fde incident <eng> list \| close <id> --note "..."` | incidents on the record; an open one holds the stage at pilot |
 | `fde outcome <eng> --metric adoption=0.62` / `fde outcomes <eng>` | outcomes measured in the field; what the record shows without opinion |
 | `fde value <eng> --hourly-cost 40` | `VALUE.md`: the measured system in the client's figures, every line measured, stated, assumed or derived |
+| `fde stakeholders <eng>` / `fde stakeholder <eng> add --name --role --stake` | who has been heard, who signed what, which roles were never asked |
+| `fde import <eng> --file tickets.csv --input body --output queue --verified-when checked=yes` | a client export into pairs, with a report; then `fde samples` |
+| `fde bench <eng>=<project> ...` | the same figures off every record, side by side, in `BENCH.md` |
+| `fde history <eng>` | every dated entry on the record in order, one line each |
+| `--by "<name>"` on data-access, security-review, waive, deployed, outcome, incident close | the signer's name on the record; the stakeholder map points at entries without one |
 | `fde triage --statement "..." --statement "..."` | rank candidate problems by what discovery can already decide |
 | `fde override --component X --choose Y --because "..."` | your call, recorded and honoured |
 | `fde observe / retro` | record trigger firings; capture the case |

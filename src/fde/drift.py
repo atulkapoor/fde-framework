@@ -176,7 +176,8 @@ def open_incident(engagement, drift: Drift, journal_path: Path, today: str | Non
     return incident
 
 
-def close_incident(engagement, incident_id: str, note: str, today: str | None = None) -> bool:
+def close_incident(engagement, incident_id: str, note: str, today: str | None = None,
+                   by: str = "") -> bool:
     root = Path(engagement.root)
     path = root / "incidents.jsonl"
     if not path.exists():
@@ -188,6 +189,8 @@ def close_incident(engagement, incident_id: str, note: str, today: str | None = 
             row["status"] = "closed"
             row["closed_at"] = today or date.today().isoformat()
             row["closed_with"] = note
+            if by.strip():
+                row["closed_by"] = by.strip()
             found = True
     if found:
         path.write_text("".join(json.dumps(r) + "\n" for r in rows))
