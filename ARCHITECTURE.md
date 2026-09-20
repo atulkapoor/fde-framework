@@ -21,6 +21,11 @@ intake ──> fact log ──> permutation space ──> gates ──> decide �
                                                                           v
                                               retro <── observe <── build ──> predictions
                                               case capture, override & trigger history
+                                                                          │
+                                                                          v
+                          stage <── incident <── drift <── deployed <── scorecard <── implement
+                          computed off the record; an open incident pulls production back to pilot;
+                          value writes the measured system in the client's own figures
 ```
 
 ## `src/fde/` — the mechanism
@@ -53,6 +58,9 @@ intake ──> fact log ──> permutation space ──> gates ──> decide �
 | `ops.py` | Runbook, diagnosis walk, SLOs, rollback, CI workflow |
 | `training.py` | The fine-tuning data path emitted beside a finetune decision: recorded split, LoRA recipe, before/after on the holdout |
 | `scorecard.py` | Production grade, measured: runs what a deliverable can prove about itself and writes SCORECARD.md with a verdict that is a count of rows |
+| `lifecycle.py` | The engagement's stage, computed from the record against per-stage criteria; transitions appended with evidence; outcome metrics read off the trail |
+| `drift.py` | The production loop: the service's journal read against the exam and the last card; incidents opened and closed on the record |
+| `value.py` | The business-value estimate from the recorded baseline and the holdout row, every line labelled measured, stated, assumed or derived |
 | `scan.py` | Hardware detection; only a successful measurement earns DETECTED |
 | `costing.py` | Dated fleet sizing; naive figure beside the real one |
 | `evolution.py` | Overrides, trigger calibration, case emission |

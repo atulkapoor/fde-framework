@@ -62,6 +62,7 @@ access — no build. The remedies ship with every gate.*
 | **Deterministic by design** | The decision path never calls an LLM: same profile, byte-identical project — a diff between builds means a decision changed. Model assistance exists only as opt-in commands, and the boundary doctrine governs them |
 | **Jurisdiction as data** | Locale packs preset answers at the weakest provenance and attach dated compliance obligations to the build; they can never change how decisions are made |
 | **Self-evolution, honestly** | Overrides, trigger calibration and anonymised cases are captured per engagement; the corpus grows only through human-reviewed ingestion |
+| **An engagement, not a build** | The stage -- discovery, validation, prototype, pilot, production, adoption, retrospective -- is computed off the record, never declared. A drift check reads the deployed service's journal against the exam and opens an incident that pulls production back to pilot; a value estimate puts the measured system in the client's own figures, every line labelled measured, stated, assumed or derived |
 
 
 ## How it fits together
@@ -336,6 +337,41 @@ measurable per build: `fde scorecard <project> --holdout <file> --external
 `SCORECARD.md` with a verdict that is a count of rows, never an adjective,
 and says which rows measure fitness and which measure self-consistency.
 
+## After the build: the engagement's operating loop
+
+`fde build` used to be where the framework stopped. An engagement does not
+stop there, so the record now carries the rest of it, and every part of it
+is either computed from evidence or attested by a named person -- never
+declared by the tool.
+
+- **`fde stage`** computes where the engagement stands. Each stage is a set
+  of criteria the record shows or does not: a statement; gates passing or
+  waived, pairs seeded, a holdout drawn, data access attested; a build with
+  its exam; a scorecard whose out-of-sample rows hold and whose edge answered
+  a valid request; a deployment on record with no open incident; an adoption
+  figure measured in the field; a retrospective captured as a case. Every
+  transition is appended to `lifecycle.jsonl` with its evidence, so
+  time-to-pilot and every reversal can be read back.
+- **`fde drift`** reads the deployed service's journal -- the same `answered`
+  lines the emitted service writes -- and compares abstention, decision mix,
+  errors and margins against the exam and the last scorecard. Past a
+  threshold it opens an incident on the record and exits 1. An open incident
+  pulls production back to pilot; `fde incident close` needs a note saying
+  what was done.
+- **`fde value`** writes `VALUE.md`: the automated share and its accuracy from
+  the holdout row, hours and money from the recorded baseline, build and run
+  costs from the caller, payback, and a Wilson interval on the accuracy.
+  Every line says what it rests on, so the number is argued row by row.
+- **`fde deployed`** and **`fde outcome`** are attestations: where it runs and
+  who put it there; adoption, time to first value, whatever the client
+  measured. **`fde outcomes`** prints what the record shows without anyone's
+  opinion -- transitions, days to pilot, loop rounds, reversals, incidents.
+
+What this is not: a stakeholder graph, a connector to the client's ticketing
+or data systems, or a benchmark of engagements. Those need engagements that
+have not happened yet, and the framework says so rather than shipping a
+placeholder.
+
 ## The full lifecycle, copy-paste
 
 Everything below runs from an empty directory after `pip install fde-framework`:
@@ -367,6 +403,13 @@ fde build acme --out project         # refuses until the gates truly pass
 python project/evals/harness.py      # red: empty until pairs are seeded, then red until implemented -- that's the exam
 fde implement project                # drive a coding agent until it's green
 fde scorecard project --holdout engagements/acme/artifacts/holdout.jsonl   # measure it
+
+fde stage acme --project project     # where it stands, computed off the record
+fde deployed acme --note "runs in the client VPC; platform team put it there"
+fde drift acme --journal service.log --project project   # the field against the exam
+fde incident acme close inc-001 --note "holdout re-scored; pairs redrawn"
+fde outcome acme --metric adoption=0.62 --note "support lead's dashboard, week 3"
+fde value acme --project project --hourly-cost 40        # VALUE.md, line by line
 ```
 
 ## Python API
@@ -420,6 +463,12 @@ the same receipts the emitted `ARCHITECTURE.md` prints.
 | `fde build <eng> --out project` | emit; refuses while gates block |
 | `fde implement project/` | drive a coding agent until the emitted evals pass, inside guardrails |
 | `fde scorecard project/ --holdout <file>` | measure production grade: every property the deliverable can prove, with the number, in `SCORECARD.md` |
+| `fde stage <eng>` | where the engagement stands, computed from the record; transitions appended to `lifecycle.jsonl` |
+| `fde deployed <eng> --note "..."` | attest the deployment: where it runs and who put it there |
+| `fde drift <eng> --journal <log>` | the field against the exam: abstention, mix, errors, margins; opens an incident and exits 1 when it moved |
+| `fde incident <eng> list \| close <id> --note "..."` | incidents on the record; an open one holds the stage at pilot |
+| `fde outcome <eng> --metric adoption=0.62` / `fde outcomes <eng>` | outcomes measured in the field; what the record shows without opinion |
+| `fde value <eng> --hourly-cost 40` | `VALUE.md`: the measured system in the client's figures, every line measured, stated, assumed or derived |
 | `fde triage --statement "..." --statement "..."` | rank candidate problems by what discovery can already decide |
 | `fde override --component X --choose Y --because "..."` | your call, recorded and honoured |
 | `fde observe / retro` | record trigger firings; capture the case |

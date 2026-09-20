@@ -1872,6 +1872,216 @@ def scan_cmd(
     typer.echo("\nrecorded as detected -- outranks anything stated about this box")
 
 
+def _project_of(engagement, project: Path | None) -> Path | None:
+    """The project a command should read: the one given, else the last
+    build recorded by fde build."""
+    if project is not None:
+        return Path(project)
+    record = engagement.root / ".last-out"
+    if record.exists():
+        candidate = Path(record.read_text().strip())
+        if candidate.exists():
+            return candidate
+    return None
+
+
+@app.command("stage")
+def stage_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    project: Annotated[Path | None, typer.Option(
+        "--project", help="The emitted project; defaults to the last build recorded."
+    )] = None,
+    registry_root: Annotated[Path, typer.Option("--registry")] = DEFAULT_ROOT,
+    today: Annotated[str, typer.Option(help="For the record; defaults to today.")] = "",
+) -> None:
+    """Where the engagement stands: discovery, validation, prototype, pilot,
+    production, adoption, retrospective -- computed from the record, never
+    declared. Appends a transition to lifecycle.jsonl when the stage moved.
+    """
+    from fde.lifecycle import assess, record, render
+
+    registry = _registry(registry_root)
+    engagement = _engagement(root)
+    try:
+        blocked = _gate_status(engagement, registry).blocked_by()
+    except Exception:  # noqa: BLE001 -- an unjudgeable gate is "not judged", shown as such
+        blocked = None
+    lifecycle = assess(engagement, blocked, _project_of(engagement, project))
+    moved = record(engagement, lifecycle, today or None)
+    typer.echo(render(lifecycle, engagement.root.name))
+    if moved:
+        typer.echo(f"\nrecorded: {moved['from'] or 'start'} -> {moved['stage']} "
+                   f"(lifecycle.jsonl)")
+
+
+@app.command("deployed")
+def deployed_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    note: Annotated[str, typer.Option(help="Where it runs and who put it there.")],
+    today: Annotated[str, typer.Option(help="For the record; defaults to today.")] = "",
+) -> None:
+    """Attest that the deliverable is deployed. The lifecycle's production
+    stage reads this; nothing infers it from a build."""
+    engagement = _engagement(root)
+    if not note.strip():
+        typer.echo("a deployment attestation needs a note", err=True)
+        raise typer.Exit(1)
+    engagement.record_deployed(note, today or date.today().isoformat())
+    typer.echo("deployment recorded")
+
+
+@app.command("drift")
+def drift_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    journal: Annotated[Path, typer.Option(
+        "--journal", help="The deployed service's journal (one JSON line per event)."
+    )],
+    project: Annotated[Path | None, typer.Option(
+        "--project", help="The emitted project; defaults to the last build recorded."
+    )] = None,
+    today: Annotated[str, typer.Option(help="For the record; defaults to today.")] = "",
+) -> None:
+    """Read the field against the exam: abstention, decision mix, errors and
+    margins from the service's journal, and open an incident on the record
+    when the field has moved past a threshold. Exit 1 when it has."""
+    from fde.drift import detect, expectations, open_incident, read_journal, render
+
+    engagement = _engagement(root)
+    if not journal.exists():
+        typer.echo(f"no journal at {journal}", err=True)
+        raise typer.Exit(1)
+    target = _project_of(engagement, project)
+    expected = expectations(target) if target else {"mix": {}, "abstain_rate": None}
+    drift = detect(read_journal(journal), expected)
+    typer.echo(render(drift))
+    if drift.drifted:
+        incident = open_incident(engagement, drift, journal, today or None)
+        typer.echo(f"\nincident {incident['id']} opened: {incident['kind']}\n"
+                   f"next: {incident['next']}", err=True)
+        raise typer.Exit(1)
+
+
+@app.command("incident")
+def incident_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    action: Annotated[str, typer.Argument(help="list | close")],
+    incident_id: Annotated[str, typer.Argument(help="The incident id, for close.")] = "",
+    note: Annotated[str, typer.Option(help="What was done, for close.")] = "",
+    today: Annotated[str, typer.Option(help="For the record; defaults to today.")] = "",
+) -> None:
+    """Incidents on the engagement record: list them, or close one by name
+    with what was done. An open incident holds the stage at pilot."""
+    from fde.drift import close_incident
+    from fde.lifecycle import _jsonl
+
+    engagement = _engagement(root)
+    if action == "list":
+        rows = _jsonl(engagement.root / "incidents.jsonl")
+        if not rows:
+            typer.echo("no incidents on record")
+        for row in rows:
+            typer.echo(f"  {row.get('id')}  {row.get('status'):6}  {row.get('opened_at')}  "
+                       f"{row.get('kind')}")
+        return
+    if action == "close":
+        if not incident_id or not note.strip():
+            typer.echo("close needs an incident id and --note", err=True)
+            raise typer.Exit(1)
+        if not close_incident(engagement, incident_id, note, today or None):
+            typer.echo(f"no open incident {incident_id}", err=True)
+            raise typer.Exit(1)
+        typer.echo(f"{incident_id} closed")
+        return
+    typer.echo("action is list or close", err=True)
+    raise typer.Exit(1)
+
+
+@app.command("outcome")
+def outcome_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    metric: Annotated[list[str], typer.Option(
+        "--metric", help="What was measured in the field, as name=value. Repeatable."
+    )],
+    note: Annotated[str, typer.Option(help="How it was measured.")] = "",
+    today: Annotated[str, typer.Option(help="For the record; defaults to today.")] = "",
+) -> None:
+    """Record an outcome measured in the field -- adoption, time to first
+    value, incidents, customer figures. The adoption stage reads
+    `adoption`; everything else is kept for the retrospective."""
+    engagement = _engagement(root)
+    when = today or date.today().isoformat()
+    written = 0
+    with (engagement.root / "outcomes.jsonl").open("a") as handle:
+        for item in metric:
+            if "=" not in item:
+                typer.echo(f"not name=value: {item!r}", err=True)
+                raise typer.Exit(1)
+            name, raw = item.split("=", 1)
+            try:
+                value: object = float(raw)
+            except ValueError:
+                value = raw
+            handle.write(json.dumps({"metric": name.strip(), "value": value, "at": when,
+                                     "note": note}) + "\n")
+            written += 1
+    typer.echo(f"recorded {written} outcome(s)")
+
+
+@app.command("outcomes")
+def outcomes_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    project: Annotated[Path | None, typer.Option("--project")] = None,
+) -> None:
+    """What the record shows without anyone's opinion: transitions, days to
+    pilot, loop rounds, reversals, incidents, outcomes."""
+    from fde.lifecycle import outcome_metrics
+
+    engagement = _engagement(root)
+    metrics = outcome_metrics(engagement, _project_of(engagement, project))
+    for key, value in metrics.items():
+        typer.echo(f"  {key:26} {value}")
+
+
+@app.command("value")
+def value_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    project: Annotated[Path | None, typer.Option(
+        "--project", help="The emitted project with a scorecard; defaults to the last build."
+    )] = None,
+    hourly_cost: Annotated[float, typer.Option(
+        "--hourly-cost", help="Fully loaded cost of an hour of the work today."
+    )] = 40.0,
+    implementation_hours: Annotated[float, typer.Option(
+        "--implementation-hours", help="Hours to build and hand over."
+    )] = 160.0,
+    monthly_run_cost: Annotated[float, typer.Option(
+        "--monthly-run-cost", help="Hosting, model and operations per month."
+    )] = 500.0,
+    review_share: Annotated[float | None, typer.Option(
+        "--review-share", help="Share of automated decisions a person still checks."
+    )] = None,
+) -> None:
+    """What the measured system is worth in the client's own figures, every
+    line labelled measured, stated, assumed or derived. Writes VALUE.md
+    into the project."""
+    from fde.value import estimate, render
+
+    engagement = _engagement(root)
+    target = _project_of(engagement, project)
+    rows = None
+    if target is not None and (target / "scorecard.json").exists():
+        rows = {r["property"]: r for r in json.loads((target / "scorecard.json").read_text())
+                .get("rows", [])}
+    value = estimate(engagement.baseline(), rows, hourly_cost=hourly_cost,
+                     implementation_hours=implementation_hours,
+                     monthly_run_cost=monthly_run_cost, review_share=review_share)
+    document = render(value, engagement.root.name)
+    typer.echo(document)
+    if target is not None and target.exists():
+        (target / "VALUE.md").write_text(document)
+        typer.echo(f"wrote {target / 'VALUE.md'}")
+
+
 @app.command("scorecard")
 def scorecard_cmd(
     project: Annotated[Path, typer.Argument(

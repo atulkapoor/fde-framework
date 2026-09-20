@@ -175,6 +175,13 @@ class Engagement:
         state["data_access"] = {"note": note, "at": at}
         self._write_gate_state(state)
 
+    def record_deployed(self, note: str, at: str) -> None:
+        """The deployment, attested like data access: where it runs and who
+        put it there. The lifecycle reads it; nothing else infers it."""
+        state = self._raw_gate_state()
+        state["deployed"] = {"note": note, "at": at}
+        self._write_gate_state(state)
+
     def record_security_review(self, note: str, at: str) -> None:
         state = self._raw_gate_state()
         state["security_review"] = {"note": note, "at": at}
