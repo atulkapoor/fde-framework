@@ -332,21 +332,28 @@ def exam_record(card: Scorecard, project: Path) -> dict | None:
     return record
 
 
-def boot(card: Scorecard, project: Path, timeout: float) -> None:
-    """The edge refuses what it should and answers with a request id."""
+def boot(card: Scorecard, project: Path, timeout: float, passthrough: dict | None = None) -> None:
+    """The edge refuses what it should and answers with a request id. The
+    service is booted with the deployment's own variables where the caller
+    passed them (the corpus, a model endpoint, a boundary allow-list): a
+    retrieval build once answered the valid-request probe "I don't know"
+    because the card had booted it without its corpus."""
     service = project / "app" / "service.py"
     if not service.exists():
         card.add("edge", "no app/service.py", None)
         return
     port = _free_port()
     has_model = (project / "app" / "llm.py").exists()
-    env = {"PATH": os.environ.get("PATH", "/usr/bin"), "PORT": str(port), "AUTH_TOKEN": "scorecard",
-           "GRANTED_SCOPES": "x", "STATE_DIR": str(project / "scorecard-state")}
-    if has_model:
+    given = {k: v for k, v in (passthrough or {}).items()
+             if not k.startswith("LLM_") or has_model}
+    env = {"PATH": os.environ.get("PATH", "/usr/bin"), **given, "PORT": str(port),
+           "AUTH_TOKEN": "scorecard", "GRANTED_SCOPES": "x",
+           "STATE_DIR": str(project / "scorecard-state")}
+    if has_model and "LLM_ENDPOINT" not in env:
         # A model seam with nothing behind it: readiness must say so, and
         # a build with no seam must not be handed an endpoint at all.
         env["LLM_ENDPOINT"] = "http://127.0.0.1:9"
-    if (project / "train").is_dir():
+    if (project / "train").is_dir() and "FINETUNED_MODEL" not in env:
         env["FINETUNED_MODEL"] = "scorecard-adapter"
     proc = subprocess.Popen([sys.executable, "-m", "app.service"], cwd=project, env=env,
                             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
@@ -593,7 +600,7 @@ def score(project: Path, holdout_path: Path | None = None, min_score: float = 0.
     holdout_score = float(match.group(1)) / 100 if match else None
     external(card, project, external_path, timeout, env)
     if probe_edge:
-        boot(card, project, min(timeout, 60.0))
+        boot(card, project, min(timeout, 60.0), passthrough=env)
     register(card, project)
     environment(card, project)
     training(card, project)
