@@ -68,6 +68,7 @@ def collect(engagement, status, architecture, registry, as_of: str | None = None
                               "", waiver.get("at"),
                               "meet the gate, or restate the waiver if it still holds"))
     profile = engagement.profile
+    session_dates = _session_dates(root)
     referenced = set()
     for decision in architecture.decisions.values():
         approach = registry.approaches.get(decision.approach) if decision.approach else None
@@ -83,12 +84,14 @@ def collect(engagement, status, architecture, registry, as_of: str | None = None
         cited = dimension in referenced
         if fact.provenance == Provenance.INFERRED:
             items.append(Item("guessed", f"{dimension} = {fact.value}: the framework's own "
-                              "inference", owner, "production" if cited else "", None,
+                              "inference", owner, "production" if cited else "",
+                              session_dates.get(fact.session_id or ""),
                               f"confirm it: fde ask <eng> --role {owner}"))
         elif fact.provenance == Provenance.INTERVIEW and fact.kind == DimensionKind.ENVIRONMENT:
             items.append(Item("stated", f"{dimension} = {fact.value}: said by "
                               f"{fact.respondent}, measurable but not measured", owner,
-                              "production" if cited else "", None,
+                              "production" if cited else "",
+                              session_dates.get(fact.session_id or ""),
                               "measure it: fde scan, or a document the client owns"))
     for disagreement in profile.disagreements():
         who = "; ".join(f"{f.respondent} said {f.value}" for f in disagreement.facts)
@@ -115,6 +118,24 @@ def collect(engagement, status, architecture, registry, as_of: str | None = None
                               f"{decision.rationale[:100]}", "eval_owner", "", None,
                               "verify at source before production"))
     return items
+
+
+def _session_dates(root: Path) -> dict[str, str]:
+    """session id -> the day it was recorded, for the sessions that say."""
+    import yaml
+
+    out: dict[str, str] = {}
+    facts_dir = root / "facts"
+    if not facts_dir.is_dir():
+        return out
+    for path in facts_dir.glob("*.yaml"):
+        try:
+            raw = yaml.safe_load(path.read_text()) or {}
+        except yaml.YAMLError:
+            continue
+        if raw.get("recorded_at"):
+            out[str(raw.get("session_id", path.stem))] = str(raw["recorded_at"])
+    return out
 
 
 def _dimensions_in(predicate) -> set[str]:

@@ -78,6 +78,30 @@ def _card_numbers(rows: dict[str, dict] | None) -> dict[str, float | None]:
     return out
 
 
+def card_figures(rows: dict[str, dict] | None) -> dict[str, float | None]:
+    """Every figure a scorecard's out-of-sample rows carry, by name: the
+    vocabulary stop conditions and the bench read."""
+    numbers = _card_numbers(rows)
+    out: dict[str, float | None] = {
+        "holdout_accuracy": numbers["holdout"],
+        "answered_accuracy": numbers["answered_accuracy"],
+        "abstain_rate": numbers["abstain_rate"],
+        "holdout_cases": numbers["cases"],
+        "external_accuracy": None,
+        "generalisation_gap": None,
+    }
+    if rows:
+        match = re.search(r"([0-9.]+)% on (\d+) cases",
+                          rows.get("external exam", {}).get("measured", ""))
+        if match:
+            out["external_accuracy"] = float(match.group(1)) / 100
+        match = re.search(r"= ([+-]?[0-9.]+)%",
+                          rows.get("generalisation gap", {}).get("measured", ""))
+        if match:
+            out["generalisation_gap"] = float(match.group(1)) / 100
+    return out
+
+
 def estimate(baseline: dict | None, card_rows: dict[str, dict] | None, *,
              hourly_cost: float, implementation_hours: float, monthly_run_cost: float,
              review_share: float | None = None) -> Value:

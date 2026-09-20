@@ -50,3 +50,18 @@ def test_a_settled_record_has_little_debt(tmp_path):
     assert result.exit_code == 0
     assert "decision debt as of" in result.output and "item(s)" in result.output
     assert Path(tmp_path / "acme" / "facts").is_dir()
+
+
+def test_a_stated_fact_ages_from_the_day_its_session_was_recorded(tmp_path):
+    start_engagement(tmp_path, "acme", statement=STATEMENT)
+    eng = load_engagement(tmp_path / "acme")
+    eng.append(Session(session_id="0009-admin", recorded_at="2026-06-01",
+                       respondent=Respondent(role=Role.ADMIN, name="Dev"),
+                       facts=[Fact("gpu_available", "true", Provenance.INTERVIEW,
+                                   kind=DimensionKind.ENVIRONMENT)]))
+    result = runner.invoke(app, ["debt", str(tmp_path / "acme"), "--as-of", "2026-09-21"])
+    assert result.exit_code == 0, result.output
+    assert "stated         gpu_available = true" in result.output
+    assert "112 day(s) AGING" in result.output
+    text = (tmp_path / "acme" / "facts" / "0009-admin.yaml").read_text()
+    assert "recorded_at: '2026-06-01'" in text or "recorded_at: 2026-06-01" in text

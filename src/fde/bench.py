@@ -12,12 +12,11 @@ four public demos are four rows, not a corpus.
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 from typing import Any
 
 from fde.lifecycle import _jsonl, outcome_metrics
-from fde.value import _card_numbers
+from fde.value import card_figures
 
 
 def _card(project: Path | None) -> dict[str, dict] | None:
@@ -34,18 +33,9 @@ def measure(engagement, project: Path | None) -> dict[str, Any]:
     root = Path(engagement.root)
     trail = _jsonl(root / "lifecycle.jsonl")
     card = _card(project)
-    numbers = _card_numbers(card)
-    external = gap = None
+    figures = card_figures(card)
     verdict = None
     if card:
-        match = re.search(r"([0-9.]+)% on (\d+) cases", card.get("external exam", {})
-                          .get("measured", ""))
-        if match:
-            external = float(match.group(1)) / 100
-        match = re.search(r"= ([+-]?[0-9.]+)%", card.get("generalisation gap", {})
-                          .get("measured", ""))
-        if match:
-            gap = float(match.group(1)) / 100
         held = sum(1 for r in card.values() if r.get("holds") is True)
         measured = sum(1 for r in card.values() if r.get("holds") in (True, False))
         verdict = f"{held}/{measured}"
@@ -54,12 +44,12 @@ def measure(engagement, project: Path | None) -> dict[str, Any]:
         "engagement": root.name,
         "stage": trail[-1]["stage"] if trail else "unrecorded",
         "card": verdict,
-        "holdout": numbers["holdout"],
-        "abstained": numbers["abstain_rate"],
-        "answered_accuracy": numbers["answered_accuracy"],
-        "holdout_cases": int(numbers["cases"]) if numbers["cases"] else None,
-        "external": external,
-        "gap": gap,
+        "holdout": figures["holdout_accuracy"],
+        "abstained": figures["abstain_rate"],
+        "answered_accuracy": figures["answered_accuracy"],
+        "holdout_cases": int(figures["holdout_cases"]) if figures["holdout_cases"] else None,
+        "external": figures["external_accuracy"],
+        "gap": figures["generalisation_gap"],
         "days_to_pilot": metrics["days_to_pilot"],
         "rounds": metrics["implement_rounds_logged"],
         "incidents": f"{metrics['incidents_opened']} opened, {metrics['incidents_open']} open",

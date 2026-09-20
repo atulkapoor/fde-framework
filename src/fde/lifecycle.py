@@ -52,9 +52,14 @@ class Stage:
 class Lifecycle:
     stages: list[Stage]
     regressions: list[str] = field(default_factory=list)
+    stopped: list[str] = field(default_factory=list)
 
     @property
     def current(self) -> str:
+        # A triggered stop condition is the stage, whatever else holds:
+        # stop is a legitimate outcome, not a failure to reach the next one.
+        if self.stopped:
+            return "stopped"
         reached = "none"
         for stage in self.stages:
             if not stage.holds:
@@ -184,8 +189,13 @@ def assess(engagement, blocked_gates: list[str] | None, project: Path | None = N
                   "case.json" if (root / "case.json").exists() else "none: fde retro"),
     ])
     regressions = [f"open incident {i.get('id')}: {i.get('kind')}" for i in incidents]
+    from fde.stop import conditions, evaluate, figures, triggered
+
+    stopped = [f"{v.condition} (measured {v.measured:.4g})"
+               for v in triggered(evaluate(conditions(engagement),
+                                           figures(engagement, project)))]
     return Lifecycle([discovery, validation, prototype, pilot, production, adoption,
-                      retrospective], regressions=regressions)
+                      retrospective], regressions=regressions, stopped=stopped)
 
 
 def record(engagement, lifecycle: Lifecycle, today: str | None = None) -> dict | None:
@@ -206,6 +216,7 @@ def record(engagement, lifecycle: Lifecycle, today: str | None = None) -> dict |
             for stage in lifecycle.stages if stage.name == current
         },
         "regressions": lifecycle.regressions,
+        "stopped": lifecycle.stopped,
     }
     with path.open("a") as handle:
         handle.write(json.dumps(entry) + "\n")
@@ -224,6 +235,10 @@ def render(lifecycle: Lifecycle, name: str) -> str:
         for criterion in stage.criteria:
             tick = "ok " if criterion.holds else "NO "
             lines.append(f"       {tick}{criterion.name}: {criterion.evidence}")
+    if lifecycle.stopped:
+        lines += ["", "STOPPED by: " + "; ".join(lifecycle.stopped),
+                  "  restate the condition with a reason, change the build and score it "
+                  "again, or capture the case (fde retro)"]
     if lifecycle.regressions:
         lines += ["", "regressed to pilot by: " + "; ".join(lifecycle.regressions)]
     nxt = lifecycle.next_stage

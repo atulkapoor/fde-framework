@@ -2157,6 +2157,43 @@ def outcome_contract_cmd(
     _echo_next(root, engagement)
 
 
+@app.command("stop-when")
+def stop_when_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    when: Annotated[list[str] | None, typer.Option(
+        "--when", help="A condition that stops the engagement, e.g. "
+                       "\"answered_accuracy < 0.88\". Repeatable."
+    )] = None,
+    project: Annotated[Path | None, typer.Option(
+        "--project", help="The emitted project with a scorecard; defaults to the last build."
+    )] = None,
+    journal: Annotated[Path | None, typer.Option(
+        "--journal", help="The deployed service's journal, for the field figures."
+    )] = None,
+    by: Annotated[str, typer.Option(help="Who signs this: a name for the record.")] = "",
+    today: Annotated[str, typer.Option(help="For the record; defaults to today.")] = "",
+) -> None:
+    """Record what evidence would stop this engagement, and judge the
+    record against it. Exit 1 when a condition is triggered: stop is a
+    legitimate outcome, and the stage says so until it is answered."""
+    from fde.stop import StopError, conditions, evaluate, figures, record, render, triggered
+
+    engagement = _engagement(root)
+    if when:
+        try:
+            added = record(engagement, when, by=by, at=today or None)
+        except StopError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(1) from exc
+        typer.echo(f"recorded {len(added)} stop condition(s)" if added
+                   else "already on record")
+    measured = figures(engagement, _project_of(engagement, project), journal)
+    verdicts = evaluate(conditions(engagement), measured)
+    typer.echo(render(verdicts, measured))
+    if triggered(verdicts):
+        raise typer.Exit(1)
+
+
 @app.command("debt")
 def debt_cmd(
     root: Annotated[Path, typer.Argument(help="The engagement directory.")],

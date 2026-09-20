@@ -67,6 +67,7 @@ intake ──> fact log ──> permutation space ──> gates ──> decide �
 | `history.py` | Every dated entry on the record in order, undated ones above, one line each |
 | `debt.py` | Decision debt read off the record: gates, waivers, guessed and stated facts, disagreements, unsigned entries, unheard roles, incidents, undecided components, each with owner and age |
 | `impact.py` | What an answer would change: the evidence on record for a dimension and the decisions that turn on each candidate, tried as the framework's own guess and never written |
+| `stop.py` | Stop conditions on the outcome contract, judged against the card, the field journal and the recorded outcomes; a triggered one is the STOP stage |
 | `scan.py` | Hardware detection; only a successful measurement earns DETECTED |
 | `costing.py` | Dated fleet sizing; naive figure beside the real one |
 | `evolution.py` | Overrides, trigger calibration, case emission |

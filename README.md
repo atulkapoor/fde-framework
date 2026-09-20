@@ -95,7 +95,7 @@ ladder, so nothing here can be over-read:
 
 | Claim | Status | The evidence, and where it stops |
 |---|---|---|
-| The framework is implemented | verified | 1,246 tests on three Pythons in CI; lint clean; every audit finding pinned as a check before it was fixed |
+| The framework is implemented | verified | 1,252 tests on three Pythons in CI; lint clean; every audit finding pinned as a check before it was fixed |
 | A build is reproducible | verified | byte-identical rebuild pinned by test; each public demo carries a Reproduce section and its digests |
 | The decisions generalise | partial | four shapes (extraction, freeform QA, a labelled decision, seventy-seven-way routing) on real data; one industry set; `fde kb sweep` names the shapes nothing serves |
 | The deliverable is production-reliable | unverified | no production engagement; the banking operating loop ran on a laptop and its record says so |
@@ -426,6 +426,14 @@ declared by the tool.
 - **`fde next`** now says what hangs on the question it asks: the evidence
   already on record for that dimension, every candidate answer tried, and
   the decisions that turn on it -- so the question is asked knowing why.
+- **`fde stop-when`** records what evidence would stop the engagement --
+  `answered_accuracy < 0.88`, `abstain_rate > 0.25`, `adoption < 0.4` --
+  over figures the record measures: the scorecard's out-of-sample rows, the
+  field journal, the outcomes recorded in the field. A triggered condition
+  makes STOP the engagement's stage, on the record with the trigger and the
+  threshold, until the condition is restated with a reason, the build is
+  changed and scored again, or the case is captured. A figure the record
+  has not measured leaves its condition unjudged and says so.
 
 What this still is not: a live connector to a ticketing or data system
 (an export is the interface, and the only one testable without a client's
@@ -536,6 +544,7 @@ the same receipts the emitted `ARCHITECTURE.md` prints.
 | `fde history <eng>` | every dated entry on the record in order, one line each |
 | `fde outcome-contract <eng> --owner --metric --baseline --unit --target --method --window` | the eighth gate: which number this system exists to move, from what to what, measured how, by when |
 | `fde debt <eng>` | decision debt: what nobody has settled, with an owner, what it blocks, and its age |
+| `fde stop-when <eng> --when "answered_accuracy < 0.88"` | what evidence would stop the engagement; judged against the record, exit 1 and a STOP stage when triggered |
 | `--by "<name>"` on data-access, security-review, waive, deployed, outcome, incident close | the signer's name on the record; the stakeholder map points at entries without one |
 | `fde triage --statement "..." --statement "..."` | rank candidate problems by what discovery can already decide |
 | `fde override --component X --choose Y --because "..."` | your call, recorded and honoured |

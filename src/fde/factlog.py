@@ -23,6 +23,7 @@ Layout::
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +42,9 @@ class Session:
     session_id: str
     respondent: Respondent
     facts: list[Fact] = field(default_factory=list)
+    # The day the session was recorded. A fact said in April and never
+    # measured is a different thing in October, and the debt list ages it.
+    recorded_at: str | None = None
 
     def stamped(self) -> list[Fact]:
         """Facts carrying this session's respondent and id.
@@ -61,6 +65,7 @@ class Session:
                     "role": str(self.respondent.role),
                     "name": self.respondent.name,
                 },
+                **({"recorded_at": self.recorded_at} if self.recorded_at else {}),
                 "facts": [
                     # span and source are what make "where did that come from"
                     # answerable months later. Dropping them on write would
@@ -95,6 +100,7 @@ class Session:
                 session_id=raw.get("session_id", source),
                 respondent=Respondent(**raw["respondent"]),
                 facts=[Fact(**_span_as_tuple(f)) for f in raw.get("facts", [])],
+                recorded_at=raw.get("recorded_at"),
             )
         except Exception as exc:  # noqa: BLE001 - the file name is the useful part
             raise ValueError(f"{source}: cannot read session file -- {exc}") from exc
@@ -160,6 +166,8 @@ class Engagement:
         path = self.facts_dir / f"{session.session_id}.yaml"
         if path.exists():
             raise FileExistsError(f"{path}: session {session.session_id!r} already recorded")
+        if session.recorded_at is None:
+            session.recorded_at = date.today().isoformat()
         path.write_text(session.to_yaml())
         self.profile.ingest(session.stamped())
 
