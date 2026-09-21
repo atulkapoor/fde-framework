@@ -5,6 +5,22 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.34] — 2026-09-21
+
+- **The emitted harness never raises on what the pipeline returned**
+  (issue #2, reported with a clean reproduction). Single-field outputs
+  put the exam on the decision path, and a scaffold pipeline that hands
+  back its intermediate envelope -- a dict that is not a label -- reached
+  `in known` as an unhashable value and the harness died with a
+  TypeError instead of scoring the case wrong. Predictions are now
+  reduced through one total function: a string is itself, anything else
+  is a single marker that is never a known label and never an
+  abstention, so the golden layer scores 0.0% and the report says
+  `250 EUR -> <not a label>`. Pinned by a test that builds the reported
+  shape and runs its harness.
+- The site's sitemap listed a page that did not exist and carried a
+  stale date; both fixed. PyPI and llms.txt now link the site.
+
 ## [0.1.33] — 2026-09-21
 
 - Stop conditions alone are not an outcome contract. Recording them
