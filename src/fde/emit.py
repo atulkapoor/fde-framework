@@ -3145,13 +3145,27 @@ def label_of(value):
     return value
 
 
+NOT_A_LABEL = "<not a label>"
+
+
+def answer_key(prediction):
+    """A prediction reduced to something a label set can hold. A string
+    is itself; anything else -- a dict that is not a single label, a
+    list, a number -- is one marker, so a stub that hands back its
+    intermediate envelope is scored as a wrong answer rather than raised
+    as a TypeError (issue #2: an unhashable dict reached `in known`)."""
+    reduced = label_of(prediction)
+    return reduced if isinstance(reduced, str) else NOT_A_LABEL
+
+
 def decision_metrics(cases, predictions):
     """Per-class precision, recall and F1, their macro average, the
     confusion, and the majority rate -- for a decision task, accuracy
-    alone cannot tell a classifier from a constant."""
-    pairs = [(label_of(c.get("output", c.get("expect"))), label_of(p))
+    alone cannot tell a classifier from a constant. Total over the
+    prediction's shape: it never raises on what the pipeline returned."""
+    pairs = [(label_of(c.get("output", c.get("expect"))), answer_key(p))
              for c, p in zip(cases, predictions, strict=False) if p is not None]
-    labels = sorted({{e for e, _ in pairs}} | {{a for _, a in pairs if isinstance(a, str)}})
+    labels = sorted({{e for e, _ in pairs}} | {{a for _, a in pairs if a != NOT_A_LABEL}})
     per_class = {{}}
     for label in labels:
         tp = sum(1 for e, a in pairs if e == label and a == label)
@@ -3169,8 +3183,8 @@ def decision_metrics(cases, predictions):
     # Abstentions: a prediction that is not one of the expected labels
     # ("unknown") is a refusal to route, counted apart from a wrong route.
     known = set(expected_counts)
-    abstained = sum(1 for _, a in pairs if a not in known)
-    answered = [(e, a) for e, a in pairs if a in known]
+    abstained = sum(1 for _, a in pairs if a not in known and a != NOT_A_LABEL)
+    answered = [(e, a) for e, a in pairs if a in known or a == NOT_A_LABEL]
     answered_accuracy = (sum(1 for e, a in answered if e == a) / len(answered)
                          if answered else None)
     # The majority rate is unrounded: a constant answer scores EXACTLY the

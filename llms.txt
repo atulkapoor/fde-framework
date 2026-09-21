@@ -65,6 +65,7 @@ Key facts:
 ## Documentation
 
 - [README](https://github.com/atulkapoor/fde-framework/blob/main/README.md):
+- Site: https://atulkapoor.github.io/fde-framework/ (the same content as the README, with the four public runs and the skeptic's questions)
   what it is, who it is for, install, quickstart, FAQ
 - [CONTRIBUTING](https://github.com/atulkapoor/fde-framework/blob/main/CONTRIBUTING.md):
   the contribution contract; client material never enters the repository

@@ -242,6 +242,31 @@ def test_the_emitted_evaluation_gate_can_fail(reg, tmp_path):
             or "every golden case failed" in result.stderr), result.stderr
 
 
+def test_a_stub_answering_with_its_envelope_scores_wrong_rather_than_crashing(reg, tmp_path):
+    """Issue #2: single-field outputs put the exam on the decision path, and
+    the scaffold pipeline answers with its intermediate envelope -- a dict
+    that is not a label. The harness raised TypeError (unhashable dict) at
+    `in known`; it must score the case wrong and stay red honestly."""
+    pairs = tmp_path / "pairs.jsonl"
+    pairs.write_text(
+        '{"id": "p1", "input": {"text": "Invoice INV-001 total 100 EUR"}, '
+        '"output": {"total": "100 EUR"}, "verified": true}\n'
+        '{"id": "p2", "input": {"text": "Invoice INV-002 total 250 EUR"}, '
+        '"output": {"total": "250 EUR"}, "verified": true}\n'
+    )
+    out = tmp_path / "out"
+    emit(architect(profile(**COMPLETE), reg), out, pairs_path=pairs)
+    report = tmp_path / "report.json"
+    result = subprocess.run(
+        [sys.executable, "evals/harness.py", "--report", str(report)], cwd=out,
+        capture_output=True, text=True,
+    )
+    assert "TypeError" not in result.stderr and "Traceback" not in result.stderr, result.stderr
+    assert result.returncode == 1
+    assert "every golden case failed" in result.stderr or "errored" in result.stderr
+    assert report.exists() and "<not a label>" in report.read_text()
+
+
 def test_an_empty_golden_set_is_a_red_build(reg, tmp_path):
     """The earlier version of this test pinned the opposite: exit 0 with a
     stderr note. A note is for people; the exit code is for CI, and CI was
