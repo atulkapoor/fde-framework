@@ -5,6 +5,46 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.38] — 2026-09-25
+
+A fifth outside reading, of 0.1.37, found the experiment protocol
+good enough to start and not rigorous enough to trust, and named four
+design faults. This release fixes them in the document and makes the
+protocol something the record runs rather than something people follow
+approximately. It is the last instrument; what follows is engagements.
+
+- **The experiment, run by the record.** `fde experiment <eng> start`
+  assigns the arm -- the lesser arm when the shape's counts differ, a
+  draw seeded from the series when they are equal, "by hand" when
+  forced and recorded as such -- records the engineer, the order and a
+  difficulty vector read off the profile, and freezes the forecasts, the
+  outcome contract and the stop conditions before the build; an
+  engagement started after a build existed is marked. The control arm
+  gets a log template with the same fields the record supplies. `close`
+  reads the measures off the record or the log and lists what is
+  missing rather than estimating it. `packet` renders the blind review
+  in one plain form for both arms, with no word in it that names the
+  arm. `review` records the reviewer's fixed form -- evidence
+  sufficiency, necessity, operational and implementation complexity,
+  risk, reversibility, each apart -- whether they would sign the
+  contract, the question nobody asked, and their guess at the arm.
+  `report` pairs within shape, never averages across, sets the primary
+  endpoint (blind-review architecture quality, declared in the protocol
+  before any review) beside the secondaries, reports the blinding
+  accuracy, lists what is missing and unclosed, and names the rung of
+  evidence the count has reached.
+- **`EXPERIMENT.md` revised** to say all of the above: randomised
+  assignment, order recorded against learning, one declared primary
+  endpoint, a blinding check, a difficulty vector, the evidence rungs
+  by count, and the reviewer's "simplest" split six ways.
+- **One version, everywhere.** A test fails when pyproject, CITATION
+  and the newest CHANGELOG entry disagree, and the release workflow
+  refuses a tag that differs from them -- two tags this week had to be
+  moved after the fact.
+- **The image pinned by the run.** The first sandboxed run writes the
+  digest the agent ran on into `ops/agent-policy.yaml`, so every later
+  run uses the same bytes; the log says it did.
+
 ## [0.1.37] — 2026-09-25
 
 A measurement release. A fourth outside reading, of 0.1.36, found the
