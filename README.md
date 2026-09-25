@@ -92,6 +92,17 @@ implemented. The full design is in [ARCHITECTURE.md](https://github.com/atulkapo
 
 ---
 
+## Bring an engagement
+
+The claim ladder below ends on a rung only engagements can move. The first
+five that run to the protocol are free, your data never leaves your
+environment, and a stop is a legitimate outcome.
+[`ENGAGE.md`](https://github.com/atulkapoor/fde-framework/blob/main/ENGAGE.md)
+says what each side gives and gets, with the agreement in plain language;
+an [engagement proposal](https://github.com/atulkapoor/fde-framework/issues/new?template=engagement.yml)
+is the front door, and `fde triage --statement "..."` is the first step you
+can run yourself.
+
 ## Who this is for
 
 - **Forward deployed engineers and solutions engineers** delivering AI systems

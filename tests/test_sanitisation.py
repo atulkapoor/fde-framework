@@ -45,6 +45,8 @@ ALLOWED = (
     "BENCH.md",
     # The protocol for the engagements that would test the thesis; authored.
     "EXPERIMENT.md",
+    # What an engagement gives and gets, and the plain-language agreement; authored.
+    "ENGAGE.md",
     "CITATION.cff",
     ".editorconfig",
     "ARCHITECTURE.md",

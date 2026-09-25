@@ -1,0 +1,65 @@
+name: Engagement proposal
+description: Bring a real workflow to run to the experiment protocol (see ENGAGE.md)
+labels: [engagement]
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Nothing here should be your data. Describe the problem the way you would to a
+        colleague; the framework asks for what it still needs. Read ENGAGE.md first for
+        what each side gives and gets.
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem, in three sentences
+      description: What arrives, what has to happen to it, and who is waiting.
+    validations:
+      required: true
+  - type: dropdown
+    id: examples
+    attributes:
+      label: Real examples with the answers your people gave
+      options:
+        - a few hundred or more
+        - between forty and a few hundred
+        - fewer than forty
+        - none yet
+    validations:
+      required: true
+  - type: dropdown
+    id: boundary
+    attributes:
+      label: Where the data may live
+      options:
+        - it may not leave our environment (on-premise or air-gapped)
+        - our own cloud account only
+        - a hosted model is acceptable
+    validations:
+      required: true
+  - type: input
+    id: owner
+    attributes:
+      label: Who would sign the outcome contract
+      description: The role, not the name. The person who owns the number this system would move.
+    validations:
+      required: true
+  - type: input
+    id: baseline
+    attributes:
+      label: What the work costs today
+      description: Volume, time per item, error rate -- measured or stated, say which.
+  - type: textarea
+    id: triage
+    attributes:
+      label: Output of fde triage, if you ran it
+      description: "`pip install fde-framework && fde triage --statement \"...\"` -- paste what it printed."
+  - type: dropdown
+    id: record
+    attributes:
+      label: What may be public afterwards
+      options:
+        - nothing
+        - the figures only
+        - an anonymised case naming the sector
+    validations:
+      required: true
