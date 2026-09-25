@@ -5,6 +5,34 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.39] — 2026-09-25
+
+A sixth outside reading, of 0.1.38, found five things the experiment's
+report and protocol still let through. Each held against the code, and
+each is now on the record or in the report.
+
+- **Withdrawals, by arm.** An engagement enters the series before its
+  arm is drawn and stays in it; `fde experiment <eng> withdraw --reason`
+  records one leaving with the arm it drew, and the report counts
+  withdrawals by arm, because a lopsided count is what choosing
+  engagements after seeing the arm looks like.
+- **Pairs by nearest difficulty.** Within a shape, each *with*
+  engagement is paired to the unmatched *without* whose frozen
+  difficulty vector is nearest, and the distance is printed beside the
+  pair; first-come pairing let two engagements of the same shape and
+  nothing else in common stand as one comparison.
+- **The floor line.** The mean stays the declared primary endpoint, and
+  the report prints beside it every dimension scored under three, by
+  name and by engagement, so five good scores cannot hide a risk of one.
+- **Blinding per packet version.** The packet carries a form version,
+  every review records the version it judged, and the blinding accuracy
+  is reported per version, so a changed form does not erase the history.
+- **Breakdowns by engineer and by half of the series.** The same figures,
+  never collapsed across the people or across time.
+- The protocol states the limitation no code removes: everyone in the
+  experiment knows they are in it, and the bias runs toward a stronger
+  control.
+
 ## [0.1.38] — 2026-09-25
 
 A fifth outside reading, of 0.1.37, found the experiment protocol
