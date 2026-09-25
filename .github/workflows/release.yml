@@ -22,7 +22,7 @@ jobs:
           version=$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')
           test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME != pyproject $version"; exit 1; }
           grep -q "^version: $version$" CITATION.cff || { echo "CITATION.cff != $version"; exit 1; }
-          grep -m1 "^## \[" CHANGELOG.md | grep -q "\[$version\]" || { echo "CHANGELOG newest entry != $version"; exit 1; }
+          grep -m1 -E "^## \[[0-9]" CHANGELOG.md | grep -q "\[$version\]" || { echo "CHANGELOG newest entry != $version"; exit 1; }
       - run: ruff check src tests
       - run: pytest -q
       - run: pip install build && python -m build
