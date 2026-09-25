@@ -85,7 +85,36 @@ def write_ops(architecture, out: Path, registry=None, baseline=None) -> None:
     (ops / "diagnosis.md").write_text(_diagnosis(architecture))
     (ops / "slo.md").write_text(_slo(architecture, baseline))
     (ops / "rollback.md").write_text(_rollback(architecture))
+    (ops / "agent-policy.yaml").write_text(AGENT_POLICY)
     _ci(architecture, out)
+
+
+AGENT_POLICY = """\
+# Where a coding agent runs during `fde implement --sandbox docker`.
+#
+# Enforced by construction, not by inspection afterwards: only this project
+# is mounted (at /work), the environment is the allowlist below plus any
+# --env-allow names, and the network is off unless `network: host` here or
+# --allow-network on the command. Without --sandbox the fence still applies
+# (protected files hashed, restored and reported; planted files removed)
+# but the agent has the whole host, and the implementation log says so.
+#
+# The image must carry the agent you name with --agent-cmd; python:3.12-slim
+# carries none. An agent that calls a hosted model needs the network and
+# its key: set `network: host` and add the key's name to env_allow, and
+# know that both are then in the agent's hands.
+image: python:3.12-slim
+network: none
+env_allow:
+  - PATH
+  - HOME
+  - LANG
+  - TERM
+processes:
+  - python
+  - pytest
+  - ruff
+"""
 
 
 # --- runbook -------------------------------------------------------------

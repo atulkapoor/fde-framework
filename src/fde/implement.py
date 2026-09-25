@@ -63,9 +63,12 @@ class ImplementReport:
     done: bool
     stopped_by: str  # "harness green" | "round cap" | "guardrail" | "agent failed"
     provisional: bool = False
+    sandbox: str = ""  # where the agent ran, in words, for the log
 
     def log(self) -> str:
         lines = ["# Implementation log", ""]
+        if self.sandbox:
+            lines += [f"- the agent ran on: {self.sandbox}", ""]
         for r in self.rounds:
             lines.append(f"## Round {r.number}")
             lines.append("")
@@ -247,12 +250,17 @@ class AgentMissing(RuntimeError):
 
 
 def _run_agent(project: Path, agent_cmd: str, prompt: str,
-               timeout: float = 3600.0) -> bool:
+               timeout: float = 3600.0, sandbox: str | None = None,
+               env_allow: tuple[str, ...] = (), allow_network: bool = False) -> bool:
     """Run the agent with the brief on stdin, or via {prompt_file}.
 
     The placeholder exists because not every agent reads stdin: aider takes
     --message-file, and anything with the same shape slots in as
     --agent-cmd "aider --yes --message-file {prompt_file}".
+
+    With `sandbox="docker"` the agent runs in a container with only the
+    project mounted, the environment reduced to the policy's allowlist and
+    the network off unless allowed -- see fde.sandbox.
     """
     stdin = prompt
     if "{prompt_file}" in agent_cmd:
@@ -262,14 +270,23 @@ def _run_agent(project: Path, agent_cmd: str, prompt: str,
         # Absolute, because the agent runs with cwd=project: a relative
         # project path substituted here once produced delivery/delivery/...
         # from inside the project, and the agent died reading its own brief.
-        agent_cmd = agent_cmd.replace("{prompt_file}", str(brief.resolve()))
+        if sandbox == "docker":
+            from fde.sandbox import WORKDIR
+            agent_cmd = agent_cmd.replace("{prompt_file}", f"{WORKDIR}/.implement/brief.md")
+        else:
+            agent_cmd = agent_cmd.replace("{prompt_file}", str(brief.resolve()))
         stdin = ""
     try:
-        result = subprocess.run(  # noqa: S603 - the agent is the caller's own command
-            shlex.split(agent_cmd),
-            cwd=project, input=stdin, capture_output=True, text=True,
-            timeout=timeout,
-        )
+        if sandbox == "docker":
+            from fde.sandbox import load_policy, run_agent_in_sandbox
+            result = run_agent_in_sandbox(project, agent_cmd, stdin, timeout,
+                                          load_policy(project), env_allow, allow_network)
+        else:
+            result = subprocess.run(  # noqa: S603 - the agent is the caller's own command
+                shlex.split(agent_cmd),
+                cwd=project, input=stdin, capture_output=True, text=True,
+                timeout=timeout,
+            )
     except subprocess.TimeoutExpired:
         # A model-in-the-loop round can legitimately outlive any fixed
         # budget -- the receipts demonstration's local-inference rounds ran
@@ -284,6 +301,11 @@ def _run_agent(project: Path, agent_cmd: str, prompt: str,
         )
         return False
     except FileNotFoundError as exc:
+        if sandbox == "docker":
+            raise AgentMissing(
+                "docker is not on this machine; --sandbox docker needs it. Install it, "
+                "or run without --sandbox and rely on the fence alone."
+            ) from exc
         raise AgentMissing(
             f"the coding agent {shlex.split(agent_cmd)[0]!r} is not on this "
             f"machine. Install it, or name another with --agent-cmd -- "
@@ -310,6 +332,9 @@ def run_loop(
     holdout: Path | None = None,
     agent_timeout: float = 3600.0,
     check_timeout: float = 1800.0,
+    sandbox: str | None = None,
+    env_allow: tuple[str, ...] = (),
+    allow_network: bool = False,
 ) -> ImplementReport:
     """The loop. `invoke_agent` is injectable for tests."""
     project = Path(project)
@@ -320,7 +345,8 @@ def run_loop(
         for path in directory.rglob("*") if path.is_file()
     }
     invoke = invoke_agent or (
-        lambda prompt: _run_agent(project, agent_cmd, prompt, agent_timeout))
+        lambda prompt: _run_agent(project, agent_cmd, prompt, agent_timeout, sandbox,
+                                  env_allow, allow_network))
     rounds: list[Round] = []
 
     # The shipped baseline's own holdout score, measured before any round:

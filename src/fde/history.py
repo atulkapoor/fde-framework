@@ -71,6 +71,16 @@ def events(engagement) -> tuple[list[dict[str, Any]], list[str]]:
             f"{len(triggers)} trigger(s): {', '.join(triggers)}")
     for person in _jsonl(root / "stakeholders.jsonl"):
         add(person.get("at"), "stakeholder", f"{person.get('name')} ({person.get('role')})")
+    for forecast in _jsonl(root / "forecasts.jsonl"):
+        add(forecast.get("at"), "forecast", str(forecast.get("condition", ""))
+            + ("  (after a card existed)" if forecast.get("after_scoring") else ""),
+            forecast.get("by"))
+    for scored in _jsonl(root / "forecast-scores.jsonl"):
+        results = scored.get("results") or []
+        held = sum(1 for r in results if r.get("held") is True)
+        missed = sum(1 for r in results if r.get("held") is False)
+        add(scored.get("at"), "forecasts scored", f"{held} held, {missed} missed of "
+            f"{len(results)}")
     for step in _jsonl(root / "lifecycle.jsonl"):
         add(step.get("at"), "stage", f"{step.get('from') or 'start'} -> {step.get('stage')}")
     for incident in _jsonl(root / "incidents.jsonl"):

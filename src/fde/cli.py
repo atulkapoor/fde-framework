@@ -2194,6 +2194,44 @@ def stop_when_cmd(
         raise typer.Exit(1)
 
 
+@app.command("predict")
+def predict_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    when: Annotated[list[str] | None, typer.Option(
+        "--when", help="A forecast in the stop-condition grammar, e.g. "
+                       "\"holdout_accuracy >= 0.82\". Repeatable."
+    )] = None,
+    project: Annotated[Path | None, typer.Option(
+        "--project", help="The emitted project; defaults to the last build recorded."
+    )] = None,
+    journal: Annotated[Path | None, typer.Option(
+        "--journal", help="The deployed service's journal, for the field figures."
+    )] = None,
+    by: Annotated[str, typer.Option(help="Who signs this: a name for the record.")] = "",
+    today: Annotated[str, typer.Option(help="For the record; defaults to today.")] = "",
+) -> None:
+    """Record what the engagement expects before it measures, and judge
+    every forecast on record against what was measured since. A forecast
+    made after a card existed is kept, and marked."""
+    from fde.forecast import record, render, score
+    from fde.stop import StopError
+
+    engagement = _engagement(root)
+    target = _project_of(engagement, project)
+    if when:
+        try:
+            added = record(engagement, when, target, by=by, at=today or None)
+        except StopError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(1) from exc
+        typer.echo(f"recorded {len(added)} forecast(s)" if added else "already on record")
+        if any(a.get("after_scoring") for a in added):
+            typer.echo("  made after a card existed for this project: kept, and marked as "
+                       "such -- a forecast written after the number is not a forecast")
+    results = score(engagement, target, journal, today or None)
+    typer.echo(render(results))
+
+
 @app.command("debt")
 def debt_cmd(
     root: Annotated[Path, typer.Argument(help="The engagement directory.")],
@@ -2431,6 +2469,19 @@ def implement_cmd(
         help="The command that decides green. Default: the same harness "
              "invocation the emitted CI runs."
     )] = None,
+    sandbox: Annotated[str | None, typer.Option(
+        "--sandbox", help="docker: run the agent in a container with only the project "
+                          "mounted, the environment reduced to ops/agent-policy.yaml's "
+                          "allowlist, and no network unless allowed."
+    )] = None,
+    env_allow: Annotated[list[str] | None, typer.Option(
+        "--env-allow", help="An environment variable to forward into the sandbox, by name. "
+                            "Repeatable."
+    )] = None,
+    allow_network: Annotated[bool, typer.Option(
+        "--allow-network", help="Give the sandboxed agent the network (a hosted model needs "
+                                "it; so does exfiltration)."
+    )] = False,
     holdout: Annotated[Path | None, typer.Option(
         help="A jsonl of pairs the delivery never shipped (fde samples "
              "writes <eng>/artifacts/holdout.jsonl). Green golden beside "
@@ -2458,13 +2509,19 @@ def implement_cmd(
         if agent_timeout <= 0 or check_timeout <= 0:
             typer.echo("budgets must be positive seconds", err=True)
             raise typer.Exit(1)
+        if sandbox not in (None, "docker"):
+            typer.echo("--sandbox takes docker", err=True)
+            raise typer.Exit(1)
         report = run_loop(project, agent_cmd=agent_cmd, max_rounds=max_rounds,
                           agent_timeout=agent_timeout,
                           check_timeout=check_timeout,
-                          check=check, holdout=holdout)
+                          check=check, holdout=holdout, sandbox=sandbox,
+                          env_allow=tuple(env_allow or ()), allow_network=allow_network)
     except AgentMissing as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
+    from fde.sandbox import describe
+    report.sandbox = describe(project, sandbox, env_allow or (), allow_network)
     (project / "ops").mkdir(exist_ok=True)
     (project / "ops" / "implement-log.md").write_text(report.log())
 

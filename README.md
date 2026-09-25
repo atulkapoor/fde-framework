@@ -95,7 +95,7 @@ ladder, so nothing here can be over-read:
 
 | Claim | Status | The evidence, and where it stops |
 |---|---|---|
-| The framework is implemented | verified | 1,261 tests on three Pythons in CI; lint clean; every audit finding pinned as a check before it was fixed |
+| The framework is implemented | verified | 1,271 tests on three Pythons in CI; lint clean; every audit finding pinned as a check before it was fixed |
 | A build is reproducible | verified | byte-identical rebuild pinned by test; each public demo carries a Reproduce section and its digests |
 | The decisions generalise | partial | four shapes (extraction, freeform QA, a labelled decision, seventy-seven-way routing) on real data; one industry set; `fde kb sweep` names the shapes nothing serves |
 | The deliverable is production-reliable | unverified | no production engagement; the banking operating loop ran on a laptop and its record says so |
@@ -427,6 +427,20 @@ declared by the tool.
 - **`fde next`** now says what hangs on the question it asks: the evidence
   already on record for that dimension, every candidate answer tried, and
   the decisions that turn on it -- so the question is asked knowing why.
+- **`fde predict`** records what the engagement expects before it measures
+  -- `holdout_accuracy >= 0.82`, `field_abstain_rate <= 0.22` -- in the
+  stop-condition grammar, and judges every forecast against what was
+  measured since: held, missed or not measured, with the signed error. A
+  forecast written after a card already existed is kept and marked, because
+  a forecast made after the number is not a forecast. One engagement says
+  whether its expectations were met; the errors over many are what would
+  calibrate the framework's decisions.
+- **`fde implement --sandbox docker`** runs the coding agent in a container
+  with only the project mounted, the environment reduced to the allowlist
+  in the emitted `ops/agent-policy.yaml`, and no network unless the policy
+  or `--allow-network` gives it one -- by construction, where the fence
+  only catches edits afterwards. The implementation log says where the
+  agent ran; without the sandbox it says the agent had the host.
 - **`fde stop-when`** records what evidence would stop the engagement --
   `answered_accuracy < 0.88`, `abstain_rate > 0.25`, `adoption < 0.4` --
   over figures the record measures: the scorecard's out-of-sample rows, the
@@ -547,6 +561,8 @@ the same receipts the emitted `ARCHITECTURE.md` prints.
 | `fde outcome-contract <eng> --owner --metric --baseline --unit --target --method --window` | the eighth gate: which number this system exists to move, from what to what, measured how, by when |
 | `fde debt <eng>` | decision debt: what nobody has settled, with an owner, what it blocks, and its age |
 | `fde stop-when <eng> --when "answered_accuracy < 0.88"` | what evidence would stop the engagement; judged against the record, exit 1 and a STOP stage when triggered |
+| `fde predict <eng> --when "holdout_accuracy >= 0.82"` | a forecast before the measurement; judged after it, with the signed error |
+| `fde implement project/ --sandbox docker --env-allow ANTHROPIC_API_KEY --allow-network` | the agent in a container: only the project mounted, the environment an allowlist, the network off unless given |
 | `--by "<name>"` on data-access, security-review, waive, deployed, outcome, incident close | the signer's name on the record; the stakeholder map points at entries without one |
 | `fde triage --statement "..." --statement "..."` | rank candidate problems by what discovery can already decide |
 | `fde override --component X --choose Y --because "..."` | your call, recorded and honoured |
