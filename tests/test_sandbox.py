@@ -56,7 +56,8 @@ def test_the_container_gets_only_the_project_and_no_network(tmp_path):
     command = docker_command(tmp_path, "aider --yes", Policy(),
                              {"PATH": "/x", "HOME": "/h", "LANG": "C", "KEY": "k"})
     assert command[:4] == ["docker", "run", "--rm", "-i"]
-    assert f"{tmp_path.resolve()}:{WORKDIR}" in command and command[command.index("-w") + 1] == WORKDIR
+    assert f"{tmp_path.resolve()}:{WORKDIR}" in command
+    assert command[command.index("-w") + 1] == WORKDIR
     assert "--network" in command and command[command.index("--network") + 1] == "none"
     forwarded = [command[i + 1] for i, part in enumerate(command) if part == "-e"]
     assert forwarded == ["LANG", "KEY"]  # the container keeps its own PATH and HOME
