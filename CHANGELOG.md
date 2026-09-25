@@ -5,6 +5,37 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.37] — 2026-09-25
+
+A measurement release. A fourth outside reading, of 0.1.36, found the
+sandbox contained but not hardened and the forecast mark too coarse,
+and said the next proof is an engagement, not a feature. This release
+makes the engagements measurable and closes the two findings.
+
+- **The forecast protocol.** Each forecast records what was in hand when
+  it was made: which figures the record had already measured, and
+  digests of the card and the profile. The mark is now per figure -- a
+  field forecast made while a card existed is not marked, a card
+  forecast made after the card is -- and an optional confidence goes on
+  the record. Scoring sets the held rate beside the mean confidence once
+  five or more judged forecasts carry one, and says so until then.
+- **The sandbox, hardened by construction.** Every capability dropped
+  and none gainable, root read-only with a scratch `/tmp`, the caller's
+  own user rather than root, memory, CPU and process bounds from the
+  policy, and the image digest the agent actually ran on recorded in the
+  implementation log; a policy may pin one. The unenforced `processes`
+  list is gone: a policy lists only what it enforces. A network
+  exception now needs who allowed it and why, on the command or in the
+  policy, and the log carries it; a policy that says `host` without a
+  reason is read as `none`. The live container test now also checks the
+  root is read-only and the agent is not root.
+- **The experiment, written down.** `EXPERIMENT.md` is the protocol the
+  first engagements will run to: two arms, what is recorded before
+  anything is built, what is measured, a blind review, and what five
+  engagements can and cannot show.
+- The README opens with thirty seconds: what you give it, what it gives
+  back.
+
 ## [0.1.36] — 2026-09-25
 
 The two items the third reading put after the evaluation fixes: a
