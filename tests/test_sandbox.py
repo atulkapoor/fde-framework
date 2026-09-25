@@ -163,3 +163,20 @@ def test_a_real_container_is_closed(tmp_path):
     out = result.stdout
     assert "LEAK" not in out and "RO_ROOT" in out and "HOME_OK" in out and "NONET" in out
     assert out.strip().splitlines()[-1] != "0"  # not root
+
+
+def test_the_first_sandboxed_run_pins_the_image_by_digest(tmp_path, monkeypatch):
+    from fde.sandbox import lock_image
+
+    (tmp_path / "ops").mkdir()
+    policy_file = tmp_path / "ops" / "agent-policy.yaml"
+    policy_file.write_text("# where the agent runs\nimage: python:3.12-slim\nnetwork: none\n")
+    monkeypatch.setattr("fde.sandbox.image_digest", lambda image: "python@sha256:abc123")
+    assert lock_image(tmp_path, load_policy(tmp_path)) == "python@sha256:abc123"
+    text = policy_file.read_text()
+    assert "image: python@sha256:abc123   # pinned by fde implement from python:3.12-slim" in text
+    assert text.startswith("# where the agent runs")  # comments survive
+    assert lock_image(tmp_path, load_policy(tmp_path)) is None  # already pinned
+    monkeypatch.setattr("fde.sandbox.image_digest", lambda image: None)
+    policy_file.write_text("image: python:3.12-slim\n")
+    assert lock_image(tmp_path, load_policy(tmp_path)) is None  # docker cannot say

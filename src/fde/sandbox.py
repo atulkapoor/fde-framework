@@ -143,6 +143,27 @@ def image_digest(image: str) -> str | None:
     return digest if result.returncode == 0 and "@sha256:" in digest else None
 
 
+def lock_image(project: Path, policy: Policy) -> str | None:
+    """Pin the image the agent just ran on into the policy by digest, so
+    every later run uses the same bytes. Returns the digest written, or
+    None when the policy is already pinned or docker cannot name one."""
+    if "@sha256:" in policy.image:
+        return None
+    digest = image_digest(policy.image)
+    if not digest:
+        return None
+    path = Path(project) / "ops" / "agent-policy.yaml"
+    if not path.exists():
+        return None
+    lines = path.read_text().splitlines()
+    for i, line in enumerate(lines):
+        if line.startswith("image:"):
+            lines[i] = f"image: {digest}   # pinned by fde implement from {policy.image}"
+            path.write_text("\n".join(lines) + "\n")
+            return digest
+    return None
+
+
 def describe(project: Path, sandbox: str | None, extra_env: Iterable[str] = (),
              allow_network: str = "") -> str:
     if sandbox != "docker":

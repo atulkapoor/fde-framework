@@ -47,7 +47,8 @@ intake ──> fact log ──> permutation space ──> gates ──> decide �
 | `gates.py` | Eight gates before building; one hard, seven waivable with reasons; the eighth is the outcome contract |
 | `implement.py` | Bounded agent loop: harness as stop condition, evals/boundary/contract hashed as a fence, holdout against memorized greens; `--sandbox docker` runs the agent in a container |
 | `sandbox.py` | The container the agent runs in, closed by construction: only the project mounted, root read-only, no capabilities, the caller's user, bounded resources, an allowlisted environment, the network only with a name and a reason; the image digest on the log |
-| `forecast.py` | Forecasts in the stop-condition grammar, recorded before the measurement and judged after it with the signed error; marked when made after a card existed |
+| `forecast.py` | Forecasts in the stop-condition grammar, recorded with what was in hand and judged after the measurement with the signed error; marked per figure when the figure was already on the record |
+| `experiment.py` | The experiment run by the record: balanced seeded arm assignment, the difficulty vector, the pre-build freeze, measures off the record or the control log, the blind packet, the reviewer's form and guess, the paired report with its evidence rung |
 | `intake/llm_reader.py` | Optional model-proposed facts at weakest provenance; registry-derived schema; boundary-gated |
 | `decide.py` | Simplest applicable approach per component, evidence cited, rejections named |
 | `decompose.py` | Which components a profile puts in scope |

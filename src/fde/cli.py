@@ -2237,6 +2237,98 @@ def predict_cmd(
     typer.echo(render(results))
 
 
+@app.command("experiment")
+def experiment_cmd(
+    root: Annotated[Path, typer.Argument(
+        help="The engagement directory; for report, the directory holding the series."
+    )],
+    action: Annotated[str, typer.Argument(
+        help="start | close | packet | review | report | template"
+    )],
+    engineer: Annotated[str, typer.Option(help="start: who works it.")] = "",
+    arm: Annotated[str, typer.Option(
+        help="start: force with | without (else a seeded draw)."
+    )] = "",
+    project: Annotated[Path | None, typer.Option("--project")] = None,
+    journal: Annotated[Path | None, typer.Option("--journal")] = None,
+    registry_root: Annotated[Path, typer.Option("--registry")] = DEFAULT_ROOT,
+    reviewer: Annotated[str, typer.Option(help="review: who signs the form.")] = "",
+    evidence: Annotated[int, typer.Option(help="review: evidence sufficiency, 1-5.")] = 0,
+    necessity: Annotated[int, typer.Option(help="review: was the architecture needed, 1-5.")] = 0,
+    operational: Annotated[int, typer.Option(help="review: operational complexity, 1-5.")] = 0,
+    implementation: Annotated[int, typer.Option(
+        help="review: implementation complexity, 1-5."
+    )] = 0,
+    risk: Annotated[int, typer.Option(help="review: risk, 1-5.")] = 0,
+    reversibility: Annotated[int, typer.Option(help="review: reversibility, 1-5.")] = 0,
+    contract_signable: Annotated[bool, typer.Option(
+        "--contract-signable/--contract-not-signable", help="review: would you sign it as owner?"
+    )] = False,
+    question: Annotated[str, typer.Option(help="review: what nobody asked the client.")] = "",
+    guess: Annotated[str, typer.Option(help="review: with | without | uncertain.")] = "uncertain",
+    out: Annotated[Path | None, typer.Option("--out", help="template: where to write it.")] = None,
+    today: Annotated[str, typer.Option(help="For the record; defaults to today.")] = "",
+) -> None:
+    """The experiment in EXPERIMENT.md, run by the record: start assigns
+    the arm and freezes what was known; close reads the measures; packet
+    renders the blind review; review records the form and the guess;
+    report sets the series side by side; template writes the control
+    arm's log."""
+    from fde import experiment as exp
+
+    if action == "template":
+        target = out or Path("log.yaml")
+        target.write_text(exp.control_template())
+        typer.echo(f"wrote {target}")
+        return
+    if action == "report":
+        typer.echo(exp.report(root))
+        return
+    engagement = _engagement(root)
+    try:
+        if action == "start":
+            if not engineer.strip():
+                typer.echo("start needs --engineer", err=True)
+                raise typer.Exit(1)
+            entry = exp.start(engagement, engineer, _project_of(engagement, project),
+                              arm=arm or None, at=today or None)
+            typer.echo(f"{entry['id']}: arm {entry['arm']} ({entry['assigned']}), shape "
+                       f"{entry['shape']}, order {entry['order']}")
+            typer.echo(f"  frozen: {len(entry['frozen']['forecasts'])} forecast(s), "
+                       f"{'a' if entry['frozen']['outcome_contract'] else 'no'} contract, "
+                       f"{len(entry['frozen']['stop_when'])} stop condition(s)")
+            if entry["built_already"]:
+                typer.echo("  started after a build existed: the pre-build freeze is late, "
+                           "and the report says so")
+            if entry["arm"] == "without":
+                typer.echo(f"  control arm: keep {exp.CONTROL_LOG} in the engagement as the "
+                           "work happens")
+        elif action == "close":
+            closing = exp.close(engagement, _project_of(engagement, project), journal,
+                                today or None)
+            for key, value in closing["measures"].items():
+                typer.echo(f"  {key:30} {'--' if value in (None, '') else value}")
+            if closing["missing"]:
+                typer.echo(f"  missing: {', '.join(closing['missing'])}")
+        elif action == "packet":
+            typer.echo(exp.packet(engagement, _project_of(engagement, project),
+                                  _registry(registry_root)))
+        elif action == "review":
+            form = exp.review(engagement, reviewer, {
+                "evidence_sufficiency": evidence, "necessity": necessity,
+                "operational_complexity": operational,
+                "implementation_complexity": implementation, "risk": risk,
+                "reversibility": reversibility}, contract_signable, question, guess,
+                today or None)
+            typer.echo(f"recorded: quality {form['quality']}, guess {form['arm_guess']}")
+        else:
+            typer.echo("action is start, close, packet, review, report or template", err=True)
+            raise typer.Exit(1)
+    except (FileExistsError, FileNotFoundError, ValueError) as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+
+
 @app.command("debt")
 def debt_cmd(
     root: Annotated[Path, typer.Argument(help="The engagement directory.")],
@@ -2530,8 +2622,12 @@ def implement_cmd(
     except AgentMissing as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
-    from fde.sandbox import describe
+    from fde.sandbox import describe, load_policy, lock_image
     report.sandbox = describe(project, sandbox, env_allow or (), allow_network)
+    if sandbox == "docker":
+        pinned = lock_image(project, load_policy(project))
+        if pinned:
+            report.sandbox += f"; image pinned into ops/agent-policy.yaml as {pinned}"
     (project / "ops").mkdir(exist_ok=True)
     (project / "ops" / "implement-log.md").write_text(report.log())
 
