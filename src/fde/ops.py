@@ -92,28 +92,34 @@ def write_ops(architecture, out: Path, registry=None, baseline=None) -> None:
 AGENT_POLICY = """\
 # Where a coding agent runs during `fde implement --sandbox docker`.
 #
-# Enforced by construction, not by inspection afterwards: only this project
-# is mounted (at /work), the environment is the allowlist below plus any
-# --env-allow names, and the network is off unless `network: host` here or
-# --allow-network on the command. Without --sandbox the fence still applies
-# (protected files hashed, restored and reported; planted files removed)
-# but the agent has the whole host, and the implementation log says so.
+# Everything here is enforced by construction, and nothing here is
+# advisory. The container gets only this project, mounted at /work; a
+# read-only root with a scratch /tmp; no capabilities and no way to gain
+# one; your own user, never root; the memory, CPU and process bounds
+# below; the environment allowlist below plus any --env-allow names; and
+# no network unless `network: host` here with a network_reason naming who
+# allowed it and why, or --allow-network "who: why" on the command. The
+# implementation log records the image digest the agent actually ran on.
+# Without --sandbox the fence still applies (protected files hashed,
+# restored and reported; planted files removed) but the agent has the
+# whole host, and the log says so.
 #
 # The image must carry the agent you name with --agent-cmd; python:3.12-slim
-# carries none. An agent that calls a hosted model needs the network and
-# its key: set `network: host` and add the key's name to env_allow, and
-# know that both are then in the agent's hands.
+# carries none. Pin it by digest (python@sha256:...) so the run repeats on
+# the same bytes. An agent that calls a hosted model needs the network and
+# its key: name the reason and add the key's name to env_allow, and know
+# that both are then in the agent's hands.
 image: python:3.12-slim
 network: none
+network_reason: ""
 env_allow:
   - PATH
   - HOME
   - LANG
   - TERM
-processes:
-  - python
-  - pytest
-  - ruff
+memory: 4g
+cpus: 2
+pids: 512
 """
 
 

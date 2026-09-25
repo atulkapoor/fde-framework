@@ -2207,6 +2207,9 @@ def predict_cmd(
     journal: Annotated[Path | None, typer.Option(
         "--journal", help="The deployed service's journal, for the field figures."
     )] = None,
+    confidence: Annotated[float | None, typer.Option(
+        "--confidence", help="How sure, as a share between 0 and 1, for every --when given."
+    )] = None,
     by: Annotated[str, typer.Option(help="Who signs this: a name for the record.")] = "",
     today: Annotated[str, typer.Option(help="For the record; defaults to today.")] = "",
 ) -> None:
@@ -2220,14 +2223,16 @@ def predict_cmd(
     target = _project_of(engagement, project)
     if when:
         try:
-            added = record(engagement, when, target, by=by, at=today or None)
-        except StopError as exc:
+            added = record(engagement, when, target, journal, by=by, at=today or None,
+                           confidence=confidence)
+        except (StopError, ValueError) as exc:
             typer.echo(str(exc), err=True)
             raise typer.Exit(1) from exc
         typer.echo(f"recorded {len(added)} forecast(s)" if added else "already on record")
-        if any(a.get("after_scoring") for a in added):
-            typer.echo("  made after a card existed for this project: kept, and marked as "
-                       "such -- a forecast written after the number is not a forecast")
+        late = [a["condition"] for a in added if a.get("already_measured")]
+        if late:
+            typer.echo(f"  already measured when forecast, kept and marked: {', '.join(late)} "
+                       "-- a forecast written after the number is not a forecast")
     results = score(engagement, target, journal, today or None)
     typer.echo(render(results))
 
@@ -2478,10 +2483,12 @@ def implement_cmd(
         "--env-allow", help="An environment variable to forward into the sandbox, by name. "
                             "Repeatable."
     )] = None,
-    allow_network: Annotated[bool, typer.Option(
-        "--allow-network", help="Give the sandboxed agent the network (a hosted model needs "
-                                "it; so does exfiltration)."
-    )] = False,
+    allow_network: Annotated[str, typer.Option(
+        "--allow-network", help="Give the sandboxed agent the network, with who allowed it "
+                                "and why, e.g. \"Priya: the agent calls a hosted model\". A "
+                                "hosted model needs it; so does exfiltration. Recorded in "
+                                "the log."
+    )] = "",
     holdout: Annotated[Path | None, typer.Option(
         help="A jsonl of pairs the delivery never shipped (fde samples "
              "writes <eng>/artifacts/holdout.jsonl). Green golden beside "
@@ -2511,6 +2518,9 @@ def implement_cmd(
             raise typer.Exit(1)
         if sandbox not in (None, "docker"):
             typer.echo("--sandbox takes docker", err=True)
+            raise typer.Exit(1)
+        if allow_network and not _says_something(allow_network):
+            typer.echo("--allow-network takes who allowed it and why", err=True)
             raise typer.Exit(1)
         report = run_loop(project, agent_cmd=agent_cmd, max_rounds=max_rounds,
                           agent_timeout=agent_timeout,

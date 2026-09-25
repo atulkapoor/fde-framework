@@ -251,7 +251,7 @@ class AgentMissing(RuntimeError):
 
 def _run_agent(project: Path, agent_cmd: str, prompt: str,
                timeout: float = 3600.0, sandbox: str | None = None,
-               env_allow: tuple[str, ...] = (), allow_network: bool = False) -> bool:
+               env_allow: tuple[str, ...] = (), allow_network: str = "") -> bool:
     """Run the agent with the brief on stdin, or via {prompt_file}.
 
     The placeholder exists because not every agent reads stdin: aider takes
@@ -334,7 +334,7 @@ def run_loop(
     check_timeout: float = 1800.0,
     sandbox: str | None = None,
     env_allow: tuple[str, ...] = (),
-    allow_network: bool = False,
+    allow_network: str = "",
 ) -> ImplementReport:
     """The loop. `invoke_agent` is injectable for tests."""
     project = Path(project)

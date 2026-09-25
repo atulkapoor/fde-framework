@@ -4,23 +4,27 @@ A decision is made on evidence; whether the evidence was enough only shows
 when the numbers come in. So a forecast goes on the record before the
 score -- `holdout_accuracy >= 0.82`, `abstain_rate <= 0.2`,
 `field_abstain_rate <= 0.22` -- in the same grammar as a stop condition,
-over the same measured figures. After the score, each forecast is held,
-missed or unmeasured, with the signed error; a forecast written after a
-card already existed is kept but marked, because a forecast made after
-the number is not a forecast. Over enough engagements the errors say
-which decisions the framework and its people systematically over- or
-under-call; one engagement says only whether this one's expectations
-were met.
+over the same measured figures, with an optional confidence. Each one
+records what was in hand when it was made: which figures the record had
+already measured, and digests of the card and the profile. A forecast
+about a figure already measured is kept and marked as such, per figure,
+because a forecast made after the number is not a forecast. After the
+score each is held, missed or unmeasured, with the signed error; where
+enough carry a confidence, the held rate is set beside the mean
+confidence, which is the beginning of a calibration and not yet one.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 from datetime import date
 from pathlib import Path
 from typing import Any
 
 from fde.stop import OPS, figures, parse
+
+CALIBRATION_FLOOR = 5
 
 
 def _jsonl(path: Path) -> list[dict]:
@@ -36,17 +40,37 @@ def _jsonl(path: Path) -> list[dict]:
     return rows
 
 
+def _digest(path: Path | None) -> str | None:
+    if path is None or not Path(path).exists():
+        return None
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()[:16]
+
+
+def _profile_digest(engagement) -> str | None:
+    try:
+        values = engagement.profile.values()
+    except AttributeError:
+        return None
+    return hashlib.sha256(json.dumps(values, sort_keys=True, default=str).encode()).hexdigest()[:16]
+
+
 def forecasts(engagement) -> list[dict]:
     return _jsonl(Path(engagement.root) / "forecasts.jsonl")
 
 
-def record(engagement, conditions: list[str], project: Path | None = None, by: str = "",
-           at: str | None = None) -> list[dict]:
-    """Append forecasts, each parsed first. A forecast made when the project
-    already has a scorecard is marked `after_scoring`."""
+def record(engagement, conditions: list[str], project: Path | None = None,
+           journal: Path | None = None, by: str = "", at: str | None = None,
+           confidence: float | None = None) -> list[dict]:
+    """Append forecasts, each parsed first, each carrying what was in hand:
+    the figures already measured, and the card's and profile's digests."""
     for condition in conditions:
         parse(condition)
-    already = bool(project is not None and (Path(project) / "scorecard.json").exists())
+    if confidence is not None and not 0.0 <= confidence <= 1.0:
+        raise ValueError("a confidence is a share between 0 and 1")
+    measured = figures(engagement, project, journal)
+    evidence = {"card": _digest(Path(project) / "scorecard.json") if project else None,
+                "profile": _profile_digest(engagement),
+                "figures_measured": sorted(measured)}
     existing = {f.get("condition") for f in forecasts(engagement)}
     added = []
     with (Path(engagement.root) / "forecasts.jsonl").open("a") as handle:
@@ -54,9 +78,13 @@ def record(engagement, conditions: list[str], project: Path | None = None, by: s
             condition = condition.strip()
             if condition in existing:
                 continue
+            name = parse(condition)[0]
             entry: dict[str, Any] = {"condition": condition,
                                      "at": at or date.today().isoformat(),
-                                     "after_scoring": already}
+                                     "already_measured": name in measured,
+                                     "evidence": evidence}
+            if confidence is not None:
+                entry["confidence"] = confidence
             if by.strip():
                 entry["by"] = by.strip()
             if project is not None:
@@ -77,7 +105,9 @@ def evaluate(entries: list[dict], measured: dict[str, float]) -> list[dict]:
             "measured": value,
             "held": None if value is None else OPS[op](value, threshold),
             "error": None if value is None else round(value - threshold, 4),
-            "after_scoring": bool(entry.get("after_scoring")),
+            "already_measured": bool(entry.get("already_measured",
+                                               entry.get("after_scoring", False))),
+            "confidence": entry.get("confidence"),
             "by": entry.get("by", ""),
         })
     return results
@@ -96,6 +126,19 @@ def score(engagement, project: Path | None, journal: Path | None = None,
     return results
 
 
+def calibration(results: list[dict]) -> str:
+    judged = [r for r in results if r["held"] is not None and r.get("confidence") is not None]
+    if not judged:
+        return ""
+    if len(judged) < CALIBRATION_FLOOR:
+        return (f"calibration needs at least {CALIBRATION_FLOOR} judged forecasts with a "
+                f"confidence; {len(judged)} on record")
+    held = sum(1 for r in judged if r["held"]) / len(judged)
+    mean = sum(r["confidence"] for r in judged) / len(judged)
+    return (f"held rate {held:.0%} against mean confidence {mean:.0%} over {len(judged)} "
+            f"judged forecasts with a confidence")
+
+
 def render(results: list[dict]) -> str:
     if not results:
         return ("no forecasts on record: fde predict <eng> --when \"holdout_accuracy >= 0.8\" "
@@ -107,7 +150,9 @@ def render(results: list[dict]) -> str:
         else:
             mark = "  ok " if r["held"] else "MISS "
             shown = f"measured {r['measured']:.4g} (error {r['error']:+.4g})"
-        flag = "  [made after a card existed]" if r["after_scoring"] else ""
+        if r.get("confidence") is not None:
+            shown += f"  at {r['confidence']:.0%} confidence"
+        flag = "  [the figure was already on the record]" if r["already_measured"] else ""
         lines.append(f"{mark} {r['condition']:36} {shown}{flag}")
     held = sum(1 for r in results if r["held"] is True)
     missed = sum(1 for r in results if r["held"] is False)
@@ -118,4 +163,7 @@ def render(results: list[dict]) -> str:
     if errors:
         summary += f"; mean signed error {sum(errors) / len(errors):+.4g}"
     lines += ["", summary]
+    note = calibration(results)
+    if note:
+        lines.append(note)
     return "\n".join(lines)

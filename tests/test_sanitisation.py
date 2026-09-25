@@ -43,6 +43,8 @@ ALLOWED = (
     # `fde bench` off their records -- numbers the framework measured, not
     # material anyone supplied.
     "BENCH.md",
+    # The protocol for the engagements that would test the thesis; authored.
+    "EXPERIMENT.md",
     "CITATION.cff",
     ".editorconfig",
     "ARCHITECTURE.md",
