@@ -5,6 +5,34 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.36] — 2026-09-25
+
+The two items the third reading put after the evaluation fixes: a
+forecast the record can be held to, and a boundary the coding agent
+cannot cross.
+
+- **Forecasts.** `fde predict` records what the engagement expects before
+  it measures, in the stop-condition grammar over the same figures --
+  the card's rows, the field journal, the recorded outcomes -- and judges
+  every forecast after the measurement: held, missed or not measured,
+  with the signed error, appended to `forecast-scores.jsonl`. A forecast
+  written when the project already had a card is kept and marked, because
+  a forecast made after the number is not one. The banking record carries
+  the first four: field figures for the vendor split at the shipped
+  margin, all four held, mean signed error -0.011, and all four marked as
+  informed by a card that already existed.
+- **The sandbox.** `fde implement --sandbox docker` runs the agent in a
+  container with only the project mounted at /work, the environment
+  reduced to the allowlist in the emitted `ops/agent-policy.yaml` plus
+  any `--env-allow` names, and no network unless the policy or
+  `--allow-network` gives it one. The fence still applies inside. The
+  implementation log says where the agent ran; without the sandbox it
+  says the agent had the host. A missing docker is named, not a
+  traceback. Pinned by tests including one that runs a real container
+  and checks it can neither read outside the project nor reach the
+  network.
+- Every emitted project now carries `ops/agent-policy.yaml`.
+
 ## [0.1.35] — 2026-09-25
 
 A third outside reading, of the 0.1.34 source, found three defects in
