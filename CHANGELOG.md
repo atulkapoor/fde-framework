@@ -5,6 +5,35 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.35] — 2026-09-25
+
+A third outside reading, of the 0.1.34 source, found three defects in
+the evaluation protocol. Each held up against the code, and each is
+now a check.
+
+- **Accuracy on the answered never stands alone.** The "beats the
+  baseline error rate" row held on accuracy on what the system answered,
+  with no coverage requirement -- a system answering a tenth of the
+  cases perfectly would have beaten a baseline. The row now judges two
+  axes: accuracy on the answered against the recorded first-pass
+  accuracy, and coverage against a floor the record supplies -- the
+  baseline's own exception rate (the share the people already hand on),
+  which the emitted manifest now carries, or `--coverage-floor` set by
+  the engagement. Every figure is on the row: n, correct, wrong,
+  abstained, coverage, overall accuracy, and a Wilson interval on the
+  answered. A system that abstains with no floor on record cannot hold
+  the row and is told why. The banking deliverable stops holding it at
+  either margin: 90.2% on the answered clears the bank's 88%, and 18.2%
+  handed to a person does not clear the bank's own 3%.
+- **The external exam has the protocol's floor.** A sample-size row at
+  the same thirty cases as the holdout, and the abstained share and
+  accuracy on the answered shown as on the holdout.
+- **The generalisation-gap limit is a protocol default, not a truth.**
+  Twenty points stays the default; `--max-gap` lets an engagement
+  tighten it, and the row says which applied.
+- One more rung on the claim ladder: that the framework improves
+  decision quality over an expert without it, unverified.
+
 ## [0.1.34] — 2026-09-21
 
 - **The emitted harness never raises on what the pipeline returned**
