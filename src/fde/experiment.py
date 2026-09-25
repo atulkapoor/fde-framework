@@ -41,6 +41,8 @@ MATURITY = ((20, "stronger, and still observational unless assignment was contro
             (5, "paired and exploratory: reversals, stops and forecast errors can be compared"),
             (0, "descriptive only: the numbers describe these engagements, not the framework"))
 CONTROL_LOG = "log.yaml"
+PACKET_VERSION = 1  # bump when the packet's form changes; blinding is reported per version
+FLOOR = 3  # a review score below this is reported on its own, whatever the mean says
 
 
 def _read_json(path: Path) -> dict | None:
@@ -265,7 +267,7 @@ def packet(engagement, project: Path | None = None, registry=None) -> str:
     no word in it that names the arm."""
     root = Path(engagement.root)
     entry = _read_json(root / "experiment.json") or {}
-    lines = ["# Engagement packet", ""]
+    lines = ["# Engagement packet", "", f"packet form v{PACKET_VERSION}", ""]
     if entry.get("arm") == "without" and (root / CONTROL_LOG).exists():
         log = yaml.safe_load((root / CONTROL_LOG).read_text()) or {}
         lines += ["## Problem", "", str(log.get("statement") or ""), "", "## Evidence in hand", ""]
@@ -335,6 +337,7 @@ def review(engagement, reviewer: str, scores: dict[str, int], contract_signable:
     if not reviewer.strip():
         raise ValueError("the reviewer signs the form")
     form = {"reviewer": reviewer.strip(), "at": at or date.today().isoformat(),
+            "packet_version": _packet_version(Path(engagement.root)),
             "scores": {name: scores[name] for name in REVIEW_FORM},
             "quality": round(sum(scores[name] for name in REVIEW_FORM) / len(REVIEW_FORM), 3),
             "contract_signable": bool(contract_signable),
@@ -348,6 +351,87 @@ SECONDARIES = ("days_to_pilot", "hours", "rounds", "reversals", "holdout_accurac
                "external_accuracy", "forecast_mean_error", "late_requirements")
 
 
+def _packet_version(root: Path) -> int:
+    packet_file = root / "experiment-packet.md"
+    if packet_file.exists():
+        for line in packet_file.read_text().splitlines():
+            if line.startswith("packet form v"):
+                try:
+                    return int(line.split("v", 1)[1])
+                except ValueError:
+                    break
+    return PACKET_VERSION
+
+
+def withdraw(engagement, reason: str, at: str | None = None) -> dict[str, Any]:
+    """An engagement leaves the series with its arm and a reason on the
+    record. It stays in the series file: a withdrawal after the draw is
+    the thing the report counts, by arm, because a lopsided count is what
+    choosing engagements after seeing the arm looks like."""
+    root = Path(engagement.root)
+    entry = _read_json(root / "experiment.json")
+    if not entry:
+        raise FileNotFoundError("not in the experiment: nothing to withdraw")
+    if not reason.strip():
+        raise ValueError("a withdrawal needs a reason")
+    record = {"at": at or date.today().isoformat(), "arm": entry["arm"],
+              "reason": reason.strip()}
+    (root / "experiment-withdrawn.json").write_text(json.dumps(record, indent=2) + "\n")
+    return record
+
+
+def difficulty_distance(a: dict[str, Any], b: dict[str, Any]) -> float | None:
+    """How unlike two frozen difficulty vectors are, 0 to 1: a decade apart
+    on a count is 1, a different category is 1, a missing side is 1, a
+    list is its Jaccard distance; the mean over every key either has."""
+    import math
+
+    keys = set(a) | set(b)
+    parts = []
+    for key in keys:
+        x, y = a.get(key), b.get(key)
+        if x is None and y is None:
+            continue
+        if x is None or y is None:
+            parts.append(1.0)
+        elif isinstance(x, bool) or isinstance(y, bool):
+            parts.append(0.0 if x == y else 1.0)
+        elif isinstance(x, (int, float)) and isinstance(y, (int, float)):
+            parts.append(min(1.0, abs(math.log10((abs(x) + 1) / (abs(y) + 1)))))
+        elif isinstance(x, list) and isinstance(y, list):
+            sx, sy = set(map(str, x)), set(map(str, y))
+            parts.append(1.0 - (len(sx & sy) / len(sx | sy) if sx | sy else 1.0))
+        else:
+            parts.append(0.0 if str(x) == str(y) else 1.0)
+    return round(sum(parts) / len(parts), 3) if parts else None
+
+
+def pair(withs: list[dict], withouts: list[dict]) -> list[tuple[dict, dict, float | None]]:
+    """Within a shape, each *with* engagement to the unmatched *without*
+    whose frozen difficulty is nearest, in series order; the distance is
+    kept beside the pair so a bad match is visible."""
+    free = list(withouts)
+    pairs = []
+    for a in withs:
+        if not free:
+            break
+        scored = [(difficulty_distance(a.get("difficulty") or {}, b.get("difficulty") or {}), b)
+                  for b in free]
+        distance, b = min(scored, key=lambda s: (1.0 if s[0] is None else s[0],
+                                                 s[1].get("order", 0)))
+        pairs.append((a, b, distance))
+        free.remove(b)
+    return pairs
+
+
+def _quality(row: dict) -> float | None:
+    return (row.get("review") or {}).get("quality")
+
+
+def _mean(values: list[float]) -> float | None:
+    return round(sum(values) / len(values), 3) if values else None
+
+
 def gather(series_dir: Path) -> list[dict[str, Any]]:
     rows = []
     for path in sorted(Path(series_dir).glob("*/experiment.json")):
@@ -355,33 +439,50 @@ def gather(series_dir: Path) -> list[dict[str, Any]]:
         root = path.parent
         entry["close"] = _read_json(root / "experiment-close.json")
         entry["review"] = _read_json(root / "experiment-review.json")
+        entry["withdrawn"] = _read_json(root / "experiment-withdrawn.json")
         rows.append(entry)
     return sorted(rows, key=lambda e: e.get("order", 0))
 
 
 def report(series_dir: Path) -> str:
     rows = gather(series_dir)
-    n = len(rows)
-    lines = [f"experiment: {n} engagement(s) in {series_dir}", f"  evidence: {maturity(n)}",
+    withdrawn = [r for r in rows if r.get("withdrawn")]
+    active = [r for r in rows if not r.get("withdrawn")]
+    n = len(active)
+    lines = [f"experiment: {n} engagement(s) in {series_dir}"
+             + (f", {len(withdrawn)} withdrawn" if withdrawn else ""),
+             f"  evidence: {maturity(n)}",
              f"  primary endpoint: {PRIMARY_ENDPOINT}", ""]
-    if not rows:
+    if withdrawn:
+        by_arm = Counter(r["withdrawn"]["arm"] for r in withdrawn)
+        lines.append(f"  withdrawn after the draw: with {by_arm['with']}, without "
+                     f"{by_arm['without']} -- a lopsided count is what choosing engagements "
+                     f"after seeing the arm looks like")
+        lines += [f"    {r['engagement']} ({r['withdrawn']['arm']}): {r['withdrawn']['reason']}"
+                  for r in withdrawn]
+        lines.append("")
+    if not active:
         return "\n".join(lines)
     by_shape: dict[str, dict[str, list]] = defaultdict(lambda: {"with": [], "without": []})
-    for row in rows:
+    for row in active:
         by_shape[row.get("shape", "?")][row["arm"]].append(row)
-    guesses = [r["review"]["arm_guess"] for r in rows if r.get("review")]
-    right = sum(1 for r in rows if r.get("review") and r["review"]["arm_guess"] == r["arm"])
-    decided = sum(1 for g in guesses if g != "uncertain")
     pairs = 0
+    unpaired: list[str] = []
     for shape, arms in sorted(by_shape.items()):
         lines.append(f"  {shape}: {len(arms['with'])} with, {len(arms['without'])} without")
-        for a, b in zip(arms["with"], arms["without"], strict=False):
+        matched = pair(arms["with"], arms["without"])
+        taken = {id(b) for _, b, _ in matched} | {id(a) for a, _, _ in matched}
+        unpaired += [r["engagement"] for r in arms["with"] + arms["without"]
+                     if id(r) not in taken]
+        for a, b, distance in matched:
             pairs += 1
-            qa = (a.get("review") or {}).get("quality")
-            qb = (b.get("review") or {}).get("quality")
+            qa, qb = _quality(a), _quality(b)
             primary = (f"{qa - qb:+.2f}" if qa is not None and qb is not None
                        else "missing a review")
-            lines.append(f"    pair {a['engagement']} / {b['engagement']}: quality {primary}")
+            shown = "unmeasured" if distance is None else f"{distance:.2f}"
+            lines.append(f"    pair {a['engagement']} / {b['engagement']} (orders "
+                         f"{a.get('order')}/{b.get('order')}, difficulty distance {shown}): "
+                         f"quality {primary}")
             ma = (a.get("close") or {}).get("measures") or {}
             mb = (b.get("close") or {}).get("measures") or {}
             for key in SECONDARIES:
@@ -391,19 +492,67 @@ def report(series_dir: Path) -> str:
             if ma.get("stopped_by") or mb.get("stopped_by"):
                 lines.append(f"      stopped: with={ma.get('stopped_by') or '-'} "
                              f"without={mb.get('stopped_by') or '-'}")
+    if unpaired:
+        lines.append(f"  unpaired: {', '.join(unpaired)}")
+    # The floor: a score below FLOOR on any dimension, named, whatever the mean says.
+    floors = []
+    for r in active:
+        scores = (r.get("review") or {}).get("scores") or {}
+        low = [f"{k}={v}" for k, v in scores.items() if isinstance(v, int) and v < FLOOR]
+        if low:
+            floors.append(f"{r['engagement']} ({r['arm']}): {', '.join(low)}")
     lines.append("")
-    lines.append(f"  pairs: {pairs}; reviews: {len(guesses)} of {n}; blinding: "
-                 + (f"{right} of {decided} decided guesses were right "
-                    f"({len(guesses) - decided} uncertain)" if guesses else "no reviews yet"))
-    missing = [(r["engagement"], r["close"]["missing"]) for r in rows
+    lines.append(f"  floors (any score under {FLOOR}, not compensated by the mean): "
+                 + ("; ".join(floors) if floors else "none"))
+    # Breakdowns: never collapse across engineers or across the series' halves.
+    by_engineer: dict[str, dict[str, list[float]]] = defaultdict(lambda: {"with": [],
+                                                                            "without": []})
+    for r in active:
+        if _quality(r) is not None:
+            by_engineer[r.get("engineer", "?")][r["arm"]].append(_quality(r))
+    if by_engineer:
+        lines.append("  by engineer (mean quality):")
+        for engineer, arms in sorted(by_engineer.items()):
+            lines.append(f"    {engineer}: with {_mean(arms['with'])} (n={len(arms['with'])}), "
+                         f"without {_mean(arms['without'])} (n={len(arms['without'])})")
+    orders = sorted(r.get("order", 0) for r in active)
+    if len(orders) >= 4:
+        cut = orders[len(orders) // 2 - 1]
+        halves = {"first half": [r for r in active if r.get("order", 0) <= cut],
+                  "second half": [r for r in active if r.get("order", 0) > cut]}
+        lines.append("  by order (mean quality, against learning):")
+        for name, group in halves.items():
+            w = [_quality(r) for r in group if r["arm"] == "with" and _quality(r) is not None]
+            wo = [_quality(r) for r in group if r["arm"] == "without"
+                  and _quality(r) is not None]
+            lines.append(f"    {name}: with {_mean(w)} (n={len(w)}), without {_mean(wo)} "
+                         f"(n={len(wo)})")
+    # Blinding, per packet version, so a changed form does not erase the history.
+    reviews = [r for r in active if r.get("review")]
+    lines.append("")
+    if reviews:
+        by_version: dict[int, list[dict]] = defaultdict(list)
+        for r in reviews:
+            by_version[int(r["review"].get("packet_version", 1))].append(r)
+        for version, group in sorted(by_version.items()):
+            guesses = [r["review"]["arm_guess"] for r in group]
+            decided = sum(1 for g in guesses if g != "uncertain")
+            right = sum(1 for r in group if r["review"]["arm_guess"] == r["arm"])
+            lines.append(f"  blinding, packet form v{version}: {right} of {decided} decided "
+                         f"guesses were right ({len(guesses) - decided} uncertain, "
+                         f"{len(group)} reviewed)")
+    else:
+        lines.append("  blinding: no reviews yet")
+    lines.append(f"  pairs: {pairs}; reviews: {len(reviews)} of {n}")
+    missing = [(r["engagement"], r["close"]["missing"]) for r in active
                if r.get("close") and r["close"]["missing"]]
     if missing:
         lines.append("  missing:")
         lines += [f"    {name}: {', '.join(keys)}" for name, keys in missing]
-    unclosed = [r["engagement"] for r in rows if not r.get("close")]
+    unclosed = [r["engagement"] for r in active if not r.get("close")]
     if unclosed:
         lines.append(f"  not closed: {', '.join(unclosed)}")
-    late = [r["engagement"] for r in rows if r.get("built_already")]
+    late = [r["engagement"] for r in active if r.get("built_already")]
     if late:
         lines.append(f"  started after a build existed: {', '.join(late)}")
     return "\n".join(lines)

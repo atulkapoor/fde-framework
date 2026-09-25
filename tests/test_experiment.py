@@ -6,6 +6,7 @@ guess, a report that says what its count can show."""
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 import yaml
@@ -143,10 +144,11 @@ def test_the_report_pairs_arms_and_reports_blinding_and_maturity(tmp_path):
     exp.review(b, "Sam", {n: 3 for n in exp.REVIEW_FORM}, False, "", "with")
     text = exp.report(tmp_path / "engagements")
     assert "2 engagement(s)" in text and "descriptive only" in text
-    assert "pair a / b: quality +1.00" in text
-    import re
+    assert re.search(r"pair a / b \(orders 1/2, difficulty distance [0-9.]+\): quality \+1\.00",
+                     text)
     assert re.search(r"holdout_accuracy\s+\+0\.075", text)
-    assert "blinding: 1 of 2 decided guesses were right (0 uncertain)" in text
+    assert ("blinding, packet form v1: 1 of 2 decided guesses were right (0 uncertain, "
+            "2 reviewed)") in text
     assert "started after a build existed: a" in text
     assert exp.maturity(5).startswith("paired") and exp.maturity(20).startswith("stronger")
 
@@ -177,3 +179,81 @@ def test_the_command_runs_the_protocol_end_to_end(tmp_path):
     assert template.exit_code == 0 and yaml.safe_load((tmp_path / "log.yaml").read_text())
     again = runner.invoke(app, ["experiment", root, "start", "--engineer", "Dev"])
     assert again.exit_code == 1 and "already in the experiment" in again.output
+
+
+def test_difficulty_distance_is_zero_for_twins_and_one_for_strangers():
+    same = {"corpus_size": 5000, "hosting": "air-gapped", "roles_heard": ["admin", "sponsor"]}
+    assert exp.difficulty_distance(same, dict(same)) == 0.0
+    far = {"corpus_size": 50, "hosting": "cloud", "roles_heard": ["user"]}
+    assert exp.difficulty_distance(same, far) == 1.0
+    near = {"corpus_size": 4000, "hosting": "air-gapped", "roles_heard": ["admin", "sponsor"]}
+    distance = exp.difficulty_distance(same, near)
+    assert 0.0 < distance < 0.1
+    assert exp.difficulty_distance({}, {}) is None
+    assert exp.difficulty_distance({"x": 1}, {}) == 1.0
+
+
+def test_pairs_go_to_the_nearest_difficulty_not_the_first_in_line():
+    withs = [{"engagement": "w1", "order": 1,
+              "difficulty": {"corpus_size": 5000, "hosting": "a"}}]
+    withouts = [{"engagement": "o1", "order": 2,
+                 "difficulty": {"corpus_size": 50, "hosting": "b"}},
+                {"engagement": "o2", "order": 3,
+                 "difficulty": {"corpus_size": 4800, "hosting": "a"}}]
+    (a, b, distance), = exp.pair(withs, withouts)
+    assert b["engagement"] == "o2" and distance < 0.1
+
+
+def test_a_withdrawal_stays_in_the_series_and_is_counted_by_arm(tmp_path):
+    eng = engagement(tmp_path, "gone")
+    exp.start(eng, "Dev", arm="with", at="2026-10-01")
+    with pytest.raises(ValueError):
+        exp.withdraw(eng, "   ")
+    gone = exp.withdraw(eng, "client paused the budget", at="2026-10-03")
+    assert gone["arm"] == "with"
+    text = exp.report(tmp_path / "engagements")
+    assert "0 engagement(s)" in text and "1 withdrawn" in text
+    assert "withdrawn after the draw: with 1, without 0" in text
+    assert "gone (with): client paused the budget" in text
+    other = engagement(tmp_path, "other")
+    with pytest.raises(FileNotFoundError):
+        exp.withdraw(other, "never started")
+
+
+def test_the_report_names_floors_breakdowns_and_blinding_per_packet_version(tmp_path):
+    rows = []
+    cases = [("a", "with", "Dev", 5), ("b", "without", "Dev", 1),
+             ("c", "with", "Sam", 4), ("d", "without", "Sam", 4)]
+    for i, (name, arm, engineer, risk) in enumerate(cases):
+        eng = engagement(tmp_path, name)
+        exp.start(eng, engineer, arm=arm, at=f"2026-10-0{i + 1}")
+        exp.packet(eng)
+        scores = {n: 4 for n in exp.REVIEW_FORM}
+        scores["risk"] = risk
+        exp.review(eng, "Rev", scores, True, "", "with" if arm == "with" else "uncertain")
+        rows.append(eng)
+    review_file = tmp_path / "engagements" / "d" / "experiment-review.json"
+    form = json.loads(review_file.read_text())
+    form["packet_version"] = 2
+    review_file.write_text(json.dumps(form))
+    text = exp.report(tmp_path / "engagements")
+    assert "floors (any score under 3, not compensated by the mean): b (without): risk=1" in text
+    assert "by engineer (mean quality):" in text
+    assert "Dev: with 4.167 (n=1), without 3.5 (n=1)" in text
+    assert "by order (mean quality, against learning):" in text
+    assert ("blinding, packet form v1: 2 of 2 decided guesses were right (1 uncertain, "
+            "3 reviewed)") in text
+    assert ("blinding, packet form v2: 0 of 0 decided guesses were right (1 uncertain, "
+            "1 reviewed)") in text
+    packet_text = (tmp_path / "engagements" / "a" / "experiment-packet.md").read_text()
+    assert "packet form v1" in packet_text
+
+
+def test_the_withdraw_command_needs_a_reason(tmp_path):
+    engagement(tmp_path, "acme")
+    root = str(tmp_path / "engagements" / "acme")
+    runner.invoke(app, ["experiment", root, "start", "--engineer", "Dev", "--arm", "without"])
+    refused = runner.invoke(app, ["experiment", root, "withdraw"])
+    assert refused.exit_code == 1 and "needs a reason" in refused.output
+    gone = runner.invoke(app, ["experiment", root, "withdraw", "--reason", "no owner would sign"])
+    assert gone.exit_code == 0 and "withdrawn (without arm)" in gone.output

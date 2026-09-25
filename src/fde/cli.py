@@ -2243,7 +2243,7 @@ def experiment_cmd(
         help="The engagement directory; for report, the directory holding the series."
     )],
     action: Annotated[str, typer.Argument(
-        help="start | close | packet | review | report | template"
+        help="start | close | packet | review | withdraw | report | template"
     )],
     engineer: Annotated[str, typer.Option(help="start: who works it.")] = "",
     arm: Annotated[str, typer.Option(
@@ -2265,6 +2265,7 @@ def experiment_cmd(
         "--contract-signable/--contract-not-signable", help="review: would you sign it as owner?"
     )] = False,
     question: Annotated[str, typer.Option(help="review: what nobody asked the client.")] = "",
+    reason: Annotated[str, typer.Option(help="withdraw: why the engagement leaves.")] = "",
     guess: Annotated[str, typer.Option(help="review: with | without | uncertain.")] = "uncertain",
     out: Annotated[Path | None, typer.Option("--out", help="template: where to write it.")] = None,
     today: Annotated[str, typer.Option(help="For the record; defaults to today.")] = "",
@@ -2321,8 +2322,13 @@ def experiment_cmd(
                 "reversibility": reversibility}, contract_signable, question, guess,
                 today or None)
             typer.echo(f"recorded: quality {form['quality']}, guess {form['arm_guess']}")
+        elif action == "withdraw":
+            gone = exp.withdraw(engagement, reason, today or None)
+            typer.echo(f"withdrawn ({gone['arm']} arm): {gone['reason']} -- it stays in the "
+                       "series and the report counts it")
         else:
-            typer.echo("action is start, close, packet, review, report or template", err=True)
+            typer.echo("action is start, close, packet, review, withdraw, report or template",
+                       err=True)
             raise typer.Exit(1)
     except (FileExistsError, FileNotFoundError, ValueError) as exc:
         typer.echo(str(exc), err=True)

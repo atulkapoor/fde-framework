@@ -36,9 +36,24 @@ left empty is reported missing; it is never estimated.
 arm: the lesser arm when the shape's counts differ, a draw seeded from the
 series when they are equal. The draw and its seed are on the record.
 Forcing an arm (`--arm`) is allowed and recorded as "by hand", and a
-series with many forced arms is a weaker series. Pairing is by shape, not
-by problem: the same problem cannot be worked twice by the same person
-without the second run knowing the first.
+series with many forced arms is a weaker series.
+
+**An engagement enters the series before its arm is known, and stays in
+it.** The risk in a balanced draw is not the draw; it is a person who
+starts an engagement, sees the arm, and quietly drops it. So an engagement
+that leaves is withdrawn on the record (`fde experiment <eng> withdraw
+--reason ...`), with the arm it drew, and the report counts withdrawals by
+arm. A lopsided count is what choosing engagements after seeing the arm
+looks like, and the report says so.
+
+**Pairing is within shape, by difficulty.** The same problem cannot be
+worked twice by the same person without the second run knowing the first,
+so pairs are made across engagements of one shape: each *with* engagement
+to the unmatched *without* whose frozen difficulty vector is nearest, and
+the distance is printed beside the pair. Shape alone is too coarse -- five
+thousand air-gapped documents and two hundred cloud ones are the same
+shape -- and a pair at a large distance is a pair to read with that in
+mind, not to average.
 
 **Order is recorded** because an engineer learns. The series numbers every
 engagement in the order it started, and the report keeps that number
@@ -71,6 +86,12 @@ of the six scores on the reviewer's form below. It is declared here,
 before any engagement has been reviewed, so that no composite can be
 assembled after the numbers are in. Everything else measured is
 secondary and is reported beside it, never folded into it.
+
+A mean compensates: five good scores can hide a risk scored one. So the
+report also prints, for every reviewed engagement, any dimension scored
+under three, by name. That line is not compensated by the mean and is
+read beside it, so an architecture that averages well and carries a
+serious risk is seen as both.
 
 ## What is measured
 
@@ -122,7 +143,11 @@ its owner, what they would have asked the client that nobody did, and --
 separately, and required -- which arm they think produced the packet:
 *with*, *without*, or *uncertain*. The report sets the guesses against
 the truth. A reviewer who is right more often than a coin is not blind,
-and the packet form has to change before the scores mean anything.
+and the packet form has to change before the scores mean anything. When
+it changes, the packet's version number changes with it; every review
+records the version it judged, and the report gives the blinding accuracy
+per version, so a changed form does not erase what was measured under
+the old one.
 
 ## What a count can and cannot show
 
@@ -140,12 +165,26 @@ At no size does this protocol establish that the framework caused a
 business outcome; that needs a comparison window on the same client
 with the same people, which is a different experiment and a later one.
 Nor does any average across shapes mean anything: the report pairs
-within a shape and never averages across.
+within a shape and never averages across. It also never collapses across
+engineers or across time: the same figures are shown by engineer and by
+the first and second halves of the series, because an effect that only
+one engineer shows, or that only appears late, is a different finding.
+
+## A limitation that cannot be coded away
+
+Every engineer in this experiment knows they are in it, and in the
+*without* arm they know they are keeping a log for it. That changes how
+they work, mostly toward more discipline than usual. The bias runs
+against the framework: a control arm kept to this log is a stronger
+control than ordinary practice. A difference that survives it means
+more, and a difference that does not may still exist against ordinary
+practice; the protocol cannot tell those apart, and does not claim to.
 
 ## What the framework supplies, and what people do
 
 `fde experiment` runs the protocol on the record: `start`, `close`,
-`packet`, `review`, `report`, and `template` for the control log.
+`packet`, `review`, `withdraw`, `report`, and `template` for the control
+log.
 `fde outcomes`, `fde bench`, `fde predict` and `fde history` read the
 same record in other cuts. `fde retro` captures the engagement as a
 case for the corpus after the window closes. Choosing the engagements,

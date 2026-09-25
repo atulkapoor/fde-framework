@@ -122,7 +122,7 @@ ladder, so nothing here can be over-read:
 
 | Claim | Status | The evidence, and where it stops |
 |---|---|---|
-| The framework is implemented | verified | 1,284 tests on three Pythons in CI; lint clean; every audit finding pinned as a check before it was fixed |
+| The framework is implemented | verified | 1,289 tests on three Pythons in CI; lint clean; every audit finding pinned as a check before it was fixed |
 | A build is reproducible | verified | byte-identical rebuild pinned by test; each public demo carries a Reproduce section and its digests |
 | The decisions generalise | partial | four shapes (extraction, freeform QA, a labelled decision, seventy-seven-way routing) on real data; one industry set; `fde kb sweep` names the shapes nothing serves |
 | The deliverable is production-reliable | unverified | no production engagement; the banking operating loop ran on a laptop and its record says so |
@@ -480,8 +480,13 @@ declared by the tool.
   or off the control arm's log kept in the template it writes, and lists
   what is missing; `packet` renders the blind review in one plain form for
   both arms; `review` records the reviewer's fixed form and their guess at
-  the arm; `report` sets paired differences across the series beside the
-  blinding accuracy and names the rung of evidence the count has reached.
+  the arm; `withdraw` records an engagement leaving with the arm it drew, so the
+  report can count withdrawals by arm; `report` pairs within shape by the
+  nearest frozen difficulty and prints the distance, sets the primary
+  endpoint beside the secondaries and beside a floor line for any score
+  under three, breaks the figures out by engineer and by half of the
+  series, gives the blinding accuracy per packet version, and names the
+  rung of evidence the count has reached.
 - **`fde stop-when`** records what evidence would stop the engagement --
   `answered_accuracy < 0.88`, `abstain_rate > 0.25`, `adoption < 0.4` --
   over figures the record measures: the scorecard's out-of-sample rows, the
@@ -605,7 +610,7 @@ the same receipts the emitted `ARCHITECTURE.md` prints.
 | `fde predict <eng> --when "holdout_accuracy >= 0.82"` | a forecast before the measurement; judged after it, with the signed error |
 | `fde implement project/ --sandbox docker --env-allow ANTHROPIC_API_KEY --allow-network "Priya: hosted model"` | the agent in a container closed by construction; the network only with a name and a reason, both in the log |
 | `fde predict <eng> --when "holdout_accuracy >= 0.82" --confidence 0.7` | a forecast with what was in hand; judged after the measurement, with the signed error and, at five or more, the held rate against the mean confidence |
-| `fde experiment <eng> start --engineer "..."` / `close` / `packet` / `review` / `fde experiment <series> report` | the experiment run by the record: arm assigned, pre-build state frozen, measures read, blind packet, reviewer's form and guess, paired report |
+| `fde experiment <eng> start --engineer "..."` / `close` / `packet` / `review` / `withdraw` / `fde experiment <series> report` | the experiment run by the record: arm assigned, pre-build state frozen, measures read, blind packet, reviewer's form and guess, withdrawals by arm, pairs by nearest difficulty with the floor line and the breakdowns |
 | `--by "<name>"` on data-access, security-review, waive, deployed, outcome, incident close | the signer's name on the record; the stakeholder map points at entries without one |
 | `fde triage --statement "..." --statement "..."` | rank candidate problems by what discovery can already decide |
 | `fde override --component X --choose Y --because "..."` | your call, recorded and honoured |
