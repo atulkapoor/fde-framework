@@ -233,3 +233,107 @@ def test_a_regression_from_the_last_card_is_named(labelled, tmp_path):
     second = score(out, timeout=300, probe_edge=False)
     row = rows_of(second)["regression from the last card"]
     assert row.holds is False and "exam: golden" in row.measured
+
+
+# --- the baseline row judges accuracy and coverage together ------------------
+
+
+def _fake_layer(monkeypatch, layer):
+    import fde.scorecard as module
+    monkeypatch.setattr(module, "_score_file", lambda *a, **k: layer)
+
+
+def _cases(tmp_path, n):
+    path = tmp_path / "cases.jsonl"
+    path.write_text("".join(f'{{"id": "{i}", "input": "x", "output": {{"q": "a"}}}}\n'
+                            for i in range(n)))
+    return path
+
+
+ABSTAINING = {"score": 0.738, "decision": {"majority_rate": 0.019, "abstained": 552,
+                                          "abstain_rate": 0.182, "answered_accuracy": 0.902}}
+
+
+def test_accuracy_on_the_answered_never_stands_alone(tmp_path, monkeypatch):
+    """Ninety percent right on what it answered is not beating an 88% baseline
+    when it hands 18% of cases to a person against the people's own 3%."""
+    from fde.scorecard import Scorecard, holdout
+    _fake_layer(monkeypatch, ABSTAINING)
+    project = tmp_path / "p"
+    (project / "evals").mkdir(parents=True)
+    card = Scorecard(project=str(project))
+    holdout(card, project, _cases(tmp_path, 3036), 10, None, golden_score=0.892,
+            error_rate=0.12, exception_rate=0.03)
+    row = rows_of(card)["beats the baseline error rate"]
+    assert row.holds is False, row.measured
+    assert "coverage 81.8% against a floor of 97.0% (the baseline's exception rate)" \
+        in row.measured
+    assert "n=3036, correct=2241, wrong=243, abstained=552" in row.measured
+    assert "overall 73.8%" in row.measured and "95% " in row.measured
+
+
+def test_an_engagement_may_set_its_own_coverage_floor(tmp_path, monkeypatch):
+    from fde.scorecard import Scorecard, holdout
+    _fake_layer(monkeypatch, ABSTAINING)
+    project = tmp_path / "p"
+    (project / "evals").mkdir(parents=True)
+    card = Scorecard(project=str(project))
+    holdout(card, project, _cases(tmp_path, 3036), 10, None, error_rate=0.12,
+            exception_rate=0.03, coverage_floor=0.8)
+    row = rows_of(card)["beats the baseline error rate"]
+    assert row.holds is True and "(set by the engagement)" in row.measured
+
+
+def test_abstention_without_a_floor_on_record_cannot_hold(tmp_path, monkeypatch):
+    from fde.scorecard import Scorecard, holdout
+    _fake_layer(monkeypatch, ABSTAINING)
+    project = tmp_path / "p"
+    (project / "evals").mkdir(parents=True)
+    card = Scorecard(project=str(project))
+    holdout(card, project, _cases(tmp_path, 3036), 10, None, error_rate=0.12)
+    row = rows_of(card)["beats the baseline error rate"]
+    assert row.holds is False and "no floor on record" in row.measured
+    assert "--coverage-floor" in row.why
+
+
+def test_a_system_that_never_abstains_is_judged_on_accuracy_alone(tmp_path, monkeypatch):
+    from fde.scorecard import Scorecard, holdout
+    _fake_layer(monkeypatch, {"score": 0.95, "decision": {"majority_rate": 0.3, "abstained": 0,
+                                                          "abstain_rate": 0.0,
+                                                          "answered_accuracy": 0.95}})
+    project = tmp_path / "p"
+    (project / "evals").mkdir(parents=True)
+    card = Scorecard(project=str(project))
+    holdout(card, project, _cases(tmp_path, 40), 10, None, error_rate=0.12)
+    row = rows_of(card)["beats the baseline error rate"]
+    assert row.holds is True and "coverage 100.0%" in row.measured
+
+
+def test_the_external_exam_has_the_protocol_floor(tmp_path, monkeypatch):
+    from fde.scorecard import Scorecard, external
+    _fake_layer(monkeypatch, {"score": 0.667, "decision": {"majority_rate": 0.5, "abstained": 0,
+                                                           "abstain_rate": 0.0,
+                                                           "answered_accuracy": 0.667}})
+    project = tmp_path / "p"
+    (project / "evals").mkdir(parents=True)
+    card = Scorecard(project=str(project))
+    external(card, project, _cases(tmp_path, 3), 10, None)
+    rows = rows_of(card)
+    assert rows["external exam"].holds is True  # the score itself clears
+    assert rows["external exam: sample size"].holds is False
+    assert "3 cases" in rows["external exam: sample size"].measured
+
+
+def test_the_gap_limit_is_a_default_the_engagement_can_tighten(tmp_path, monkeypatch):
+    from fde.scorecard import Scorecard, holdout
+    _fake_layer(monkeypatch, ABSTAINING)
+    project = tmp_path / "p"
+    (project / "evals").mkdir(parents=True)
+    card = Scorecard(project=str(project))
+    holdout(card, project, _cases(tmp_path, 40), 10, None, golden_score=0.892)
+    assert rows_of(card)["generalisation gap"].holds is True
+    assert "(the protocol's default)" in rows_of(card)["generalisation gap"].measured
+    card = Scorecard(project=str(project))
+    holdout(card, project, _cases(tmp_path, 40), 10, None, golden_score=0.892, max_gap=0.08)
+    row = rows_of(card)["generalisation gap"]
+    assert row.holds is False and "against 8% (set by the engagement)" in row.measured

@@ -2379,6 +2379,13 @@ def _write_evals(
     rate = entry.get("value") if isinstance(entry, dict) else entry
     exam["baseline_error_rate"] = (rate if isinstance(rate, (int, float))
                                    and not isinstance(rate, bool) else None)
+    # And the share the people already hand to a person or an unknown
+    # queue: a system that abstains more than that has not beaten the
+    # baseline on what it answered, whatever its accuracy there says.
+    entry = (baseline or {}).get("exception_rate") if isinstance(baseline, dict) else None
+    rate = entry.get("value") if isinstance(entry, dict) else entry
+    exam["baseline_exception_rate"] = (rate if isinstance(rate, (int, float))
+                                       and not isinstance(rate, bool) else None)
     (evals / "manifest.json").write_text(json.dumps(exam, indent=2, sort_keys=True) + "\n")
     (evals / "acceptance.md").write_text(
         _acceptance(architecture, golden_count, waived or set(), exam)

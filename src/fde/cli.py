@@ -2361,6 +2361,14 @@ def scorecard_cmd(
     no_edge: Annotated[bool, typer.Option(
         "--no-edge", help="Skip booting the service to probe the edge."
     )] = False,
+    coverage_floor: Annotated[float | None, typer.Option(
+        "--coverage-floor", help="The share of cases the system must answer for the baseline "
+                                 "row to hold; defaults to 1 - the baseline's exception rate."
+    )] = None,
+    max_gap: Annotated[float | None, typer.Option(
+        "--max-gap", help="The engagement's limit on the golden-to-holdout gap; the protocol's "
+                          "default is 0.20."
+    )] = None,
     external: Annotated[Path | None, typer.Option(
         "--external",
         help="A second out-of-sample exam nobody at the engagement chose (the client's "
@@ -2382,7 +2390,8 @@ def scorecard_cmd(
                    if k.startswith(("LLM_", "JUDGE_", "CORPUS_", "FINETUNED_", "BOUNDARY_",
                                     "ABSTAIN_"))}
     card = score(project, holdout_path=holdout, min_score=min_score, timeout=timeout,
-                 env=passthrough or None, probe_edge=not no_edge, external_path=external)
+                 env=passthrough or None, probe_edge=not no_edge, external_path=external,
+                 coverage_floor=coverage_floor, max_gap=max_gap)
     typer.echo(f"{card.verdict}\n")
     for row in card.rows:
         mark = "n/a" if row.holds is None else ("ok " if row.holds else "NO ")

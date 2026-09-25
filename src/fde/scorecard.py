@@ -44,7 +44,7 @@ from pathlib import Path
 PROTOCOL_FLOOR = 30  # evals/acceptance.md's own sample floor for a blind sample
 # The gap between an in-sample golden score and the holdout beyond which
 # the golden score is describing the exam, not the system.
-MAX_GENERALISATION_GAP = 0.20
+MAX_GENERALISATION_GAP = 0.20  # the protocol's default; an engagement may tighten it
 EDGE_FLOOR = 5          # fewer edge cases than this is not a layer
 PROBE_FLOOR = 8         # fewer adversarial probes than this is not a layer
 PROBE_BASES_FLOOR = 2   # probes on one base measure one base
@@ -218,9 +218,62 @@ def _score_file(project: Path, path: Path, report: Path, timeout: float,
     return json.loads(report.read_text())["layers"][0]
 
 
+def _wilson(correct: int, n: int, z: float = 1.96) -> tuple[float, float]:
+    if n <= 0:
+        return 0.0, 0.0
+    p = correct / n
+    centre = (p + z * z / (2 * n)) / (1 + z * z / n)
+    half = z * ((p * (1 - p) / n + z * z / (4 * n * n)) ** 0.5) / (1 + z * z / n)
+    return max(0.0, centre - half), min(1.0, centre + half)
+
+
+def baseline_bar(card: Scorecard, cases: int, score: float, decision: dict,
+                 error_rate: float, exception_rate: float | None,
+                 coverage_floor: float | None) -> None:
+    """Beats the baseline on both axes, or does not. Accuracy is measured
+    on what the system answered; coverage is what it answered at all,
+    against the share the people already handed on (the baseline's
+    exception rate) unless the engagement set a floor. A system that
+    answers a tenth of the cases perfectly has not beaten anyone, and this
+    row never lets accuracy on the answered stand alone."""
+    bar = 1 - error_rate
+    abstained = int(decision.get("abstained") or 0) if decision else 0
+    answered_n = max(0, cases - abstained)
+    answered_accuracy = decision.get("answered_accuracy") if decision else None
+    measured = answered_accuracy if answered_accuracy is not None else score
+    correct = round(measured * answered_n) if answered_n else 0
+    coverage = answered_n / cases if cases else 0.0
+    lo, hi = _wilson(correct, answered_n)
+    if coverage_floor is not None:
+        floor, source = coverage_floor, "set by the engagement"
+    elif exception_rate is not None:
+        floor, source = 1 - exception_rate, "the baseline's exception rate"
+    else:
+        floor, source = None, None
+    figures = (f"{measured:.1%} on the answered against {bar:.1%}; coverage {coverage:.1%}"
+               + (f" against a floor of {floor:.1%} ({source})" if floor is not None
+                  else " with no floor on record")
+               + f"; n={cases}, correct={correct}, wrong={answered_n - correct}, "
+               f"abstained={abstained}; overall {score:.1%}; 95% {lo:.1%} to {hi:.1%} on the "
+               f"answered")
+    accuracy_ok = measured >= bar
+    if abstained == 0:
+        holds, why = accuracy_ok, "nothing abstained: coverage is whole, accuracy decides"
+    elif floor is None:
+        holds = False
+        why = ("the system abstains and no coverage floor is on record: rebuild so the "
+               "manifest carries the baseline's exception rate, or pass --coverage-floor")
+    else:
+        holds = accuracy_ok and coverage >= floor
+        why = ("accuracy on the answered and coverage must both clear; the people's own "
+               "hand-on share is the floor unless the engagement sets one")
+    card.add("beats the baseline error rate", figures, holds, why)
+
+
 def holdout(card: Scorecard, project: Path, path: Path | None, timeout: float,
             env: dict | None, golden_score: float | None = None,
-            error_rate: float | None = None) -> None:
+            error_rate: float | None = None, exception_rate: float | None = None,
+            coverage_floor: float | None = None, max_gap: float | None = None) -> None:
     manifest = project / "evals" / "manifest.json"
     recorded = None
     if manifest.exists():
@@ -264,22 +317,15 @@ def holdout(card: Scorecard, project: Path, path: Path | None, timeout: float,
                  actual == recorded)
     if golden_score is not None:
         gap = golden_score - score
+        limit = MAX_GENERALISATION_GAP if max_gap is None else max_gap
+        source = "the protocol's default" if max_gap is None else "set by the engagement"
         card.add("generalisation gap", f"golden {golden_score:.1%} - holdout {score:.1%} = "
-                 f"{gap:+.1%}", gap <= MAX_GENERALISATION_GAP,
-                 f"past {MAX_GENERALISATION_GAP:.0%} the golden score describes the exam, "
-                 f"not the system; a component that reads the holdout file defeats this "
-                 f"row, which is what --external is for")
+                 f"{gap:+.1%} against {limit:.0%} ({source})", gap <= limit,
+                 "past the limit the golden score describes the exam, not the system; "
+                 "a component that reads the holdout file defeats this row, which is what "
+                 "--external is for; tighten the limit with --max-gap")
     if error_rate is not None:
-        answered = decision.get("answered_accuracy") if decision else None
-        measured = answered if answered is not None else score
-        bar = 1 - error_rate
-        card.add("beats the baseline error rate",
-                 f"{measured:.1%} on the answered against a recorded first-pass accuracy of "
-                 f"{bar:.1%}" + (f", abstaining {decision['abstain_rate']:.1%}"
-                                if decision and decision.get("abstained") else ""),
-                 measured >= bar,
-                 "evals/acceptance.md: the baseline's error rate is the number to beat; "
-                 "measured on what the system answered, with the abstained share beside it")
+        baseline_bar(card, cases, score, decision, error_rate, exception_rate, coverage_floor)
 
 
 def external(card: Scorecard, project: Path, path: Path | None, timeout: float,
@@ -307,8 +353,14 @@ def external(card: Scorecard, project: Path, path: Path | None, timeout: float,
     if decision:
         note = f"majority {decision['majority_rate']:.1%}"
         holds = holds and score > decision["majority_rate"]
+        if decision.get("abstained"):
+            note += (f"; abstained {decision['abstain_rate']:.1%}, "
+                     f"{decision['answered_accuracy']:.1%} on the answered")
     card.add("external exam", f"{score:.1%} on {cases} cases" + (f" ({note})" if note else ""),
              holds)
+    card.add("external exam: sample size", f"{cases} cases", cases >= PROTOCOL_FLOOR,
+             f"the protocol's floor for a blind sample is {PROTOCOL_FLOOR}, for the external "
+             f"set as for the holdout; three right answers out of four is not generalisation")
 
 
 def exam_record(card: Scorecard, project: Path) -> dict | None:
@@ -582,7 +634,8 @@ def render(card: Scorecard) -> str:
 
 def score(project: Path, holdout_path: Path | None = None, min_score: float = 0.0,
           timeout: float = 900.0, env: dict | None = None, probe_edge: bool = True,
-          external_path: Path | None = None) -> Scorecard:
+          external_path: Path | None = None, coverage_floor: float | None = None,
+          max_gap: float | None = None) -> Scorecard:
     project = Path(project).resolve()
     card = Scorecard(project=str(project))
     own_tests(card, project, timeout)
@@ -593,8 +646,12 @@ def score(project: Path, holdout_path: Path | None = None, min_score: float = 0.
     golden_score = golden_layer.get("score") if golden_layer else None
     record = exam_record(card, project)
     error_rate = (record or {}).get("baseline_error_rate")
+    exception_rate = (record or {}).get("baseline_exception_rate")
     holdout(card, project, holdout_path, timeout, env, golden_score=golden_score,
-            error_rate=error_rate if isinstance(error_rate, (int, float)) else None)
+            error_rate=error_rate if isinstance(error_rate, (int, float)) else None,
+            exception_rate=(exception_rate if isinstance(exception_rate, (int, float))
+                            else None),
+            coverage_floor=coverage_floor, max_gap=max_gap)
     holdout_row = next((r for r in card.rows if r.property == "holdout"), None)
     match = re.match(r"([0-9.]+)%", holdout_row.measured) if holdout_row else None
     holdout_score = float(match.group(1)) / 100 if match else None
