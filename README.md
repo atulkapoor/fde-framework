@@ -67,6 +67,14 @@ fde start acme --statement "Route each support message to one of 77 queues."
 fde next acme            # the one thing to learn or do next, and what turns on it
 ```
 
+> ### Five founding engagements
+> One real workflow, your real examples, a measured baseline, and someone
+> who owns the number. You get a written answer -- build it, change the
+> design, or don't -- with the receipts, and the system where the evidence
+> earns one. Your data stays in your environment. **No fee for the first
+> five.** [How it goes](https://atulkapoor.github.io/fde-framework/engage.html)
+> · [Bring a workflow](https://github.com/atulkapoor/fde-framework/issues/new?template=engagement.yml)
+
 ## What it does
 
 | | |

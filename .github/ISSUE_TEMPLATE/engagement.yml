@@ -15,6 +15,16 @@ body:
       description: What arrives, what has to happen to it, and who is waiting.
     validations:
       required: true
+  - type: input
+    id: process
+    attributes:
+      label: How it is done today
+      description: Who does it, roughly how many people, and what a day of it looks like.
+  - type: textarea
+    id: decision
+    attributes:
+      label: The decision you are trying to make
+      description: Build it, fix a pilot that did not work, or settle whether to build at all.
   - type: dropdown
     id: examples
     attributes:
@@ -53,6 +63,10 @@ body:
     attributes:
       label: Output of fde triage, if you ran it
       description: "`pip install fde-framework && fde triage --statement \"...\"` -- paste what it printed."
+  - type: input
+    id: timeline
+    attributes:
+      label: When you need the answer
   - type: dropdown
     id: record
     attributes:

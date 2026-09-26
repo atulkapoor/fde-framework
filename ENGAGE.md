@@ -7,7 +7,22 @@ to [`EXPERIMENT.md`](EXPERIMENT.md) are how that rung gets measured. This
 page says what such an engagement is, what each side gives and gets, and
 what is not on offer.
 
-## The shape of it
+## Three shapes, and which comes first
+
+**A decision, two weeks.** Should this be built? The baseline, the
+architecture with its alternatives, the exam, a prototype where the
+evidence supports one, and a written answer: build it, change the design,
+or don't. The first five engagements are this shape.
+
+**A delivery, four to six weeks.** Everything above, plus the deployable
+system for your environment, the runbook and handover. Agreed separately,
+after the decision, at a rate agreed first.
+
+**Production, eight weeks and up.** Deployed, watched for drift,
+incidents on the record, adoption and the contracted metric measured in
+the field. Not offered until a delivery has run.
+
+## The shape of a decision engagement
 
 One problem, brought by someone who owns the workflow it lives in, worked
 to a scored build or a recorded stop. The shapes that have run end to end
@@ -71,6 +86,14 @@ cover your own infrastructure. If the engagement goes beyond the protocol
 into operation, integration work or a second system, that is separate
 work at a rate agreed first.
 
+## When this is not the right engagement yet
+
+If the examples, a baseline and an owner cannot be brought, this is not a
+rejection; it is the order of work. The framework refuses to build until
+those exist, and it would refuse here too. Come back when they do, or
+bring the workflow and use the first conversation to find out which of
+the three is missing.
+
 ## What is not on offer
 
 - A guarantee of a build. The gates refuse until the evidence is there,
@@ -84,7 +107,8 @@ work at a rate agreed first.
 
 ## How to start
 
-Open an [engagement proposal](https://github.com/atulkapoor/fde-framework/issues/new?template=engagement.yml)
+Read [how it goes](https://atulkapoor.github.io/fde-framework/engage.html),
+then open an [engagement proposal](https://github.com/atulkapoor/fde-framework/issues/new?template=engagement.yml)
 with the problem in three sentences, or run the first step yourself:
 
 ```bash
