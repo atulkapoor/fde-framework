@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Should you build this AI system?</title>
+<meta name="description" content="A two-week decision on one workflow, with your real examples and a measured baseline: build it, change the design, or don't. No fee for the first five engagements; your data stays in your environment.">
+<link rel="canonical" href="https://atulkapoor.github.io/fde-framework/engage.html">
+<link rel="icon" type="image/png" href="favicon.png">
+<meta property="og:title" content="Should you build this AI system?">
+<meta property="og:description" content="One workflow, real examples, a measured baseline, and a written answer: build, change, or stop. First five engagements at no fee.">
+<meta property="og:image" content="https://atulkapoor.github.io/fde-framework/social-preview.png">
+<style>
+  :root { color-scheme: light dark;
+    --bg:#ffffff; --fg:#1f2328; --muted:#57606a; --card:#f6f8fa; --line:#d0d7de; --accent:#0969da; }
+  @media (prefers-color-scheme: dark) { :root {
+    --bg:#0d1117; --fg:#e6edf3; --muted:#9ea7b3; --card:#161b22; --line:#30363d; --accent:#79c0ff; } }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:16px/1.65 -apple-system,"Segoe UI",Roboto,sans-serif; }
+  main { max-width:880px; margin:0 auto; padding:56px 24px 80px; }
+  h1 { font-size:2.6rem; margin:0 0 4px; letter-spacing:-.5px; } h1 span { color:var(--accent); }
+  .tag { color:var(--muted); font-size:1.12rem; margin:0 0 22px; max-width:660px; }
+  img { max-width:100%; height:auto; border-radius:10px; display:block; }
+  code, pre { font-family:"SF Mono",Menlo,Consolas,monospace; }
+  code { background:var(--card); border:1px solid var(--line); border-radius:6px; padding:2px 7px; font-size:.92em; }
+  pre { background:#161b22; border:1px solid #30363d; color:#e6edf3; border-radius:10px; padding:16px 20px; overflow-x:auto; font-size:.85rem; line-height:1.55; margin:0; }
+  a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; }
+  .row { margin:18px 0 26px; } .row a { display:inline-block; margin:0 14px 10px 0; font-weight:600; }
+  .btn { background:#1f6feb; color:#fff !important; padding:9px 18px; border-radius:8px; }
+  .btn2 { background:var(--card); border:1px solid var(--line); color:var(--fg) !important; padding:8px 17px; border-radius:8px; }
+  .btn:hover, .btn2:hover { text-decoration:none; filter:brightness(1.15); }
+  h2 { margin:52px 0 6px; font-size:1.5rem; } .sub { color:var(--muted); margin:0 0 18px; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(250px,1fr)); gap:14px; margin-top:20px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 18px; }
+  .card h3 { margin:0 0 6px; font-size:1.02rem; }
+  .card p { margin:0; color:var(--muted); font-size:.92rem; }
+  .g { color:#7ee787; } .b { color:#79c0ff; } .o { color:#ffa657; } .r { color:#ff7b72; } .d { color:#8b949e; }
+  .ex-label { color:var(--muted); font-size:.85rem; text-transform:uppercase; letter-spacing:.08em; margin:26px 0 8px; }
+  .cap { color:var(--muted); font-size:.9rem; margin:8px 0 0; }
+  .quiet { color:var(--muted); font-size:.9rem; margin-top:56px; border-top:1px solid var(--line); padding-top:22px; }
+</style>
+
+<style>
+  .steps { counter-reset: step; list-style: none; padding: 0; margin: 18px 0; }
+  .steps li { counter-increment: step; margin: 10px 0; padding-left: 2.4em; position: relative; }
+  .steps li::before { content: counter(step); position: absolute; left: 0; top: 0; width: 1.7em; height: 1.7em;
+    border-radius: 50%; background: var(--card); border: 1px solid var(--line); text-align: center; line-height: 1.7em; font-weight: 600; }
+  .offer { border: 1px solid var(--line); background: var(--card); border-radius: 10px; padding: 18px 22px; margin: 22px 0; }
+  .offer h2 { margin-top: 0; }
+  .three { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+  .three .card h3 { margin-top: 0; }
+  .verdict { display: flex; gap: 10px; flex-wrap: wrap; margin: 12px 0; }
+  .verdict span { border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <p class="quiet"><a href="./">fde-framework</a> · bring an engagement</p>
+  <h1>Should you actually <span>build</span> this AI system?</h1>
+  <p class="lead">You have one workflow where everyone says AI should help and nobody has a defensible answer for what to build, whether it would beat the people doing it now, or whether to build it at all. In two weeks, with your real examples and a measured baseline, you get that answer in writing.</p>
+  <div class="verdict"><span>build it</span><span>change the design</span><span>don't build it</span></div>
+
+  <div class="offer">
+    <h2>Five founding engagements, no fee</h2>
+    <p>The framework behind this has run four complete engagements in public and none for a client yet. The first five that run to its written protocol are the measurement; that is why they are free. Your data stays in your environment. A stop is a legitimate outcome, and it costs you less than a system that should not have been built.</p>
+    <p><a class="btn" href="https://github.com/atulkapoor/fde-framework/issues/new?template=engagement.yml">Bring a workflow</a> <a class="btn2" href="https://github.com/atulkapoor/fde-framework/blob/main/ENGAGE.md">What each side gives and gets</a></p>
+  </div>
+
+  <h2>How it goes</h2>
+  <ol class="steps">
+    <li><strong>You bring one workflow</strong>, described the way you would to a colleague, and the person who owns it.</li>
+    <li><strong>You bring real examples</strong>: inputs with the answers your people gave, a few hundred if you have them, forty at the least. They become the exam, and a holdout the build never sees.</li>
+    <li><strong>The baseline is measured</strong>: volume, time per item, hours, error and exception rates. Stated figures are accepted and marked as stated.</li>
+    <li><strong>Someone on your side signs the outcome contract</strong>: which number this exists to move, from what to what, measured how, by when. Nothing is built without it, or without a written reason it cannot be set yet.</li>
+    <li><strong>The architecture is decided on the evidence</strong>, with what was rejected and why. Plain code where plain code is enough; a model only where the evidence earns one.</li>
+    <li><strong>It is built only if the evidence says so</strong>, scored on cases nobody chose, and handed over with the runbook, the risks and the record. Or it stops, and the record says why.</li>
+  </ol>
+
+  <h2>Three shapes, one first</h2>
+  <div class="three">
+    <div class="card"><h3>A decision, two weeks</h3><p>Should this be built? Baseline, architecture with alternatives, the exam, a prototype where the evidence supports one, and the written answer. <strong>The first five engagements are this shape.</strong></p></div>
+    <div class="card"><h3>A delivery, four to six weeks</h3><p>Everything above, plus a deployable system for your environment, the runbook, and handover to your team. Agreed separately, after the decision.</p></div>
+    <div class="card"><h3>Production, eight weeks and up</h3><p>Deployed, watched for drift, incidents on the record, adoption and the contracted metric measured in the field. Not offered until a delivery has run.</p></div>
+  </div>
+
+  <h2>What it has run on</h2>
+  <p>Four complete engagements on real data, every refusal preserved: <a href="https://github.com/atulkapoor/fde-demo-receipts">626 scanned receipts</a>, <a href="https://github.com/atulkapoor/fde-demo-complaints">2,034 consumer complaints</a>, <a href="https://github.com/atulkapoor/fde-demo-rfc-qa">58 technical standards</a>, and <a href="https://github.com/atulkapoor/fde-demo-banking">13,083 bank support messages across 77 queues</a>, where the router stopped itself once on its own stop condition and the card now says it routes better than the bank's people and routes less of it. Production-proven it is not, yet; the pages say so themselves.</p>
+
+  <h2>Who this is for</h2>
+  <p>A company of fifty to five hundred people with a workflow that five to fifty of them touch every day, historical examples of it, and one person who owns its number. Support triage, document processing, claims, compliance review, invoice handling, internal routing. It is also for a company whose AI pilot did not work: the answer may be to fix it, redesign it, or stop it, and the record will say which.</p>
+
+  <h2>Who this is not for</h2>
+  <p>Anyone who cannot yet bring the examples, a baseline and an owner. That is not a rejection; it is the order of work. The framework refuses to build until those exist, and it would refuse for you too.</p>
+
+  <p><a class="btn" href="https://github.com/atulkapoor/fde-framework/issues/new?template=engagement.yml">Bring a workflow</a> &nbsp; or write on <a href="https://www.linkedin.com/in/atulkapoor">LinkedIn</a> with the workflow in three sentences.</p>
+
+  <p class="quiet">The framework: <a href="https://github.com/atulkapoor/fde-framework">github.com/atulkapoor/fde-framework</a> · Apache-2.0 · built by <a href="https://github.com/atulkapoor">Atul Kapoor</a></p>
+</main>
+</body>
+</html>
