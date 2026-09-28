@@ -226,3 +226,57 @@ def test_a_misspelled_entry_kind_still_fails(tmp_path):
     write(tmp_path, "stackz", "pgvector", STACK)
     with pytest.raises(RegistryError, match="stackz"):
         load_registry(tmp_path)
+
+
+APPROACH_KEEPER = """\
+---
+id: keeper
+name: Keeper
+complexity: 1
+components: [orchestration]
+applies_when: [always]
+avoid_when: [human_waiting == true]
+evidence: {case_ids: [doc-extraction], confidence: medium, last_verified: 2026-08-24}
+---
+Kept.
+"""
+
+PATTERN_SERVING = """\
+---
+id: ghost-orchestration
+component: orchestration
+approach: %s
+realizations:
+  - {stack: pgvector, template: sup/pg.py.j2, provides: Supervisor}
+  - {stack: plain-python, template: sup/plain.py.j2, provides: Supervisor}
+evidence:
+  case_ids: [doc-extraction]
+---
+Serves an approach that may or may not exist.
+"""
+
+
+def test_a_pattern_serving_an_unknown_approach_is_an_error(tmp_path):
+    """Issue #3: deleting or renaming an approach orphaned its patterns with
+    no warning; the dead entries surfaced later as unrealizable components in
+    somebody else's build."""
+    write(tmp_path, "cases", "doc-extraction", CASE)
+    write(tmp_path, "stacks", "pgvector", STACK)
+    write(tmp_path, "approaches", "keeper", APPROACH_KEEPER)
+    write(tmp_path, "patterns", "ghost-orchestration", PATTERN_SERVING % "ghost")
+    errs = validate_links(load_registry(tmp_path))
+    assert any("serves unknown approach 'ghost'" in e.message for e in errs), errs
+    assert any(e.source == "ghost-orchestration" for e in errs)
+    write(tmp_path, "patterns", "ghost-orchestration", PATTERN_SERVING % "keeper")
+    errs = validate_links(load_registry(tmp_path))
+    assert not any("unknown approach" in e.message for e in errs), errs
+
+
+def test_a_registry_with_no_approaches_yet_is_not_told_its_patterns_are_orphans(tmp_path):
+    """The loader is permissive for half-authored registries; a registry
+    that has not reached its approaches yet is authoring, not rotting."""
+    write(tmp_path, "cases", "doc-extraction", CASE)
+    write(tmp_path, "stacks", "pgvector", STACK)
+    write(tmp_path, "patterns", "ghost-orchestration", PATTERN_SERVING % "ghost")
+    errs = validate_links(load_registry(tmp_path))
+    assert not any("unknown approach" in e.message for e in errs), errs

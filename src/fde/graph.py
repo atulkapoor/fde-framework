@@ -42,6 +42,19 @@ def validate_links(registry: Registry) -> list[LinkError]:
     errors: list[LinkError] = []
 
     for pattern in registry.patterns.values():
+        # A pattern serves an approach; one that names an approach nobody
+        # loaded is a dead entry the decision engine can never reach, and a
+        # rename that left patterns behind lands on whoever builds next
+        # (issue #3). The loader stays permissive for half-authored
+        # registries; this is the validator's job, strict unless --lenient.
+        if registry.approaches and pattern.approach not in registry.approaches:
+            errors.append(
+                LinkError(
+                    source=pattern.id,
+                    message=f"pattern {pattern.id!r} serves unknown approach "
+                            f"{pattern.approach!r}",
+                )
+            )
         for case_id in _cited_cases(pattern):
             if case_id not in registry.cases:
                 errors.append(
