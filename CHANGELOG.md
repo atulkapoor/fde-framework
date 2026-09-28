@@ -5,6 +5,19 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.40] — 2026-09-28
+
+- **`fde kb validate` checks that every pattern's approach exists**
+  (issue #3, reported with the failure chain). The validator resolved a
+  pattern's cases, stacks and interfaces but never its approach, so
+  deleting or renaming an approach orphaned its patterns silently and the
+  dead entries surfaced later as unrealizable components in somebody
+  else's build. An orphan is now a broken reference: strict by default,
+  printed and passed under `--lenient`, and a registry that has no
+  approaches yet is left alone as still authoring. Pinned by tests, and
+  reproduced on a copy of the shipped corpus with one approach deleted:
+  three patterns named, exit 1.
+
 ## [0.1.39] — 2026-09-25
 
 A sixth outside reading, of 0.1.38, found five things the experiment's
