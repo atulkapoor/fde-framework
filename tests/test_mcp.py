@@ -224,10 +224,11 @@ def test_check_mode_creates_nothing(tmp_path, monkeypatch):
 
 
 def test_the_envelope_is_versioned_and_every_status_is_reachable(tmp_path, monkeypatch):
-    from fde import mcp_server
-    from fde.mcp_server import ENVELOPE, SCHEMA_VERSION, STATUSES, reply, run_command
+    import jsonschema
 
-    assert set(ENVELOPE) == {"schema_version", "tool", "status", "mutated", "workspace"}
+    from fde import mcp_server
+    from fde.mcp_server import ENVELOPE_SCHEMA, SCHEMA_VERSION, STATUSES, reply, run_command
+
     monkeypatch.setenv("FDE_WORKSPACE", str(tmp_path))
     server = build_server()
     seen = {}
@@ -243,7 +244,7 @@ def test_the_envelope_is_versioned_and_every_status_is_reachable(tmp_path, monke
     for status in STATUSES:
         assert seen[status]["status"] == status
         assert seen[status]["schema_version"] == SCHEMA_VERSION
-        assert set(seen[status]) == set(ENVELOPE)
+        jsonschema.validate(seen[status], ENVELOPE_SCHEMA)
 
     class Broken:
         output = "half-written"
@@ -270,3 +271,85 @@ def test_doctor_measures_the_install_and_fails_only_on_what_the_core_needs(tmp_p
     sick = runner.invoke(app, ["doctor", "--registry", str(tmp_path / "nowhere")])
     assert sick.exit_code == 1 and "NO registry" in sick.output
     assert "something the core needs is missing" in sick.output
+
+
+# --- the interface as a product: the second call finds the first call's work
+
+
+def test_an_engagement_is_found_by_the_name_start_gave_it(tmp_path, monkeypatch):
+    """`start(name="acme")` then `status(engagement="acme")` is the sequence
+    an agent writes first. Before this test the second call looked at
+    <workspace>/acme, found nothing, and said so; the record was at
+    engagements/acme, where `start` had put it and where `fde status acme`
+    finds it on the command line."""
+    monkeypatch.setenv("FDE_WORKSPACE", str(tmp_path))
+    server = build_server()
+    opened = asyncio.run(server.call_tool("start", {
+        "name": "acme", "statement": "Route each support message to one of 77 queues."}))
+    assert opened.structured_content["status"] == "ok"
+    assert (tmp_path / "engagements" / "acme" / "facts").is_dir()
+    for tool, expected in (("status", "blocked by"), ("next", "next: fde "),
+                           ("stage", "acme: discovery"), ("debt", "decision debt as of"),
+                           ("history", "acme: history"),
+                           ("stop_when", "no stop conditions on record")):
+        result = asyncio.run(server.call_tool(tool, {"engagement": "acme"}))
+        assert expected in result.content[0].text, (tool, result.content[0].text)
+        assert result.structured_content["status"] == "ok", (tool, result.structured_content)
+    framed = asyncio.run(server.call_tool("frame", {
+        "engagement": "acme",
+        "text": "Two agents triage 9,000 emails a month by hand and misroute about 12 percent."}))
+    assert framed.structured_content["status"] == "ok" and framed.structured_content["mutated"]
+    # The path form still works, and a name that climbs is still refused
+    # before anything is looked for.
+    by_path = asyncio.run(server.call_tool("status", {"engagement": "engagements/acme"}))
+    assert by_path.structured_content["status"] == "ok"
+    climbing = asyncio.run(server.call_tool("status", {"engagement": "../acme"}))
+    assert climbing.structured_content["status"] == "refused"
+    assert "outside the workspace" in climbing.content[0].text
+
+
+def test_a_corrupt_record_is_a_sentence_naming_the_file_not_a_traceback(tmp_path, monkeypatch):
+    monkeypatch.setenv("FDE_WORKSPACE", str(tmp_path))
+    server = build_server()
+    asyncio.run(server.call_tool("start", {
+        "name": "acme", "statement": "Route each support message to one of 77 queues."}))
+    asyncio.run(server.call_tool("frame", {
+        "engagement": "acme", "text": "Two agents triage 9,000 emails a month by hand."}))
+    record = next((tmp_path / "engagements" / "acme" / "facts").glob("*.yaml"))
+    with record.open("a") as fh:
+        fh.write('{"this is": not yaml\n')
+    for tool in ("status", "next", "debt"):
+        result = asyncio.run(server.call_tool(tool, {"engagement": "acme"}))
+        text = result.content[0].text
+        assert result.structured_content["status"] != "ok", tool
+        assert record.stem in text and "cannot read" in text, (tool, text)
+        assert "Traceback" not in text, (tool, text)
+
+
+def test_the_schema_is_published_and_is_what_every_reply_follows(tmp_path, monkeypatch):
+    import json
+
+    import jsonschema
+    from typer.testing import CliRunner
+
+    from fde.cli import app
+    from fde.mcp_server import ENVELOPE_SCHEMA, SCHEMA_VERSION, TOOLS
+
+    result = CliRunner().invoke(app, ["mcp", "--schema"])
+    assert result.exit_code == 0, result.output
+    published = json.loads(result.output)
+    assert published == ENVELOPE_SCHEMA
+    jsonschema.Draft202012Validator.check_schema(published)
+    assert published["$id"].endswith(f"/v{SCHEMA_VERSION}")
+    # The schema's list of tools is the server's list of tools.
+    monkeypatch.setenv("FDE_WORKSPACE", str(tmp_path))
+    server = build_server()
+    assert {t.name for t in asyncio.run(server.list_tools())} == set(TOOLS)
+    # And an envelope with a field it does not name, or a status it does not
+    # name, fails validation: a client can trust the schema to be the contract.
+    good = asyncio.run(server.call_tool("triage", {"statements": ["Route."]})).structured_content
+    jsonschema.validate(good, published)
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate({**good, "extra": 1}, published)
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate({**good, "status": "done"}, published)

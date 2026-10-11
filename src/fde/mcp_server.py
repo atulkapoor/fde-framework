@@ -30,22 +30,41 @@ from __future__ import annotations
 
 import os
 import re
+import threading
 from pathlib import Path
 
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
-# The envelope beside every reply. Bump when a field changes meaning or
-# goes away; adding a field keeps the version.
+# The envelope beside every reply, as the JSON Schema a client can validate
+# against (`fde mcp --schema` prints it). Bump the version when a field
+# changes meaning or goes away; adding a field keeps the version.
 SCHEMA_VERSION = 1
 STATUSES = ("ok", "blocked", "refused", "failed")
-ENVELOPE = {
-    "schema_version": "the integer above",
-    "tool": "the tool that answered",
-    "status": "ok: the command exited 0 | blocked: it refused or a condition triggered "
-              "(exit 1) | refused: the path or name was outside what the agent may touch; "
-              "nothing ran | failed: an exception, a bug to report",
-    "mutated": "true only when a writing tool ran and exited 0",
-    "workspace": "the directory every path was confined to",
+TOOLS = ("triage", "start", "frame", "status", "next", "stage", "debt", "stop_when", "history")
+ENVELOPE_SCHEMA = {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": f"https://github.com/atulkapoor/fde-framework/schemas/mcp-envelope/v{SCHEMA_VERSION}",
+    "title": f"fde MCP reply envelope, version {SCHEMA_VERSION}",
+    "description": "The structured content beside the text of every tool reply. The text "
+                   "is what the command printed; the envelope is what an agent branches on "
+                   "without parsing prose. It follows the command's exit, not its wording.",
+    "type": "object",
+    "properties": {
+        "schema_version": {"const": SCHEMA_VERSION,
+                           "description": "Bumped when a field changes meaning or goes away."},
+        "tool": {"enum": list(TOOLS), "description": "The tool that answered."},
+        "status": {"enum": list(STATUSES),
+                   "description": "ok: the command exited 0. blocked: it refused or a "
+                                  "condition triggered (exit 1); the text says which. "
+                                  "refused: a path or name was outside what the agent may "
+                                  "touch; nothing ran. failed: an exception; a bug to report."},
+        "mutated": {"type": "boolean",
+                    "description": "True only when a writing tool ran and exited 0."},
+        "workspace": {"type": "string",
+                      "description": "The directory every path was confined to."},
+    },
+    "required": ["schema_version", "tool", "status", "mutated", "workspace"],
+    "additionalProperties": False,
 }
 
 THIRTY_SECONDS = """\
@@ -68,10 +87,12 @@ brief into typed facts; `status` for the gates and what is still unknown;
 for where the engagement stands on its record; `debt` for what nobody has
 settled; `stop_when` for whether the evidence says stop; `history` for the
 whole record in order. Every tool returns the command's own output,
-refusals included. `start` and `frame` write to the record; the rest only
-read it. Every path must be inside the server's workspace. Nothing here
-builds, implements or deploys; those are run by a person on the command
-line.
+refusals included, with a status beside it (ok, blocked, refused, failed)
+to branch on instead of the prose. `start` and `frame` write to the
+record; the rest only read it. An engagement is named as `start` named
+it, or by its path; every path must be inside the server's workspace.
+Nothing here builds, implements or deploys; those are run by a person on
+the command line.
 """
 
 
@@ -100,6 +121,21 @@ def confine(path: str | None, what: str, root: Path | None = None) -> Path | Non
     return resolved
 
 
+def locate(engagement: str) -> Path:
+    """The engagement as the command will see it. `start(name="acme")` puts
+    the record at engagements/acme; `status(engagement="acme")` a moment
+    later must find it, as `fde status acme` does on the command line. So a
+    bare name is looked for at <workspace>/<name> and then where `start`
+    puts it; both candidates are confined, so a name that climbs out is
+    refused before anything is looked for. A path is taken as given."""
+    path = confine(engagement, "engagement")
+    if path is not None and not (path / "facts").is_dir() and not Path(engagement).is_absolute():
+        under = confine(str(Path("engagements") / engagement), "engagement")
+        if under is not None and (under / "facts").is_dir():
+            return under
+    return path
+
+
 def plain_name(name: str) -> str:
     if not NAME.match(name or ""):
         raise Outside(f"an engagement name is a plain name (letters, digits, '.', '_', '-'), "
@@ -113,6 +149,16 @@ def _registry() -> str:
     return os.environ.get("FDE_REGISTRY") or str(default_root())
 
 
+# One command at a time. The server runs each tool on a worker thread, and
+# a coding agent will issue `status` and `next` in the same breath; the
+# runner that captures a command's output does so by swapping the
+# process's stdout, and two swaps interleaved left one command printing
+# straight onto the JSON-RPC channel. The protocol broke, the client saw
+# "Connection closed", and the record was not at fault. Commands take
+# milliseconds; the record has one writer at a time, as it should.
+_ONE_AT_A_TIME = threading.Lock()
+
+
 def run_command(args: list[str], registry: bool = True) -> tuple[str, str]:
     """One command, in-process, as the terminal would run it: the text it
     printed, and a status an agent can branch on without parsing prose --
@@ -123,7 +169,8 @@ def run_command(args: list[str], registry: bool = True) -> tuple[str, str]:
     from fde.cli import app
 
     argv = [*args, "--registry", _registry()] if registry else list(args)
-    result = CliRunner().invoke(app, argv)
+    with _ONE_AT_A_TIME:
+        result = CliRunner().invoke(app, argv)
     text = (result.output or "").strip()
     if result.exception and not isinstance(result.exception, SystemExit):
         return (f"{text}\n\nfde: {type(result.exception).__name__}: {result.exception}".strip(),
@@ -211,14 +258,14 @@ def build_server():
         """WRITES: reads a brief, pasted as text, into typed facts appended to
         the engagement's record, played back for correction with the
         follow-up questions. The engagement must be inside the workspace."""
-        return run_command(["frame", str(confine(engagement, "engagement")), "--text", text])
+        return run_command(["frame", str(locate(engagement)), "--text", text])
 
     @server.tool(annotations=reads)
     @guarded
     def status(engagement: str):
         """The engagement's gates, what is known by scope and who said it, what
         is still missing, and which roles have not been heard."""
-        return run_command(["status", str(confine(engagement, "engagement"))])
+        return run_command(["status", str(locate(engagement))])
 
     @server.tool(annotations=reads)
     @guarded
@@ -227,7 +274,7 @@ def build_server():
         and -- when it is a question -- the evidence already on record and
         the decisions that turn on each candidate answer. Reads only; the
         action it names is for a person to run."""
-        return run_command(["next", str(confine(engagement, "engagement"))])
+        return run_command(["next", str(locate(engagement))])
 
     @server.tool(annotations=reads)
     @guarded
@@ -236,7 +283,7 @@ def build_server():
         validation, prototype, pilot, production, adoption, retrospective,
         or stopped -- with what would move it to the next stage. Reads only:
         a person runs `fde stage` to append the transition to the record."""
-        args = ["stage", str(confine(engagement, "engagement")), "--no-record"]
+        args = ["stage", str(locate(engagement)), "--no-record"]
         target = confine(project, "project")
         return run_command(args + (["--project", str(target)] if target else []))
 
@@ -247,7 +294,7 @@ def build_server():
         settled -- failing gates, standing waivers, guessed or merely stated
         facts, disagreements, unsigned attestations, unheard roles, open
         incidents, undecided components -- each with an owner and an age."""
-        return run_command(["debt", str(confine(engagement, "engagement"))])
+        return run_command(["debt", str(locate(engagement))])
 
     @server.tool(annotations=reads)
     @guarded
@@ -256,7 +303,7 @@ def build_server():
         """Judge the engagement's stop conditions against what the record has
         measured: the scorecard, the field journal, the recorded outcomes.
         Reads only; recording a condition is for a person."""
-        args = ["stop-when", str(confine(engagement, "engagement"))]
+        args = ["stop-when", str(locate(engagement))]
         target = confine(project, "project")
         if target:
             args += ["--project", str(target)]
@@ -270,7 +317,7 @@ def build_server():
     def history(engagement: str):
         """Every dated entry on the engagement's record, in order, the undated
         ones above it, one line each."""
-        return run_command(["history", str(confine(engagement, "engagement"))],
+        return run_command(["history", str(locate(engagement))],
                            registry=False)
 
     @server.resource("fde://thirty-seconds", name="fde in thirty seconds",
@@ -293,6 +340,7 @@ def describe() -> str:
             else "reads"
         lines.append(f"    {tool.name:10} {hint}")
     lines.append("  resources: fde://thirty-seconds")
+    lines.append(f"  envelope: schema_version {SCHEMA_VERSION} (`fde mcp --schema`)")
     return "\n".join(lines)
 
 

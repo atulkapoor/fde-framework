@@ -115,15 +115,24 @@ It serves `triage`, `start`, `frame`, `status`, `next`, `stage`, `debt`,
 refusals included, beside a small envelope an agent can branch on without
 parsing prose: `schema_version`, `status` (ok, blocked, refused, failed),
 `mutated`, and the workspace. The envelope follows the command's exit,
-never a reading of its text; its contract is written in the server module
-and the version moves only when a field changes meaning. An agent is not a person, so every path it supplies must
-stay inside one workspace, the directory the server started in or
+never a reading of its text. Its contract is a JSON Schema, `fde mcp
+--schema`, that every reply is tested against; a client pins
+`schema_version`, which moves only when a field changes meaning or goes
+away, never when one is added. An engagement is named as `start` named
+it (`start(name="acme")`, then `status(engagement="acme")`), or by its
+path. An agent is not a person, so every path it supplies must stay
+inside one workspace, the directory the server started in or
 `FDE_WORKSPACE`; a path outside it, a traversal, or a symlink that points
 out is refused in words, and engagement names are plain names. The two
 tools that write to the record, `start` and `frame`, say so and carry the
-protocol's hints so a client can ask first. Building, implementing and
-deploying are not served; they stay on the command line, where the person
-who runs them is accountable for them.
+protocol's hints so a client can ask first. Calls run one at a time
+inside the server, so an agent that asks for `status` and `next` in the
+same breath gets both. Exercised against two real clients: the official
+MCP Python client over stdio, in the test suite, with concurrent calls,
+an abandoned call and a record changed on disk between calls; and Claude
+Code 2.1, by hand, from the configuration above. Building, implementing
+and deploying are not served; they stay on the command line, where the
+person who runs them is accountable for them.
 
 > ### Five founding engagements
 > One real workflow, your real examples, a measured baseline, and someone
@@ -188,7 +197,7 @@ ladder, so nothing here can be over-read:
 
 | Claim | Status | The evidence, and where it stops |
 |---|---|---|
-| The framework is implemented | verified | 1,308 tests on three Pythons in CI; lint clean; every audit finding pinned as a check before it was fixed; every release installed from the published wheel into a fresh interpreter and walked through the first five minutes |
+| The framework is implemented | verified | 1,316 tests on three Pythons in CI; lint clean; every audit finding pinned as a check before it was fixed; every release installed from the published wheel into a fresh interpreter and walked through the first five minutes |
 | A build is reproducible | verified | byte-identical rebuild pinned by test; each public demo carries a Reproduce section and its digests |
 | The decisions generalise | partial | four shapes (extraction, freeform QA, a labelled decision, seventy-seven-way routing) on real data; one industry set; `fde kb sweep` names the shapes nothing serves |
 | The deliverable is production-reliable | unverified | no production engagement; the banking operating loop ran on a laptop and its record says so |

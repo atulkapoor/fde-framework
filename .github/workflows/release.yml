@@ -17,12 +17,19 @@ jobs:
       - run: pip install -e ".[dev,documents]"
       # One version, everywhere it is stated: the tag, pyproject.toml,
       # CITATION.cff and the newest CHANGELOG entry. A tag that disagrees is
-      # refused here, before anything is built or published.
+      # refused here, before anything is built or published. One date too:
+      # the CHANGELOG's, CITATION.cff's, and the day the tagged commit was
+      # authored, in the author's own time zone (0.1.44 went out dated a day
+      # ahead, and an outside reader saw it before I did).
       - run: |
           version=$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml","rb"))["project"]["version"])')
           test "v$version" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME != pyproject $version"; exit 1; }
           grep -q "^version: $version$" CITATION.cff || { echo "CITATION.cff != $version"; exit 1; }
           grep -m1 -E "^## \[[0-9]" CHANGELOG.md | grep -q "\[$version\]" || { echo "CHANGELOG newest entry != $version"; exit 1; }
+          date=$(grep -m1 -E "^## \[$version\]" CHANGELOG.md | grep -oE "[0-9]{4}-[0-9]{2}-[0-9]{2}")
+          grep -q "^date-released: '$date'$" CITATION.cff || { echo "CITATION.cff date-released != CHANGELOG's $date"; exit 1; }
+          authored=$(git log -1 --format=%ad --date=iso HEAD | cut -c1-10)
+          test "$date" = "$authored" || { echo "CHANGELOG dates $version $date; the tagged commit was authored $authored"; exit 1; }
       - run: ruff check src tests
       - run: pytest -q
       - run: pip install build && python -m build
@@ -42,37 +49,63 @@ jobs:
 
   # The Releases page is a public surface like PyPI's: tags without release
   # notes read as a project that stopped at whatever the last note says.
+  # A release page is written only after the published wheel has been
+  # installed and walked on every supported Python (below), so its
+  # existence means verified, not merely uploaded. It carries the files
+  # that went to PyPI, their checksums, the commit they were built from and
+  # the run whose tests they passed, so a reader can match the wheel they
+  # installed to the code and the result.
   github-release:
-    needs: publish
+    needs: [publish, verify-published]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: {name: dist, path: dist/}
       - name: Create the GitHub release from the changelog section
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${GITHUB_REF_NAME}"
           VERSION="${TAG#v}"
-          # The body is this version's CHANGELOG section, verbatim.
+          # The body is this version's CHANGELOG section, verbatim, then
+          # what exactly this release is.
           awk -v ver="$VERSION" '
             $0 ~ "^## \\["ver"\\]" {on=1; next}
             on && /^## / {exit}
             on {print}
           ' CHANGELOG.md > body.md
-          gh release create "$TAG" --title "$VERSION" --notes-file body.md
+          {
+            echo
+            echo "---"
+            echo "Built from \`${GITHUB_SHA}\` in [run ${GITHUB_RUN_ID}](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}): the tests ran against these files, they went to [PyPI](https://pypi.org/project/fde-framework/${VERSION}/), and the wheel PyPI serves was installed on Python 3.11, 3.12 and 3.13 and walked through [the first five minutes](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}#in-thirty-seconds) before this page was written. Install: \`pip install fde-framework==${VERSION}\`. SHA-256:"
+            echo
+            echo '```'
+            (cd dist && sha256sum *)
+            echo '```'
+          } >> body.md
+          gh release create "$TAG" --title "$VERSION" --notes-file body.md dist/*
 
   # A stranger's install: the published wheel, not the checkout, into a
-  # fresh interpreter, through the documented first five minutes -- triage,
-  # start, next, the MCP check. The index lags a tag by a minute or two, so
-  # the install retries before it concludes anything.
+  # fresh interpreter on each supported Python, through the documented
+  # first five minutes -- triage, start, next, the MCP check, the doctor.
+  # The wheel the index serves must hash to the wheel the tests ran
+  # against. The index lags a tag by a minute or two, so the install
+  # retries before it concludes anything.
   verify-published:
     needs: publish
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.12', '3.13']
     steps:
       - uses: actions/setup-python@v5
-        with: {python-version: "3.12"}
+        with: {python-version: "${{ matrix.python }}"}
+      - uses: actions/download-artifact@v4
+        with: {name: dist, path: built/}
       - name: Install the published wheel
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
@@ -81,6 +114,12 @@ jobs:
             sleep 30
           done
           python -c "import fde; print('installed', fde.__version__)"
+      - name: The wheel the index serves is the wheel the tests ran against
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          pip download --no-deps --no-cache-dir --only-binary :all: -d served "fde-framework==$VERSION"
+          sha256sum built/*.whl served/*.whl
+          test "$(sha256sum built/*.whl | cut -d' ' -f1)" = "$(sha256sum served/*.whl | cut -d' ' -f1)"
       - name: The documented first five minutes
         run: |
           set -e
@@ -91,4 +130,5 @@ jobs:
           fde next acme | grep "^next: fde "
           fde status acme | grep "blocked by"
           FDE_WORKSPACE="$PWD" fde mcp --check | grep "start      writes"
+          fde mcp --schema | python -c "import json, sys; s = json.load(sys.stdin); assert s['required'], s"
           fde doctor
