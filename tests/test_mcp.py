@@ -221,3 +221,52 @@ def test_check_mode_creates_nothing(tmp_path, monkeypatch):
     monkeypatch.setenv("FDE_WORKSPACE", str(tmp_path))
     result = CliRunner().invoke(app, ["mcp", "--check"])
     assert result.exit_code == 0 and not any(tmp_path.iterdir())
+
+
+def test_the_envelope_is_versioned_and_every_status_is_reachable(tmp_path, monkeypatch):
+    from fde import mcp_server
+    from fde.mcp_server import ENVELOPE, SCHEMA_VERSION, STATUSES, reply, run_command
+
+    assert set(ENVELOPE) == {"schema_version", "tool", "status", "mutated", "workspace"}
+    monkeypatch.setenv("FDE_WORKSPACE", str(tmp_path))
+    server = build_server()
+    seen = {}
+    ok = asyncio.run(server.call_tool("triage", {"statements": ["Route.", "Read PDFs."]}))
+    seen["ok"] = ok.structured_content
+    refused = asyncio.run(server.call_tool("status", {"engagement": "/etc"}))
+    seen["refused"] = refused.structured_content
+    blocked = asyncio.run(server.call_tool("status", {"engagement": "nowhere"}))
+    seen["blocked"] = blocked.structured_content
+    failed = reply("status", "boom", "failed", False)
+    seen["failed"] = failed.structured_content
+    assert failed.is_error and not ok.is_error
+    for status in STATUSES:
+        assert seen[status]["status"] == status
+        assert seen[status]["schema_version"] == SCHEMA_VERSION
+        assert set(seen[status]) == set(ENVELOPE)
+
+    class Broken:
+        output = "half-written"
+        exit_code = 1
+        exception = RuntimeError("the record is corrupt")
+
+    monkeypatch.setattr("typer.testing.CliRunner.invoke", lambda self, app, argv: Broken())
+    text, status = run_command(["status", "x"])
+    assert status == "failed" and "RuntimeError" in text
+    assert mcp_server.workspace() == tmp_path.resolve()
+
+
+def test_doctor_measures_the_install_and_fails_only_on_what_the_core_needs(tmp_path):
+    from typer.testing import CliRunner
+
+    from fde.cli import DEFAULT_ROOT, app
+
+    runner = CliRunner()
+    healthy = runner.invoke(app, ["doctor", "--registry", str(DEFAULT_ROOT)])
+    assert healthy.exit_code == 0, healthy.output
+    assert "ok python" in healthy.output and "ok registry" in healthy.output
+    assert "extra [mcp]" in healthy.output and "docker" in healthy.output
+    assert "the core can run" in healthy.output
+    sick = runner.invoke(app, ["doctor", "--registry", str(tmp_path / "nowhere")])
+    assert sick.exit_code == 1 and "NO registry" in sick.output
+    assert "something the core needs is missing" in sick.output

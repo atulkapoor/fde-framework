@@ -62,3 +62,33 @@ jobs:
             on {print}
           ' CHANGELOG.md > body.md
           gh release create "$TAG" --title "$VERSION" --notes-file body.md
+
+  # A stranger's install: the published wheel, not the checkout, into a
+  # fresh interpreter, through the documented first five minutes -- triage,
+  # start, next, the MCP check. The index lags a tag by a minute or two, so
+  # the install retries before it concludes anything.
+  verify-published:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Install the published wheel
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          for i in $(seq 1 20); do
+            pip install --no-cache-dir "fde-framework[mcp]==$VERSION" && break
+            sleep 30
+          done
+          python -c "import fde; print('installed', fde.__version__)"
+      - name: The documented first five minutes
+        run: |
+          set -e
+          cd "$(mktemp -d)"
+          fde triage --statement "Route each inbound support message to one of 77 queues; customer data may not leave our cloud account." \
+                     --statement "Answer staff questions from 400 policy PDFs inside the firewall." | grep "ranked by"
+          fde start acme --statement "Route each support message to one of 77 queues." | grep -i acme
+          fde next acme | grep "^next: fde "
+          fde status acme | grep "blocked by"
+          FDE_WORKSPACE="$PWD" fde mcp --check | grep "start      writes"
+          fde doctor

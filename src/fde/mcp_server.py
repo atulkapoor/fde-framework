@@ -34,6 +34,20 @@ from pathlib import Path
 
 NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
+# The envelope beside every reply. Bump when a field changes meaning or
+# goes away; adding a field keeps the version.
+SCHEMA_VERSION = 1
+STATUSES = ("ok", "blocked", "refused", "failed")
+ENVELOPE = {
+    "schema_version": "the integer above",
+    "tool": "the tool that answered",
+    "status": "ok: the command exited 0 | blocked: it refused or a condition triggered "
+              "(exit 1) | refused: the path or name was outside what the agent may touch; "
+              "nothing ran | failed: an exception, a bug to report",
+    "mutated": "true only when a writing tool ran and exited 0",
+    "workspace": "the directory every path was confined to",
+}
+
 THIRTY_SECONDS = """\
 You give it the problem as the client put it, the client's own examples,
 the constraints, a baseline someone measured, and where it has to run. It
@@ -128,8 +142,8 @@ def reply(tool: str, text: str, status: str, mutated: bool):
 
     return types.CallToolResult(
         content=[types.TextContent(type="text", text=text)],
-        structured_content={"tool": tool, "status": status, "mutated": mutated,
-                            "workspace": str(workspace())},
+        structured_content={"schema_version": SCHEMA_VERSION, "tool": tool, "status": status,
+                            "mutated": mutated, "workspace": str(workspace())},
         is_error=status == "failed",
     )
 

@@ -67,12 +67,15 @@ it can say stop.
 
 ```bash
 pip install fde-framework
+fde doctor               # the interpreter, the package, the registry, the extras: measured, not guessed
 fde start acme --statement "Route each support message to one of 77 queues."
 fde next acme            # the one thing to learn or do next, and what turns on it
 ```
 
 One minute, nothing to bring: paste two problems and see which one is
-decidable yet.
+decidable yet. For what the whole loop looks like on a real dataset,
+including the one time the framework told itself to stop, read the
+[banking run](https://github.com/atulkapoor/fde-demo-banking#the-operating-loop-closed).
 
 ```
 $ fde triage --statement "Route each inbound support message to one of 77 queues; customer data may not leave our cloud account." \
@@ -110,9 +113,10 @@ the argument `mcp`:
 It serves `triage`, `start`, `frame`, `status`, `next`, `stage`, `debt`,
 `stop_when` and `history`, each returning exactly what the terminal prints,
 refusals included, beside a small envelope an agent can branch on without
-parsing prose: `status` (ok, blocked, refused, failed), `mutated`, and the
-workspace. The envelope follows the command's exit, never a reading of
-its text. An agent is not a person, so every path it supplies must
+parsing prose: `schema_version`, `status` (ok, blocked, refused, failed),
+`mutated`, and the workspace. The envelope follows the command's exit,
+never a reading of its text; its contract is written in the server module
+and the version moves only when a field changes meaning. An agent is not a person, so every path it supplies must
 stay inside one workspace, the directory the server started in or
 `FDE_WORKSPACE`; a path outside it, a traversal, or a symlink that points
 out is refused in words, and engagement names are plain names. The two
@@ -184,7 +188,7 @@ ladder, so nothing here can be over-read:
 
 | Claim | Status | The evidence, and where it stops |
 |---|---|---|
-| The framework is implemented | verified | 1,306 tests on three Pythons in CI; lint clean; every audit finding pinned as a check before it was fixed |
+| The framework is implemented | verified | 1,308 tests on three Pythons in CI; lint clean; every audit finding pinned as a check before it was fixed; every release installed from the published wheel into a fresh interpreter and walked through the first five minutes |
 | A build is reproducible | verified | byte-identical rebuild pinned by test; each public demo carries a Reproduce section and its digests |
 | The decisions generalise | partial | four shapes (extraction, freeform QA, a labelled decision, seventy-seven-way routing) on real data; one industry set; `fde kb sweep` names the shapes nothing serves |
 | The deliverable is production-reliable | unverified | no production engagement; the banking operating loop ran on a laptop and its record says so |
@@ -248,9 +252,10 @@ pairs, role-scoped interview, hardware scan) → fact log with provenance →
 permutation space → eight gates → decide → architect → build (code, evals,
 deploy and ops assets, `RISKS.md`, `COMPLIANCE.md`) → retro and case
 capture. Overrides are honoured on the next run, trigger observations feed
-calibration, and a reviewed case can enter the corpus. 1160+ tests; nine
-fresh-eyes audit passes, every finding resolved and the fix pinned as a
-regression test; CI gates on the suite, lint, and a sanitisation scan of
+calibration, and a reviewed case can enter the corpus. The test count is
+stated once, in the claim ladder above, and updated at every release;
+eleven fresh-eyes audit passes, every finding resolved and the fix pinned
+as a regression test; CI gates on the suite, lint, and a sanitisation scan of
 the tree *and its history*; the evidence corpus is anchored to publicly
 documented production deployments; every decision is reproducible from its
 inputs.
@@ -668,6 +673,7 @@ the same receipts the emitted `ARCHITECTURE.md` prints.
 | `fde bench <eng>=<project> ...` | the same figures off every record, side by side, in `BENCH.md` |
 | `fde history <eng>` | every dated entry on the record in order, one line each |
 | `fde mcp` / `fde mcp --check` | serve triage, start, frame, status, next, stage, debt, stop-when and history to a coding agent over stdio, confined to `FDE_WORKSPACE`; `--check` lists what it serves |
+| `fde doctor` | whether this install can do what the README says: interpreter, package, registry, working directory, extras, docker, the agent, the linter; exit 1 only on what the core needs |
 | `fde outcome-contract <eng> --owner --metric --baseline --unit --target --method --window` | the eighth gate: which number this system exists to move, from what to what, measured how, by when |
 | `fde debt <eng>` | decision debt: what nobody has settled, with an owner, what it blocks, and its age |
 | `fde stop-when <eng> --when "answered_accuracy < 0.88"` | what evidence would stop the engagement; judged against the record, exit 1 and a STOP stage when triggered |
@@ -854,7 +860,7 @@ Set up as in [Install → from source](#install) (python3.11+), then:
 
 ```bash
 .venv/bin/pip install -e ".[dev,documents]"
-.venv/bin/pytest -q          # 1160+ tests, ~ 100s
+.venv/bin/pytest -q          # the full suite, about two minutes
 .venv/bin/ruff check src tests
 ```
 

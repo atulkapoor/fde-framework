@@ -2339,6 +2339,69 @@ def experiment_cmd(
         raise typer.Exit(1) from exc
 
 
+@app.command("doctor")
+def doctor_cmd(
+    registry_root: Annotated[Path, typer.Option("--registry")] = DEFAULT_ROOT,
+) -> None:
+    """Whether this install can do what the README says: the interpreter,
+    the package, the registry, the working directory, the optional extras,
+    and the tools the implement loop and the sandbox would call. Each line
+    is a measurement, never a guess; exit 1 when something the core needs
+    is missing."""
+    import importlib.metadata
+    import shutil
+    import sys
+
+    from fde.registry import is_empty, load_registry
+
+    rows: list[tuple[str, bool | None, str]] = []
+    rows.append(("python", sys.version_info >= (3, 11),
+                 f"{sys.version.split()[0]} at {sys.executable}"))
+    try:
+        rows.append(("fde-framework", True, importlib.metadata.version("fde-framework")))
+    except importlib.metadata.PackageNotFoundError:
+        rows.append(("fde-framework", False, "not installed as a package (a checkout?)"))
+    try:
+        registry = load_registry(registry_root)
+        ok = not is_empty(registry)
+        rows.append(("registry", ok, f"{registry_root} -- {len(registry.dimensions)} dimensions, "
+                                     f"{len(registry.approaches)} approaches, "
+                                     f"{len(registry.patterns)} patterns, "
+                                     f"{len(registry.stacks)} stacks" if ok
+                     else f"{registry_root} loads empty"))
+    except RegistryError as exc:
+        rows.append(("registry", False, str(exc).splitlines()[0]))
+    cwd = Path.cwd()
+    rows.append(("working directory", os.access(cwd, os.W_OK), f"{cwd} is "
+                 + ("writable" if os.access(cwd, os.W_OK) else "not writable")))
+    for extra, module, why in (("documents", "pypdf", "fde frame --file brief.pdf"),
+                               ("mcp", "mcp", "fde mcp"),
+                               ("llm", "anthropic", "fde frame --reader llm (hosted)")):
+        try:
+            importlib.import_module(module)
+            rows.append((f"extra [{extra}]", None, f"installed -- {why}"))
+        except ImportError:
+            rows.append((f"extra [{extra}]", None,
+                         f"not installed -- pip install 'fde-framework[{extra}]' for {why}"))
+    for tool, why in (("docker", "fde implement --sandbox docker"),
+                      ("claude", "the default --agent-cmd of fde implement"),
+                      ("ruff", "the lint row of fde scorecard and the emitted project's "
+                               "own lint test")):
+        found = shutil.which(tool)
+        rows.append((tool, None, f"{found} -- {why}" if found
+                     else f"not on PATH -- {why} will say so when asked"))
+    width = max(len(name) for name, _, _ in rows)
+    failed = False
+    for name, ok, detail in rows:
+        mark = "  --" if ok is None else ("  ok" if ok else "  NO")
+        failed = failed or ok is False
+        typer.echo(f"{mark} {name:{width}}  {detail}")
+    typer.echo("\nsomething the core needs is missing" if failed
+               else "\nthe core can run; the -- lines are optional")
+    if failed:
+        raise typer.Exit(1)
+
+
 @app.command("mcp")
 def mcp_cmd(
     check: Annotated[bool, typer.Option(
