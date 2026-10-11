@@ -5,6 +5,38 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.46] — 2026-10-12
+
+Three readings in a row asked for the same thing before anything else:
+the decision, as a document a person who never sees the terminal can act
+on. Writing it exposed one more place the record was reading the wrong
+build.
+
+- **`fde report`: the decision brief.** One Markdown file read off the
+  record, before any build is authorised: the problem as the client
+  stated it, where the engagement stands, what the record knows and who
+  said it, the outcome contract, the design with its reasons and rejected
+  alternatives, what it rests on and what was waived, the decision debt,
+  the stop conditions judged against what has been measured, who has been
+  heard, and the next decision. The design and the risks are rendered by
+  the same functions a build uses for ARCHITECTURE.md and RISKS.md, so
+  the brief and a later build say the same thing; the readings that are
+  commands are quoted as the terminal prints them, so the brief cannot
+  say more than the commands do. Nothing in it is estimated. `--today`
+  makes it reproducible to the byte.
+- **The deployment names its build, and the record reads that build.**
+  The banking record, read without `--project`, stood at *stopped*: its
+  last-built marker named the emitted project, whose card is 0.879 on
+  the answered, while the implemented copy beside it -- the one actually
+  served, 0.902 -- passed. `fde deployed --project` records which build
+  was deployed, and every command that reads a project by default reads
+  the deployed one, then the last one built. Refused for a directory that
+  is not an emitted project.
+- **The README's front page answers three questions.** What this is, why
+  use it, how fast a result shows. The audit-pass story and the
+  thirty-line list of what every emission is held to moved verbatim to
+  `HISTORY.md`; the four demos are one line each, saying what each
+  proved. The claim ladder and the demo table are unchanged.
 - **The pictures say what the code says.** The README banner and the
   social-preview card had carried "seven gates" since before the eighth
   gate shipped in 0.1.30, drawn once by hand; a fourteenth outside
