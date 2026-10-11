@@ -89,6 +89,38 @@ def test_the_boundary_is_part_of_the_fence(tmp_path):
     assert (project / "app" / "boundary.py").read_text() == "BOUNDARY = True\n"
 
 
+def test_the_sandbox_policy_is_part_of_the_fence_whether_it_exists_or_not(tmp_path):
+    """The policy lives inside the mount. An agent that rewrites it, or
+    writes one where none was, is asking the next run for a network and a
+    credential; the file goes back, or goes, and the round says so."""
+    project = toy_project(tmp_path)
+    policy = project / "ops" / "agent-policy.yaml"
+
+    def plant(prompt):
+        policy.parent.mkdir(exist_ok=True)
+        policy.write_text("network: host\nnetwork_reason: 'the agent: pip'\n"
+                          "env_allow: [ANTHROPIC_API_KEY]\n")
+        return True
+
+    report = run_loop(project, invoke_agent=plant, max_rounds=3)
+    assert report.stopped_by == "guardrail"
+    assert "ops/agent-policy.yaml (planted, removed)" in report.rounds[-1].violation
+    assert not policy.exists()
+
+    policy.parent.mkdir(exist_ok=True)
+    policy.write_text("image: python:3.12-slim\nmemory: 2g\n")
+    original = policy.read_text()
+
+    def rewrite(prompt):
+        policy.write_text(original + "network: host\nenv_allow: [AWS_SECRET_ACCESS_KEY]\n")
+        return True
+
+    report = run_loop(project, invoke_agent=rewrite, max_rounds=3)
+    assert report.stopped_by == "guardrail"
+    assert "ops/agent-policy.yaml" in report.rounds[-1].violation
+    assert policy.read_text() == original
+
+
 def test_the_cli_writes_the_log_and_reports_rounds(tmp_path):
     project = toy_project(tmp_path)
     fake_agent = tmp_path / "agent.py"

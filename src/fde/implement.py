@@ -31,8 +31,11 @@ import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# Files the agent must never change: the exam, the fence, and the record of
-# what was decided. Globs, resolved at start.
+# Files the agent must never change: the exam, the fence, the record of
+# what was decided, and the sandbox's own policy -- which lives inside the
+# directory the agent writes to, and would otherwise be the agent's to
+# rewrite between runs. Globs, resolved at start; a plain path that is
+# absent at start must stay absent.
 PROTECTED = (
     "evals/*",
     "tests/*",
@@ -43,6 +46,7 @@ PROTECTED = (
     "ARCHITECTURE.md",
     "RISKS.md",
     "COMPLIANCE.md",
+    "ops/agent-policy.yaml",
 )
 
 DEFAULT_AGENT = "claude -p --permission-mode acceptEdits"
@@ -339,6 +343,8 @@ def run_loop(
     """The loop. `invoke_agent` is injectable for tests."""
     project = Path(project)
     guarded = _snapshot(project)
+    must_stay_absent = [project / pattern for pattern in PROTECTED
+                        if "*" not in pattern and not (project / pattern).exists()]
     protected_dirs = [project / "evals"]
     known_protected = {
         path for directory in protected_dirs if directory.is_dir()
@@ -411,6 +417,12 @@ def run_loop(
             if not path.exists() or _digest(path) != digest:
                 path.write_bytes(body)
                 violations.append(str(path.relative_to(project)))
+        for path in must_stay_absent:
+            # A policy file the agent wrote where none was is a widening
+            # the next run would read; it goes, and the round says so.
+            if path.exists():
+                path.unlink()
+                violations.append(f"{path.relative_to(project)} (planted, removed)")
         for directory in protected_dirs:
             if not directory.is_dir():
                 continue

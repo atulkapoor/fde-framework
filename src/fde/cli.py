@@ -1659,6 +1659,26 @@ def build_cmd(
     registry = _registry(registry_root)
     engagement = _engagement(root)
     _refuse_if_blocked(engagement, registry)
+    # The locale is resolved before anything is written. It was once checked
+    # after the project and the prediction records had gone to disk, and an
+    # unknown pack was refused "after writing code": a refusal that leaves a
+    # finished-looking project behind is not a refusal.
+    locale = None
+    locale_marker = engagement.root / "locale"
+    if locale_marker.exists():
+        locale_id = locale_marker.read_text().strip()
+        locale = registry.locales.get(locale_id)
+        if locale is None:
+            # Silence here ships a project without the obligations page an
+            # engagement believes it has -- compliance-grade silence. The
+            # marker names a pack; the registry must know it or say so.
+            typer.echo(
+                f"refused: this engagement applied locale {locale_id!r} and this "
+                f"registry does not know it. Re-run `fde locale` with a known pack, "
+                f"or delete the engagement's `locale` file if no jurisdiction "
+                f"applies. Nothing was written.", err=True,
+            )
+            raise typer.Exit(1)
     architecture = build_architecture(
         engagement.profile, registry, overrides=_overrides(engagement),
         already_running=_reuse(engagement),
@@ -1714,21 +1734,7 @@ def build_cmd(
                     {"trigger": trigger, "predicted_at": date.today().isoformat()}
                 ) + "\n")
 
-    locale_marker = engagement.root / "locale"
-    if locale_marker.exists():
-        locale_id = locale_marker.read_text().strip()
-        locale = registry.locales.get(locale_id)
-        if locale is None:
-            # Silence here ships a project without the obligations page an
-            # engagement believes it has -- compliance-grade silence. The
-            # marker names a pack; the registry must know it or say so.
-            typer.echo(
-                f"refused after writing code: this engagement applied locale "
-                f"{locale_id!r} and this registry does not know it. Re-run "
-                f"`fde locale` with a known pack, or delete the engagement's "
-                f"`locale` file if no jurisdiction applies.", err=True,
-            )
-            raise typer.Exit(1)
+    if locale is not None:
         _write_compliance(Path(out), locale)
 
     typer.echo(f"wrote {out}")
@@ -2717,8 +2723,8 @@ def implement_cmd(
     )] = None,
     sandbox: Annotated[str | None, typer.Option(
         "--sandbox", help="docker: run the agent in a container with only the project "
-                          "mounted, the environment reduced to ops/agent-policy.yaml's "
-                          "allowlist, and no network unless allowed."
+                          "mounted, a default-allowlisted environment, and no network "
+                          "unless allowed here. ops/agent-policy.yaml can only narrow."
     )] = None,
     env_allow: Annotated[list[str] | None, typer.Option(
         "--env-allow", help="An environment variable to forward into the sandbox, by name. "

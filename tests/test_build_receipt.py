@@ -17,7 +17,8 @@ from typer.testing import CliRunner
 
 from fde.cli import app
 
-FRAMEWORK = str(Path(__file__).resolve().parents[1] / "framework")
+REPO = Path(__file__).resolve().parents[1]
+FRAMEWORK = str(REPO / "framework")
 
 runner = CliRunner()
 
@@ -103,3 +104,102 @@ def test_an_empty_exam_next_to_pairs_is_called_out(satisfied_engagement, tmp_pat
     result = runner.invoke(app, ["build", "acme", "--out", str(out), "--registry", FRAMEWORK])
     assert "0 golden" in result.output
     assert "verified" in result.output or "verified" in (result.stderr or "")
+
+
+# --- a refusal writes nothing; a failure leaves nothing that looks like a build
+
+
+def test_an_unknown_locale_is_refused_before_anything_is_written(satisfied_engagement):
+    """The locale was once checked after the project and the prediction
+    records had gone to disk, and the refusal said so: "refused after
+    writing code". A reader of the fifteenth outside audit found it in
+    the source. A refusal that leaves a finished-looking project behind is
+    not a refusal."""
+    root = satisfied_engagement / "engagements" / "acme"
+    (root / "locale").write_text("atlantis-2099")
+    out = satisfied_engagement / "project"
+    result = runner.invoke(app, ["build", "acme", "--out", str(out), "--registry", FRAMEWORK])
+    assert result.exit_code == 1
+    assert "atlantis-2099" in result.output and "Nothing was written" in result.output
+    assert not out.exists()
+    assert not (root / "predictions.jsonl").exists()
+    assert not (root / ".last-out").exists()
+    assert not list(satisfied_engagement.glob(".project.building*"))
+
+
+def test_a_writer_that_fails_midway_leaves_no_project_and_no_staging(satisfied_engagement,
+                                                                     monkeypatch):
+    from fde import emit as emitter
+
+    def broken(out, *args, **kwargs):
+        raise RuntimeError("disk full")
+
+    monkeypatch.setattr(emitter, "_write_smoke", broken)
+    out = satisfied_engagement / "project"
+    with pytest.raises(RuntimeError, match="disk full"):
+        runner.invoke(app, ["build", "acme", "--out", str(out), "--registry", FRAMEWORK],
+                      catch_exceptions=False)
+    assert not out.exists()
+    assert not list(satisfied_engagement.glob(".project.building*"))
+
+
+def test_a_build_is_moved_into_place_whole_and_named_for_its_destination(satisfied_engagement):
+    out = satisfied_engagement / "my_delivery"
+    result = runner.invoke(app, ["build", "acme", "--out", str(out), "--registry", FRAMEWORK])
+    assert "wrote" in result.output, result.output
+    assert not list(satisfied_engagement.glob(".my_delivery.building*"))
+    assert 'name = "my-delivery"' in (out / "pyproject.toml").read_text()
+
+
+# --- the exam reaches the thing it examines
+
+
+def test_pairs_the_design_cannot_read_refuse_the_build_before_it_is_written(satisfied_engagement):
+    """The invoice example's text pairs were refused at the emitted
+    pipeline's own door, and the build had said "wrote": every golden case
+    scored as an input error, measuring nothing. A build whose exam cannot
+    enter the pipeline is refused in staging."""
+    root = satisfied_engagement / "engagements" / "acme"
+    golden = root / "artifacts" / "pairs.jsonl"
+    assert golden.exists(), "the fixture seeds pairs"
+    cases = [json.loads(line) for line in golden.read_text().splitlines() if line.strip()]
+    for case in cases:
+        case["input"] = {"blob": case["input"]}  # a key no emitted contract reads
+    golden.write_text("".join(json.dumps(c) + "\n" for c in cases))
+    out = satisfied_engagement / "project"
+    result = runner.invoke(app, ["build", "acme", "--out", str(out), "--registry", FRAMEWORK])
+    assert result.exit_code == 1, result.output
+    assert "the exam cannot enter the pipeline" in result.output
+    assert "unknown keys ['blob']" in result.output
+    assert not out.exists() and not list(satisfied_engagement.glob(".project.building*"))
+
+
+def test_the_invoice_example_reaches_its_extraction_stage_and_says_ocr_went_unexercised(tmp_path,
+                                                                                         monkeypatch):
+    import subprocess
+    import sys
+
+    example = REPO / "examples" / "invoice-extraction"
+    monkeypatch.chdir(tmp_path)
+    for argv in (["start", "acme", "--statement",
+                  "Extract structured fields from scanned supplier invoices."],
+                 ["frame", "acme", "--file", str(example / "brief.md"), "--registry", FRAMEWORK],
+                 ["samples", "acme", "--file", str(example / "pairs.jsonl")],
+                 ["baseline", "acme", "--file", str(example / "baseline.yaml")],
+                 ["data-access", "acme", "--note", "read replica returned 14 rows"],
+                 ["security-review", "acme", "--note", "infosec reviewed data paths"],
+                 ["waive", "acme", "client_readiness", "--reason", "eval owner named"],
+                 ["outcome-contract", "acme", "--owner", "the AP director",
+                  "--metric", "days_receipt_to_posting", "--baseline", "9", "--unit", "days",
+                  "--target", "3", "--method", "posting dates", "--window", "90 days"]):
+        result = runner.invoke(app, argv)
+        assert result.exit_code == 0, (argv, result.output)
+    built = runner.invoke(app, ["build", "acme", "--out", "project", "--registry", FRAMEWORK])
+    assert "wrote project" in built.output, built.output
+    assert "perception" in (tmp_path / "project" / "ARCHITECTURE.md").read_text()
+    run = subprocess.run([sys.executable, "-m", "evals.harness"], cwd=tmp_path / "project",
+                         capture_output=True, text=True, timeout=300)
+    assert run.returncode == 1  # the extraction is a scaffold until fde implement
+    assert "RefusedInput" not in run.stdout + run.stderr
+    assert "entered as text supplied; the OCR stage was not exercised" in run.stderr
+    assert '"source": "prediction"' in run.stdout

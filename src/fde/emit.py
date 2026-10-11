@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -91,6 +93,90 @@ def emit(
         autoescape=False,  # noqa: S701 - emitting Python, not markup
     )
 
+    # Built beside the destination and moved into place whole. A writer
+    # that fails halfway used to leave a directory that looked like a
+    # build; now it leaves nothing at `out`, and the staging directory goes
+    # with the failure. The move is a rename on the same filesystem.
+    name = out.resolve().name
+    staging = out.parent / f".{out.name}.building"
+    if staging.exists():
+        shutil.rmtree(staging)
+    staging.mkdir(parents=True)
+    try:
+        scaffolded = _emit_into(architecture, staging, name, registry, env, pairs_path,
+                                waivers, overrides, baseline)
+        _refuse_if_the_exam_cannot_enter(staging)
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
+    if out.exists():
+        out.rmdir()  # empty, or _refuse_if_unsound would have refused above
+    staging.rename(out)
+    return EmitReport(path=out, scaffolded=scaffolded)
+
+
+_ENTRY_CHECK = r"""
+import json, sys
+from app import pipeline
+from app.contract import RefusedInput
+refused, total = [], 0
+for line in open("evals/golden.jsonl", encoding="utf-8"):
+    if not line.strip():
+        continue
+    case = json.loads(line)
+    total += 1
+    try:
+        pipeline.run_envelope(case.get("input"))
+    except RefusedInput as exc:
+        refused.append({"id": case.get("id"), "why": str(exc)[:160]})
+    except Exception:
+        pass  # a step was reached; scaffolds raise there, which is their job
+print(json.dumps({"total": total, "refused": refused}))
+"""
+
+
+def _refuse_if_the_exam_cannot_enter(out: Path) -> None:
+    """Every golden case must get past the emitted pipeline's own door.
+    The invoice example's text pairs were refused at it -- the design's
+    first stage read pages -- so the exam scored every case as an input
+    error and measured nothing, and the build had said "wrote". A build
+    whose exam cannot reach the thing it examines is refused here, in the
+    staging directory, before anything is written where a build goes."""
+    import subprocess
+    import sys
+
+    golden = out / "evals" / "golden.jsonl"
+    if not golden.exists() or not golden.read_text().strip():
+        return  # an empty exam is called out by the build receipt and the harness
+    try:
+        run = subprocess.run(  # noqa: S603 - the project just emitted, with a fixed script
+            [sys.executable, "-c", _ENTRY_CHECK], cwd=out, capture_output=True, text=True,
+            timeout=300, env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise BuildRefused("the emitted pipeline did not answer its own golden cases within "
+                           "five minutes; the exam cannot be said to reach it") from exc
+    try:
+        verdict = json.loads(run.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError) as exc:
+        tail = (run.stderr or run.stdout).strip().splitlines()[-3:]
+        raise BuildRefused("the emitted pipeline could not be run against its own golden "
+                           "cases: " + " | ".join(tail)) from exc
+    if verdict["refused"]:
+        first = verdict["refused"][0]
+        raise BuildRefused(
+            f"the exam cannot enter the pipeline: {len(verdict['refused'])} of "
+            f"{verdict['total']} golden case(s) are refused at its door, e.g. "
+            f"{first['id']!r}: {first['why']}. The cases carry the client's inputs as "
+            f"given and the design's first stage reads something else. Bring pairs in the "
+            f"shape the design reads, or change the design (fde override) to read what "
+            f"the client has.")
+
+
+def _emit_into(architecture, out: Path, name: str, registry, env, pairs_path, waivers,
+               overrides, baseline) -> list[str]:
+    """Every writer, into one directory. `name` is the project's name as the
+    destination will be called, not as the staging directory is."""
     (out / "app" / "components").mkdir(parents=True, exist_ok=True)
     _write_package(architecture, out)
     _write_shapes(architecture, out)
@@ -107,13 +193,13 @@ def emit(
                  waived={w.get("gate") for w in (waivers or [])}, baseline=baseline)
     write_deploy(architecture, out)
     write_ops(architecture, out, registry, baseline=baseline)
-    _write_project_file(out)
+    _write_project_file(out, name)
     _write_gitignore(out)
     _write_smoke(out)
     write_training(architecture, out)
     (out / "ARCHITECTURE.md").write_text(render_architecture(architecture, registry))
     _write_risks(out, waivers or [], overrides or [], architecture, registry)
-    return EmitReport(path=out, scaffolded=scaffolded)
+    return scaffolded
 
 
 def _flat(text) -> str:
@@ -3432,7 +3518,22 @@ def main():
     # fails, which is the point: a gate that cannot say no is not a gate.
     from app import pipeline
 
-    predict = pipeline.run
+    # Through the whole envelope, so the harness can see what a step says
+    # about itself: a perception stage handed text instead of pages records
+    # that it did no reading, and a score on such cases measures extraction,
+    # not OCR. Counted here, printed at the end.
+    bypassed = Counter()
+    whole = getattr(pipeline, "run_envelope", None)
+    pick = getattr(pipeline, "output", None)
+
+    def predict(raw):
+        if whole is None or pick is None:
+            return pipeline.run(raw)  # a pipeline rewritten by hand, with run() alone
+        finished = whole(raw)
+        stage = finished.get("perception") if isinstance(finished, dict) else None
+        if isinstance(stage, dict) and stage.get("bypassed"):
+            bypassed[str(stage["bypassed"])] += 1
+        return pick(finished)
     # The served shape is retrieval in front of reasoning; scoring with an
     # empty index answers every case without evidence and calls that the
     # system. The corpus is loaded here as the service loads it at boot.
@@ -3513,6 +3614,10 @@ def main():
         print(f"metrics: {{', '.join(METRICS)}}")
     for layer in report:
         print_layer(layer)
+    for note, count in bypassed.items():
+        print(f"note: {{count}} case(s) entered as {{note}} -- these scores measure what "
+              f"follows the reading stage, not the reading; bring page-shaped cases to "
+              f"exercise it", file=sys.stderr)
     if args.report:
         write_report(args.report, report, calibration)
 
@@ -3868,11 +3973,12 @@ def _write_smoke(out: Path) -> None:
     (tests / "test_edge.py").write_text(_EDGE_TESTS)
 
 
-def _write_project_file(out: Path) -> None:
+def _write_project_file(out: Path, name: str | None = None) -> None:
     # The delivery is named for itself, never "generated":
     # the first file a reviewer opens should not say the vendor
     # could not be bothered to name the thing.
-    project_name = out.resolve().name.replace('_', '-') or 'delivery'
+    project_name = (name if name is not None else out.resolve().name).replace('_', '-') \
+        or 'delivery'
     # Packages named explicitly: the tree also holds evals/, deploy/ and
     # ops/, and setuptools refuses a flat layout with several top-level
     # directories -- so the emitted CI's `pip install -e .` died at install,

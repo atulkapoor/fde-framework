@@ -60,6 +60,12 @@ fde build engagements/acme --out project
 # wrote project
 # evals: 2 golden, 0 edge, 8 adversarial
 # next: fde implement project --holdout engagements/acme/artifacts/holdout.jsonl
+#
+# The pairs are text, and the design's first stage is OCR. Text enters after
+# it: `python -m evals.harness` reaches the extraction stage (and fails there
+# until fde implement), and says the OCR stage went unexercised -- bring
+# page-shaped pairs to test the reading. A build whose golden cases cannot
+# enter its own pipeline is refused before it is written.
 ```
 
 The emitted `project/` holds `app/` (pipeline in topological order, boundary

@@ -19,6 +19,7 @@ from fde.sandbox import (
     docker_command,
     environment,
     load_policy,
+    memory_bytes,
     run_agent_in_sandbox,
 )
 
@@ -32,27 +33,45 @@ def docker_up() -> bool:
         return False
 
 
-def test_the_policy_is_data_in_the_project_with_safe_defaults(tmp_path):
+def test_the_policy_in_the_mount_can_only_narrow(tmp_path):
+    """The policy file lives inside the directory the agent writes to. It
+    once granted the network with a reason of its own and widened the
+    environment to a credential; the next run honoured both. Now it is a
+    request the person at the terminal grants, or not."""
     assert load_policy(tmp_path) == Policy()
     (tmp_path / "ops").mkdir()
     (tmp_path / "ops" / "agent-policy.yaml").write_text(
         "image: ghcr.io/example/agent@sha256:abc\nnetwork: host\n"
-        "network_reason: 'Priya: the agent calls a hosted model'\n"
-        "env_allow: [PATH, ANTHROPIC_API_KEY]\nmemory: 8g\ncpus: 4\npids: 1024\n")
+        "network_reason: 'the agent: I need the package index'\n"
+        "env_allow: [PATH, ANTHROPIC_API_KEY, AWS_SECRET_ACCESS_KEY]\n"
+        "memory: 8g\ncpus: 4\npids: 1024\n")
     policy = load_policy(tmp_path)
-    assert policy.image == "ghcr.io/example/agent@sha256:abc" and policy.network_open
-    assert policy.env_allow == ["PATH", "ANTHROPIC_API_KEY"]
+    assert policy.image == "ghcr.io/example/agent@sha256:abc"
+    assert policy.network_requested and any("not a grant" in n for n in policy.notes)
+    assert "--network" in docker_command(tmp_path, "x", policy, {}, user="1:1")
+    assert policy.env_allow == ["PATH"]  # narrowed to one default; nothing beyond them
+    assert policy.requested_env == ["ANTHROPIC_API_KEY", "AWS_SECRET_ACCESS_KEY"]
+    assert any("--env-allow" in n for n in policy.notes)
     assert (policy.memory, policy.cpus, policy.pids) == ("8g", "4", 1024)
     (tmp_path / "ops" / "agent-policy.yaml").write_text("network: [everything\n")
     assert load_policy(tmp_path).network == "none"  # unreadable never widens
 
 
-def test_a_network_without_a_reason_is_read_as_none(tmp_path):
+def test_limits_the_policy_asks_for_are_bounded_and_names_are_names(tmp_path):
     (tmp_path / "ops").mkdir()
-    (tmp_path / "ops" / "agent-policy.yaml").write_text("network: host\n")
+    (tmp_path / "ops" / "agent-policy.yaml").write_text(
+        "memory: 900g\ncpus: 10000\npids: 999999\n"
+        "env_allow: [PATH, LD_PRELOAD, 'rm -rf /', DYLD_INSERT_LIBRARIES, OK_NAME]\n")
     policy = load_policy(tmp_path)
-    assert not policy.network_open and any("network_reason" in n for n in policy.notes)
-    assert "--network" in docker_command(tmp_path, "x", policy, {}, user="1:1")
+    assert (policy.memory, policy.cpus, policy.pids) == ("4g", "2", 512)
+    assert sum("default applied" in n for n in policy.notes) == 3
+    assert policy.env_allow == ["PATH"] and policy.requested_env == ["OK_NAME"]
+    assert any("refused: LD_PRELOAD, rm -rf /, DYLD_INSERT_LIBRARIES" in n for n in policy.notes)
+    (tmp_path / "ops" / "agent-policy.yaml").write_text("memory: lots\ncpus: two\npids: true\n")
+    policy = load_policy(tmp_path)
+    assert (policy.memory, policy.cpus, policy.pids) == ("4g", "2", 512)
+    assert memory_bytes("512m") == 512 * 1024 ** 2 and memory_bytes("4g") == 4 * 1024 ** 3
+    assert memory_bytes("1.5g") == int(1.5 * 1024 ** 3) and memory_bytes("x") is None
 
 
 def test_the_environment_is_the_allowlist_and_nothing_else(monkeypatch):
@@ -62,6 +81,9 @@ def test_the_environment_is_the_allowlist_and_nothing_else(monkeypatch):
     assert "SECRET_TOKEN" not in env and env["LANG"] == "en_GB.UTF-8"
     assert "NOT_SET" not in env
     assert environment(Policy(), extra=("SECRET_TOKEN",))["SECRET_TOKEN"] == "s"
+    # A loader name is refused even from the terminal.
+    monkeypatch.setenv("LD_PRELOAD", "/evil.so")
+    assert "LD_PRELOAD" not in environment(Policy(), extra=("LD_PRELOAD",))
 
 
 def test_the_container_is_closed_by_construction(tmp_path):
@@ -93,7 +115,7 @@ def test_the_network_opens_only_with_a_name_and_a_reason(tmp_path):
     by_policy = docker_command(tmp_path, "x", Policy(network="host",
                                                      network_reason="Dev: package index"),
                                {}, user="1:1")
-    assert "--network" not in by_policy
+    assert "--network" in by_policy  # the policy's request is not a grant
 
 
 def test_the_loop_runs_the_agent_through_docker_when_asked(tmp_path, monkeypatch):

@@ -115,11 +115,13 @@ It serves `triage`, `start`, `frame`, `status`, `next`, `stage`, `debt`,
 `stop_when` and `history`, each returning exactly what the terminal prints,
 refusals included, beside a small envelope an agent can branch on without
 parsing prose: `schema_version`, `status` (ok, blocked, refused, failed),
-`mutated`, and the workspace. The envelope follows the command's exit,
-never a reading of its text. Its contract is a JSON Schema, `fde mcp
---schema`, that every reply is tested against; a client pins
-`schema_version`, which moves only when a field changes meaning or goes
-away, never when one is added. An engagement is named as `start` named
+`mutated`, and the workspace. The status follows the command's exit,
+never a reading of its text; `mutated` is measured, the record's files
+hashed before and after, so a write that failed partway and left changes
+says so. Its contract is a JSON Schema, `fde mcp --schema`, that every
+reply is tested against; a client pins `schema_version`, which moves
+only when a field changes meaning or goes away, never when one is added
+(it moved to 2 when `mutated` became a measurement). An engagement is named as `start` named
 it (`start(name="acme")`, then `status(engagement="acme")`), or by its
 path. An agent is not a person, so every path it supplies must stay
 inside one workspace, the directory the server started in or
@@ -198,7 +200,7 @@ ladder, so nothing here can be over-read:
 
 | Claim | Status | The evidence, and where it stops |
 |---|---|---|
-| The framework is implemented | verified | 1,321 tests on three Pythons in CI; lint clean; every audit finding pinned as a check before it was fixed; every release installed from the published wheel into a fresh interpreter and walked through the first five minutes |
+| The framework is implemented | verified | 1,328 tests on three Pythons in CI; lint clean; every audit finding pinned as a check before it was fixed; every release installed from the published wheel into a fresh interpreter and walked through the first five minutes |
 | A build is reproducible | verified | byte-identical rebuild pinned by test; each public demo carries a Reproduce section and its digests |
 | The decisions generalise | partial | four shapes (extraction, freeform QA, a labelled decision, seventy-seven-way routing) on real data; one industry set; `fde kb sweep` names the shapes nothing serves |
 | The deliverable is production-reliable | unverified | no production engagement; the banking operating loop ran on a laptop and its record says so |
@@ -509,11 +511,16 @@ declared by the tool.
 - **`fde implement --sandbox docker`** runs the coding agent in a container
   closed by construction: only the project mounted, root read-only with a
   scratch `/tmp`, every capability dropped and none gainable, your own user
-  rather than root, bounded memory, CPU and processes, the environment an
-  allowlist from the emitted `ops/agent-policy.yaml`, and no network
-  unless someone with a name and a reason opened it. The implementation
-  log records the image digest the agent actually ran on; without the
-  sandbox it says the agent had the host.
+  rather than root, bounded memory, CPU and processes, the environment a
+  default allowlist, and no network unless someone with a name and a
+  reason opened it at the terminal (`--allow-network "who: why"`,
+  `--env-allow NAME`). The emitted `ops/agent-policy.yaml` sits inside
+  the directory the agent writes to, so it can only narrow: it names the
+  image and bounded limits, and anything wider it asks for is a request
+  the log shows ungranted. The file is part of the fence -- an agent that
+  rewrites it, or plants one, has the change reverted and the round says
+  so. The implementation log records the image digest the agent actually
+  ran on; without the sandbox it says the agent had the host.
 - **`fde experiment`** runs the protocol in
   [`EXPERIMENT.md`](https://github.com/atulkapoor/fde-framework/blob/main/EXPERIMENT.md)
   on the record: `start` assigns the arm by a seeded draw balanced within

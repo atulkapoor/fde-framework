@@ -49,6 +49,23 @@ class {{ class_name }}:
         self.critical = critical_regions or set()
 
     def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if "pages" not in payload and isinstance(payload.get("text"), str) \
+                and payload["text"].strip():
+            # Already-recognised text: the reading happened before this
+            # system, or the exam is made of text pairs. It enters after
+            # the OCR stage and the envelope says so, because a score on
+            # text measures extraction and not reading -- the harness
+            # counts these and prints it. Nothing here is a clean-share
+            # figure for a page nobody read.
+            return {
+                **payload,
+                "perception": {"engine": None,
+                               "bypassed": "text supplied; the OCR stage was not exercised"},
+                "records": [{"id": str(payload.get("id", "text")), "text": payload["text"],
+                             "raw": {}, "losses": [], "usable": True}],
+                "clean_share": None,
+                "verify_queue": [],
+            }
         source = require(payload, "pages", list, non_empty=True)
         if self._engine is None:
             # Not a lambda returning nothing: an unwired engine reporting a

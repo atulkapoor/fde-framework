@@ -353,3 +353,35 @@ def test_the_schema_is_published_and_is_what_every_reply_follows(tmp_path, monke
         jsonschema.validate({**good, "extra": 1}, published)
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate({**good, "status": "done"}, published)
+
+
+def test_mutated_is_measured_so_a_failed_write_that_left_changes_says_so(tmp_path, monkeypatch):
+    """Version 1 of the envelope said mutated only on a writing tool's
+    exit 0, which assumed a failure had written nothing. A command can
+    write half a record and then raise. Version 2 hashes the record
+    before and after."""
+    from fde import mcp_server
+    from fde.mcp_server import SCHEMA_VERSION
+
+    assert SCHEMA_VERSION == 2
+    monkeypatch.setenv("FDE_WORKSPACE", str(tmp_path))
+    server = build_server()
+    opened = asyncio.run(server.call_tool("start", {
+        "name": "acme", "statement": "Route each support message to one of 77 queues."}))
+    assert opened.structured_content["mutated"] is True
+    root = tmp_path / "engagements" / "acme"
+
+    def half_written(args, registry=True):
+        (root / "facts" / "0009-frame.yaml").write_text("session_id: '0009'\n")
+        return "half-written", "failed"
+
+    monkeypatch.setattr(mcp_server, "run_command", half_written)
+    framed = asyncio.run(server.call_tool("frame", {"engagement": "acme", "text": "x"}))
+    assert framed.structured_content["status"] == "failed"
+    assert framed.structured_content["mutated"] is True
+    # And a refusal that ran nothing, or a write that changed nothing, says false.
+    monkeypatch.setattr(mcp_server, "run_command", lambda args, registry=True: ("no", "blocked"))
+    again = asyncio.run(server.call_tool("start", {"name": "acme", "statement": "x"}))
+    assert again.structured_content["mutated"] is False
+    reading = asyncio.run(server.call_tool("status", {"engagement": "acme"}))
+    assert reading.structured_content["mutated"] is False

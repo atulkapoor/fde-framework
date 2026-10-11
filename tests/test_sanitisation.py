@@ -81,7 +81,19 @@ PII_PATTERNS = {
 }
 
 
+def _git_checkout_or_skip() -> None:
+    """This suite reads the tree and its history through git. From a source
+    archive -- the sdist, a ZIP a reviewer downloads -- there is no
+    repository, and the right answer is a skip that says so, not a
+    collection error that reads as a broken suite."""
+    probe = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"],
+                           cwd=REPO, capture_output=True, text=True)
+    if probe.returncode != 0 or probe.stdout.strip() != "true":
+        pytest.skip("the sanitisation sweep reads git history; this is not a git checkout")
+
+
 def tracked_files() -> list[str]:
+    _git_checkout_or_skip()
     out = subprocess.run(
         ["git", "ls-tree", "-r", "--name-only", "HEAD"],
         cwd=REPO, capture_output=True, text=True, check=True,
@@ -123,6 +135,7 @@ def tracked_text() -> dict[str, str]:
 
 
 def commit_messages() -> str:
+    _git_checkout_or_skip()
     out = subprocess.run(
         ["git", "log", "--format=%B"], cwd=REPO, capture_output=True, text=True, check=True
     )
@@ -140,6 +153,7 @@ def test_only_framework_paths_are_tracked():
 
 def test_no_supplied_material_anywhere_in_history():
     """git rm --cached leaves history intact. This is the check that catches that."""
+    _git_checkout_or_skip()
     out = subprocess.run(
         ["git", "log", "--all", "--name-only", "--format=", "--", "seed/*", "inbox/*", "docs/*"],
         cwd=REPO, capture_output=True, text=True, check=True,
@@ -200,6 +214,7 @@ def test_no_case_awaiting_review_is_tracked():
 
 def test_no_commit_is_attributed_to_an_ai():
     """Every commit is the user's own work and says so."""
+    _git_checkout_or_skip()
     out = subprocess.run(
         ["git", "log", "--format=%an%n%ae%n%cn%n%ce%n%B"],
         cwd=REPO, capture_output=True, text=True, check=True,

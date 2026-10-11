@@ -28,6 +28,7 @@ server and lists what it serves without serving it.
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import threading
@@ -38,7 +39,7 @@ NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 # The envelope beside every reply, as the JSON Schema a client can validate
 # against (`fde mcp --schema` prints it). Bump the version when a field
 # changes meaning or goes away; adding a field keeps the version.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2  # 2: `mutated` is measured off the disk, so it can be true on a failure
 STATUSES = ("ok", "blocked", "refused", "failed")
 TOOLS = ("triage", "start", "frame", "status", "next", "stage", "debt", "stop_when", "history")
 ENVELOPE_SCHEMA = {
@@ -59,7 +60,12 @@ ENVELOPE_SCHEMA = {
                                   "refused: a path or name was outside what the agent may "
                                   "touch; nothing ran. failed: an exception; a bug to report."},
         "mutated": {"type": "boolean",
-                    "description": "True only when a writing tool ran and exited 0."},
+                    "description": "True when the engagement's files changed during the "
+                                   "call, measured by hashing them before and after: a "
+                                   "writing tool that failed partway and left changes "
+                                   "behind says true. Reading tools say false. (Version 1 "
+                                   "said true only on a writing tool's exit 0, which "
+                                   "assumed a failure had written nothing.)"},
         "workspace": {"type": "string",
                       "description": "The directory every path was confined to."},
     },
@@ -136,6 +142,16 @@ def locate(engagement: str) -> Path:
     return path
 
 
+def fingerprint(root: Path | None) -> dict[str, str]:
+    """The record, file by file, hashed -- so `mutated` is what happened on
+    the disk and not what the exit code implied. An engagement's record
+    is small; the hashing is milliseconds."""
+    if root is None or not root.is_dir():
+        return {}
+    return {str(path.relative_to(root)): hashlib.sha256(path.read_bytes()).hexdigest()
+            for path in sorted(root.rglob("*")) if path.is_file()}
+
+
 def plain_name(name: str) -> str:
     if not NAME.match(name or ""):
         raise Outside(f"an engagement name is a plain name (letters, digits, '.', '_', '-'), "
@@ -210,24 +226,30 @@ def build_server():
                              idempotent_hint=False, open_world_hint=False)
     server = MCPServer("fde", instructions=INSTRUCTIONS)
 
-    def guarded(fn, mutates: bool = False):
+    def guarded(fn, watches=None):
         """A tool whose text comes from the command and whose envelope comes
         from the exit; an Outside refusal is answered in words, status
-        `refused`, and nothing has changed."""
+        `refused`, and nothing has changed. A writing tool names what it
+        writes to (`watches`), and `mutated` is whether those files
+        changed -- measured, so a command that wrote half a record and
+        then failed does not report a clean miss."""
         def wrapped(*args, **kwargs):
             try:
+                target = watches(*args, **kwargs) if watches else None
+                before = fingerprint(target) if watches else None
                 text, status = fn(*args, **kwargs)
             except Outside as exc:
                 return reply(fn.__name__, f"refused: {exc}", "refused", False)
-            return reply(fn.__name__, text, status, mutates and status == "ok")
+            changed = bool(watches) and fingerprint(target) != before
+            return reply(fn.__name__, text, status, changed)
         wrapped.__name__ = fn.__name__
         wrapped.__doc__ = fn.__doc__
         wrapped.__annotations__ = {**fn.__annotations__, "return": "CallToolResult"}
         wrapped.__wrapped__ = fn
         return wrapped
 
-    def writing(fn):
-        return guarded(fn, mutates=True)
+    def writing(watches):
+        return lambda fn: guarded(fn, watches=watches)
 
     @server.tool(annotations=reads)
     @guarded
@@ -242,7 +264,7 @@ def build_server():
         return run_command(args)
 
     @server.tool(annotations=writes)
-    @writing
+    @writing(lambda name, statement, base="engagements": confine(base, "base") / plain_name(name))
     def start(name: str, statement: str, base: str = "engagements"):
         """WRITES: opens an engagement at <base>/<name>/ inside the workspace,
         reads the statement into typed facts, and names the questions worth
@@ -253,7 +275,7 @@ def build_server():
                             "--statement", statement], registry=False)
 
     @server.tool(annotations=writes)
-    @writing
+    @writing(lambda engagement, text: locate(engagement))
     def frame(engagement: str, text: str):
         """WRITES: reads a brief, pasted as text, into typed facts appended to
         the engagement's record, played back for correction with the

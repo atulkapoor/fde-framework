@@ -73,6 +73,18 @@ class {{ class_name }}:
         }
 
     def run(self, payload: dict[str, Any]) -> dict[str, Any]:
+        if "pages" not in payload and isinstance(payload.get("text"), str) \
+                and payload["text"].strip():
+            # Already-recognised text enters after the reading stage, and
+            # the envelope says so: a score on it measures what follows OCR.
+            return {
+                **payload,
+                "perception": {"engine": None,
+                               "bypassed": "text supplied; the OCR stage was not exercised"},
+                "records": [{"id": str(payload.get("id", "text")), "text": payload["text"],
+                             "raw": {}, "losses": [], "usable": True}],
+                "clean_share": None,
+            }
         pages = [self.read(p) for p in payload.get("pages", [])]
         return {
             "pages": pages,
