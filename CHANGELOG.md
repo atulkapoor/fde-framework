@@ -5,6 +5,36 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.43] — 2026-10-11
+
+A tenth outside reading, of 0.1.42, found the one place the server's
+contract and its behaviour disagreed, and asked for a reply an agent can
+reason over. Both true, both closed.
+
+- **`stage` is read-only because it now is.** The tool was marked
+  read-only and appended a transition when the stage changed. It now
+  runs `fde stage --no-record`, a new flag that computes and prints the
+  stage without touching the record; appending the transition is a
+  person's `fde stage`. A test runs every read-only tool against an
+  engagement and asserts the record is byte-identical afterwards, and
+  runs the writing tools and asserts it is not -- the annotation is
+  checked against the side effect, not the name.
+- **A structured envelope beside the text.** Every reply still carries
+  exactly what the terminal printed, and beside it `status` -- ok,
+  blocked (the command refused or a condition triggered), refused (the
+  path or name was outside what the agent may touch), failed (an
+  exception, a bug to report) -- plus `mutated` and the workspace. The
+  envelope follows the command's exit, never a parse of its prose.
+- Two more contract tests: starting an engagement that already exists is
+  blocked and leaves the record unchanged, and `fde mcp --check` creates
+  nothing.
+- On the symlink race the review names: every path is resolved before
+  the command sees it, and the command works on the resolved path, so
+  swapping the link afterwards changes nothing for that call. A link
+  planted inside the record by other means is outside this server's
+  reach and inside the container's; the record says so rather than
+  claiming more.
+
 ## [0.1.42] — 2026-10-11
 
 A ninth outside reading, of 0.1.41 on the day it shipped, found the one
