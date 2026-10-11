@@ -45,6 +45,7 @@ pip install fde-framework
 fde start acme --statement "Extract fields from supplier invoices."
 fde ask acme --role admin        # role-scoped discovery interview
 fde architect acme               # topology + chosen approaches (rationale lands in ARCHITECTURE.md)
+fde report acme                  # the decision brief, for whoever has to act on it and is not here
 fde build acme --out project     # refuses: eight gates guard the build
 # ...verify data access, capture the baseline, name the eval owner (each gate prints its remedy), then:
 fde build acme --out project     # code + evals + deploy assets + runbook
@@ -197,7 +198,7 @@ ladder, so nothing here can be over-read:
 
 | Claim | Status | The evidence, and where it stops |
 |---|---|---|
-| The framework is implemented | verified | 1,316 tests on three Pythons in CI; lint clean; every audit finding pinned as a check before it was fixed; every release installed from the published wheel into a fresh interpreter and walked through the first five minutes |
+| The framework is implemented | verified | 1,321 tests on three Pythons in CI; lint clean; every audit finding pinned as a check before it was fixed; every release installed from the published wheel into a fresh interpreter and walked through the first five minutes |
 | A build is reproducible | verified | byte-identical rebuild pinned by test; each public demo carries a Reproduce section and its digests |
 | The decisions generalise | partial | four shapes (extraction, freeform QA, a labelled decision, seventy-seven-way routing) on real data; one industry set; `fde kb sweep` names the shapes nothing serves |
 | The deliverable is production-reliable | unverified | no production engagement; the banking operating loop ran on a laptop and its record says so |
@@ -207,54 +208,30 @@ ladder, so nothing here can be over-read:
 
 **Demonstrated**: four complete engagements have run end to end on real
 data, all public with every refusal preserved.
-[fde-demo-receipts](https://github.com/atulkapoor/fde-demo-receipts) —
-626 scanned receipts through gates, build, and an agent-driven implement
-loop (`fde implement`, graded against held-out cases the agent never sees)
-whose holdout refused an overfit implementation and whose measured plateau
-flipped the design from rules to a model, reason on the record.
-[fde-demo-complaints](https://github.com/atulkapoor/fde-demo-complaints) —
-2,034 real consumer complaints through the decision shape: the exam
-refused ambiguous ground truth before it existed, the agent posture was
-decided from the facts, and the loop finished **green with the holdout
-passing** — the framework's first.
-[fde-demo-rfc-qa](https://github.com/atulkapoor/fde-demo-rfc-qa) —
-freeform QA over 58 real RFCs: 100% recall@10 on real queries, a green
-loop, and then the calibration gate **refusing its own judge** exactly as
-the prediction published beforehand said it would (73.7% agreement,
-refused; the judge's 89.5% was 26 points of flattery over the hand-graded
-63.2%). Six of this framework's releases (0.1.6–0.1.11) shipped from what
-these runs found -- and after five independent audit passes reshaped the
-emitter (0.1.17–0.1.21), the complaints engagement was built and implemented
-again on 0.1.21: green in round 2, holdout 76.7% against the original's
-63.3%, the run committed beside the original for comparison. A sixth pass,
-widened to the exam, the components and the fine-tuning path, signed off
-the freeform shape with conditions and refused the decision shape for
-reasons that were the generator's; 0.1.22 answered each as a check first.
-A seventh pass found those checks holding and the shape-specific work
-stopping short -- a mis-specified baseline, an in-sample exam, a training
-recipe that trained unshuffled on a prompt it never served -- and 0.1.23
-answered again the same way. 0.1.24 then ran the fine-tuning recipe for
-real on a small base model: the adapter learned the house style on cases
-it never saw, and the six defects that run exposed in the harness, the
-serving path and the comparison are fixed and pinned. An eighth pass gave
-the decision shape its first sign-off, with conditions, and 0.1.25 met
-them: probes on typical cases, label phrases rather than words, a merge
-path that trains, a comparison that says what it can claim. A ninth pass
-read the first industry run and the scorecard that measured it, and found
-the card measuring self-consistency rather than fitness; 0.1.27 gave it
-fitness rows -- the generalisation gap, an external exam a memoriser cannot
-pass, the engagement's own error-rate bar -- and gave the routed decision
-an abstain path and a reason on every answer.
-[fde-demo-banking](https://github.com/atulkapoor/fde-demo-banking) —
-an industry use case: support intent routing for a retail bank over
-13,083 real messages and seventy-seven queues (Banking77). The framework's
-own reading of a seventy-seven-way decision, its brief parser, its label
-rule and one governance template each failed on it and were fixed before
-a number was quoted; the finished deliverable is an assist-mode router
-that abstains and says why, at 90.2% on what it routes with 18% handed to
-a person, scored on a 3,036-case holdout and the vendor's own test split,
-with `fde scorecard` saying which rows measure fitness and which measure
-self-consistency.
+
+- [fde-demo-receipts](https://github.com/atulkapoor/fde-demo-receipts) --
+  626 scanned receipts: the holdout refused an overfit implementation, and
+  a measured plateau flipped the design from rules to a model, reason on
+  the record.
+- [fde-demo-complaints](https://github.com/atulkapoor/fde-demo-complaints) --
+  2,034 real consumer complaints through the decision shape: the exam
+  refused ambiguous ground truth before it existed, and the loop finished
+  **green with the holdout passing**, the framework's first.
+- [fde-demo-rfc-qa](https://github.com/atulkapoor/fde-demo-rfc-qa) --
+  freeform QA over 58 real RFCs: 100% recall@10 on real queries, then the
+  calibration gate **refusing its own judge** exactly as the prediction
+  published beforehand said it would (73.7% agreement, refused; the
+  judge's 89.5% was 26 points of flattery over the hand-graded 63.2%).
+- [fde-demo-banking](https://github.com/atulkapoor/fde-demo-banking) --
+  an industry use case: support intent routing for a retail bank over
+  13,083 real messages and seventy-seven queues. The finished deliverable
+  is an assist-mode router that abstains and says why, at 90.2% on what
+  it routes with 18% handed to a person, scored on a 3,036-case holdout
+  and the vendor's own test split.
+
+Fourteen outside readings have shaped the releases since, each finding
+pinned as a check before it was fixed; the story, pass by pass, is in
+[`HISTORY.md`](https://github.com/atulkapoor/fde-framework/blob/main/HISTORY.md).
 
 **Built**: the pipeline exists end to end — intake (prose, documents, sample
 pairs, role-scoped interview, hardware scan) → fact log with provenance →
@@ -444,31 +421,12 @@ project/
 
 Emitted quality is a pinned property, not a promise: the framework's own
 test suite emits projects across representative architecture shapes and
-holds every emission to the operational contract — every environment
-variable the code reads is documented, everything the systemd unit demands
-is created by a shipped installer, CI has a lane that goes green without a
-model, the smoke test passes on a fresh emission, the code is lint-clean,
-the payload path composes end to end and refuses garbage at the door, a
-caller cannot forge a result, a hostile document or a long query costs
-milliseconds, the journal stays one JSON line per event under threads, an
-error closes its connection, a bad corpus file is skipped and counted, the
-boundary refuses an endpoint outside it, the ledger survives a restart and
-a torn line, a stopword cannot cite a document and a one-document corpus
-still answers, compaction cannot drop a live key, every eval entry point
-honours the boundary, an oversized corpus refuses the boot with one line,
-readiness degrades rather than denies on a stray file, and the service
-carries a request id on every answer, a truncated query is never a silent
-miss, two processes cannot both reserve one key, a decision read off
-labelled text ships a fitted classifier that refuses to serve a constant,
-refuses an exam that changed since the build, beats the majority on the
-holdout and says which of its scores are in-sample, the exam's probes and
-edges come from cases the baseline was not fitted on and each steering
-probe says what it steers toward, an uncalibrated judge is red until asked
-for by name, a fact learned from a person is marked asserted rather than
-established, and a fine-tuning decision ships a recipe that trains on the
-prompt it serves -- and the deliverable ships its own edge tests, which
-its CI runs. Eight independent audit passes took it from "every request
-500s" to a sign-off with conditions on the decision shape. A quality finding lands there as a check before
+holds every emission to the operational contract, from every environment
+variable the code reads being documented to a classifier that refuses to
+serve a constant; the full list of what is held, and the audit passes that
+put each check there, is in
+[`HISTORY.md`](https://github.com/atulkapoor/fde-framework/blob/main/HISTORY.md).
+A quality finding lands there as a check before
 it lands anywhere as a fix ([`tests/test_acceptance.py`](tests/test_acceptance.py),
 [`tests/test_finetune.py`](tests/test_finetune.py)). And the claim is
 measurable per build: `fde scorecard <project> --holdout <file> --external
@@ -501,9 +459,10 @@ declared by the tool.
   the holdout row, hours and money from the recorded baseline, build and run
   costs from the caller, payback, and a Wilson interval on the accuracy.
   Every line says what it rests on, so the number is argued row by row.
-- **`fde deployed`** and **`fde outcome`** are attestations: where it runs and
-  who put it there; adoption, time to first value, whatever the client
-  measured. **`fde outcomes`** prints what the record shows without anyone's
+- **`fde deployed`** and **`fde outcome`** are attestations: where it runs,
+  who put it there and which build it is (`--project`, which every command
+  that reads a project by default then reads); adoption, time to first
+  value, whatever the client measured. **`fde outcomes`** prints what the record shows without anyone's
   opinion -- transitions, days to pilot, loop rounds, reversals, incidents.
 - **`fde stakeholders`** maps the engagement's people as the record shows
   them: which of the five roles has been heard (every session carries the
@@ -619,7 +578,7 @@ fde implement project                # drive a coding agent until it's green
 fde scorecard project --holdout engagements/acme/artifacts/holdout.jsonl   # measure it
 
 fde stage acme --project project     # where it stands, computed off the record
-fde deployed acme --note "runs in the client VPC; platform team put it there"
+fde deployed acme --note "runs in the client VPC; platform team put it there" --project project
 fde drift acme --journal service.log --project project   # the field against the exam
 fde incident acme close inc-001 --note "holdout re-scored; pairs redrawn"
 fde outcome acme --metric adoption=0.62 --note "support lead's dashboard, week 3"
@@ -674,12 +633,13 @@ the same receipts the emitted `ARCHITECTURE.md` prints.
 | `fde reuse <eng> <stack>` | record what the client already operates, so reuse can beat adoption |
 | `fde locale <eng> eu-gdpr` | jurisdiction pack: presets plus obligations emitted as COMPLIANCE.md |
 | `fde architect <eng>` | the design, rationale and rejections |
+| `fde report <eng> [--out brief.md]` | the decision brief: the problem as stated, the stage, what is known and who said it, the outcome contract, the design with its reasons and rejections, what it rests on, the debt, the stop conditions, the next decision -- one Markdown file, before any build |
 | `fde build <eng> --out project` | emit; refuses while gates block |
 | `fde implement project/` | drive a coding agent until the emitted evals pass, inside guardrails |
 | `fde scorecard project/ --holdout <file>` | measure production grade: every property the deliverable can prove, with the number, in `SCORECARD.md` |
 | `fde scorecard project/ --holdout <file> --coverage-floor 0.97 --max-gap 0.08` | the engagement's own bars: the share the system must answer for the baseline row to hold (default: 1 minus the baseline's exception rate), and its limit on the golden-to-holdout gap (protocol default 20%) |
 | `fde stage <eng>` | where the engagement stands, computed from the record; transitions appended to `lifecycle.jsonl` (`--no-record` to look without appending) |
-| `fde deployed <eng> --note "..."` | attest the deployment: where it runs and who put it there |
+| `fde deployed <eng> --note "..." [--project <dir>]` | attest the deployment: where it runs, who put it there, which build |
 | `fde drift <eng> --journal <log>` | the field against the exam: abstention, mix, errors, margins; opens an incident and exits 1 when it moved |
 | `fde incident <eng> list \| close <id> --note "..."` | incidents on the record; an open one holds the stage at pilot |
 | `fde outcome <eng> --metric adoption=0.62` / `fde outcomes <eng>` | outcomes measured in the field; what the record shows without opinion |

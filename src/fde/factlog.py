@@ -207,12 +207,24 @@ class Engagement:
         state["data_access"] = _signed({"note": note, "at": at}, by)
         self._write_gate_state(state)
 
-    def record_deployed(self, note: str, at: str, by: str = "") -> None:
+    def record_deployed(self, note: str, at: str, by: str = "", project: str = "") -> None:
         """The deployment, attested like data access: where it runs and who
-        put it there. The lifecycle reads it; nothing else infers it."""
+        put it there, and which build it is. The lifecycle reads it; nothing
+        else infers it. Naming the build matters once implementation has
+        produced a second project directory beside the emitted one: every
+        command that reads a project by default then reads the deployed
+        one, not the last one built."""
         state = self._raw_gate_state()
-        state["deployed"] = _signed({"note": note, "at": at}, by)
+        entry = {"note": note, "at": at}
+        if project:
+            entry["project"] = project
+        state["deployed"] = _signed(entry, by)
         self._write_gate_state(state)
+
+    def deployed_project(self) -> str | None:
+        """The build the deployment attestation names, if it names one."""
+        deployed = self._raw_gate_state().get("deployed")
+        return deployed.get("project") or None if isinstance(deployed, dict) else None
 
     def record_security_review(self, note: str, at: str, by: str = "") -> None:
         state = self._raw_gate_state()

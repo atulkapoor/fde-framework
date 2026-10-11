@@ -66,6 +66,7 @@ Key facts:
 
 - [README](https://github.com/atulkapoor/fde-framework/blob/main/README.md):
 - Site: https://atulkapoor.github.io/fde-framework/ (the same content as the README, with the four public runs and the skeptic's questions)
+- `fde report <eng>` writes the decision brief: one Markdown file, read off the record, for a sponsor or reviewer who is not at the terminal; works before any build is authorised.
 - Inside a coding agent: `pip install "fde-framework[mcp]"` then `fde mcp` serves triage, start, frame, status, next, stage, debt, stop_when and history over stdio MCP; `fde mcp --schema` prints the JSON Schema of the envelope beside every reply; calls run one at a time; tested from the official client over stdio and from Claude Code.
   what it is, who it is for, install, quickstart, FAQ
 - [CONTRIBUTING](https://github.com/atulkapoor/fde-framework/blob/main/CONTRIBUTING.md):

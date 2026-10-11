@@ -112,3 +112,33 @@ def test_the_command_records_judges_and_exits_one_when_triggered(tmp_path):
     assert "acme: stopped" in stage.output and "STOPPED by:" in stage.output
     bad = runner.invoke(app, ["stop-when", root, "--when", "nonsense"])
     assert bad.exit_code == 1 and "a stop condition is" in bad.output
+
+
+def test_the_deployed_build_is_the_one_the_record_reads_by_default(tmp_path, monkeypatch):
+    """The banking record read as stopped from its emitted build while the
+    implemented copy beside it, the one actually served, passed: `.last-out`
+    named the build, nobody had named the deployment. A deployment that
+    names its build is what the record reads from then on."""
+    eng, emitted = scored(tmp_path)
+    served = tmp_path / "project-agent"
+    served.mkdir()
+    (served / "scorecard.json").write_text(json.dumps({"rows": [
+        {"property": "holdout", "holds": True,
+         "measured": "73.7% on 3036 cases (majority 1.9%; abstained 18.2%, 90.2% on the answered)"},
+    ]}))
+    (eng.root / ".last-out").write_text(str(emitted))
+    record_conditions(eng, ["answered_accuracy < 0.88"], by="Priya", at="2026-09-21")
+    monkeypatch.chdir(tmp_path)
+    before = runner.invoke(app, ["stop-when", str(eng.root)])
+    assert "STOP" in before.output and "0.866" in before.output
+    attested = runner.invoke(app, ["deployed", str(eng.root), "--note", "served on a laptop",
+                                   "--project", str(served), "--by", "Priya"])
+    assert attested.exit_code == 0 and str(served) in attested.output
+    after = runner.invoke(app, ["stop-when", str(eng.root)])
+    assert "STOP" not in after.output and "0.902" in after.output, after.output
+    assert "project-agent" in (eng.root / "gates.yaml").read_text()
+    # Not a project: refused before anything is written.
+    refused = runner.invoke(app, ["deployed", str(eng.root), "--note", "x",
+                                  "--project", str(tmp_path / "nowhere")])
+    assert refused.exit_code == 1 and "not an emitted project" in refused.output
+    assert "project-agent" in (eng.root / "gates.yaml").read_text()

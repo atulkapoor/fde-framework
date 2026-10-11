@@ -1894,10 +1894,16 @@ def scan_cmd(
 
 
 def _project_of(engagement, project: Path | None) -> Path | None:
-    """The project a command should read: the one given, else the last
-    build recorded by fde build."""
+    """The project a command should read: the one given, else the build the
+    deployment attestation names, else the last build recorded by fde
+    build. The banking record once read as stopped from its emitted build
+    while the implemented copy beside it, the one actually served, passed
+    its stop condition: the default followed the build, not the deployment."""
     if project is not None:
         return Path(project)
+    deployed = engagement.deployed_project()
+    if deployed and Path(deployed).exists():
+        return Path(deployed)
     record = engagement.root / ".last-out"
     if record.exists():
         candidate = Path(record.read_text().strip())
@@ -1943,17 +1949,27 @@ def stage_cmd(
 def deployed_cmd(
     root: Annotated[Path, typer.Argument(help="The engagement directory.")],
     note: Annotated[str, typer.Option(help="Where it runs and who put it there.")],
+    project: Annotated[Path | None, typer.Option(
+        "--project", help="The build that was deployed. Every command that reads a "
+        "project by default then reads this one, not the last one built."
+    )] = None,
     today: Annotated[str, typer.Option(help="For the record; defaults to today.")] = "",
     by: Annotated[str, typer.Option(help="Who signs this: a name for the record.")] = "",
 ) -> None:
-    """Attest that the deliverable is deployed. The lifecycle's production
-    stage reads this; nothing infers it from a build."""
+    """Attest that the deliverable is deployed, and which build it is. The
+    lifecycle's production stage reads this; nothing infers it from a build."""
     engagement = _engagement(root)
     if not note.strip():
         typer.echo("a deployment attestation needs a note", err=True)
         raise typer.Exit(1)
-    engagement.record_deployed(note, today or date.today().isoformat(), by=by)
-    typer.echo("deployment recorded")
+    if project is not None and not (project / "scorecard.json").exists() \
+            and not (project / "evals").is_dir():
+        typer.echo(f"{project}: not an emitted project (no evals/ and no scorecard.json)",
+                   err=True)
+        raise typer.Exit(1)
+    engagement.record_deployed(note, today or date.today().isoformat(), by=by,
+                               project=str(project) if project is not None else "")
+    typer.echo("deployment recorded" + (f" for {project}" if project is not None else ""))
 
 
 @app.command("drift")
@@ -2429,6 +2445,37 @@ def mcp_cmd(
     except ImportError as exc:
         typer.echo(str(exc), err=True)
         raise typer.Exit(1) from exc
+
+
+@app.command("report")
+def report_cmd(
+    root: Annotated[Path, typer.Argument(help="The engagement directory.")],
+    out: Annotated[Path | None, typer.Option(
+        "--out", help="Where to write the brief; default artifacts/REPORT.md in the engagement."
+    )] = None,
+    registry_root: Annotated[Path, typer.Option("--registry")] = DEFAULT_ROOT,
+    today: Annotated[str, typer.Option(help="The date on the brief; defaults to today.")] = "",
+) -> None:
+    """Write the decision brief: the problem as stated, where the engagement
+    stands, what the record knows and who said it, the outcome contract,
+    the design with its reasons, what it rests on, the decision debt, the
+    stop conditions, the next decision -- one Markdown file for the person
+    who has to act on the decision and is not at this terminal. Works
+    before any build is authorised; every figure is read off the record."""
+    from fde.report import render_report
+
+    registry = _registry(registry_root)
+    engagement = _engagement(root)
+    # The commands the brief quotes run in-process and get the registry as
+    # an absolute path, so the brief reads one corpus wherever it is run from.
+    corpus = Path(registry_root)
+    text = render_report(engagement, registry, corpus.resolve() if corpus.exists() else corpus,
+                         today=today)
+    target = out or (engagement.root / "artifacts" / "REPORT.md")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(text)
+    sections = text.count("\n## ")
+    typer.echo(f"wrote {target} ({sections} sections, {len(text.splitlines())} lines)")
 
 
 @app.command("debt")

@@ -47,6 +47,9 @@ ALLOWED = (
     "EXPERIMENT.md",
     # What an engagement gives and gets, and the plain-language agreement; authored.
     "ENGAGE.md",
+    # How the framework got here: the audit passes and what each one changed,
+    # moved out of the README's front page; authored, in the author's words.
+    "HISTORY.md",
     "CITATION.cff",
     ".editorconfig",
     "ARCHITECTURE.md",

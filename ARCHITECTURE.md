@@ -77,6 +77,7 @@ intake ──> fact log ──> permutation space ──> gates ──> decide �
 | `registry.py` | Loads `framework/` with located errors |
 | `graph.py` | Cross-link validation, gap detection, dead-zone sweep |
 | `cli.py` | The user surface; every failure is a sentence, never a traceback |
+| `report.py` | The decision brief, `fde report`: one Markdown file read off the record for the person who has to act on the decision and is not at the terminal -- the statement, the stage, what is known and who said it, the outcome contract, the design and the risks rendered by the same functions a build uses, the debt, the stop conditions, the next decision; works before any build |
 | `mcp_server.py` | The conversational commands served to a coding agent over stdio, each returning what the terminal prints; every agent-supplied path confined to one workspace, symlinks resolved, names plain; the writing tools marked; a bare name found where `start` put it; commands one at a time so concurrent calls all answer; the reply envelope's JSON Schema (`fde mcp --schema`); nothing that builds, implements or deploys |
 
 ## `framework/` — the knowledge

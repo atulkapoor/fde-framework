@@ -139,13 +139,25 @@ def _write_risks(
     receiving the project could not tell that the baseline gate had been
     waived, let alone that the baseline file was then deleted.
     """
-    flat = _flat
-
-    undecided = architecture.decisions.undecided()
     scaffolds = sorted(
         p.stem for p in (out / "app" / "components").glob("*.py")
         if SCAFFOLD_MARK.split("  #")[0] in p.read_text()
     )
+    (out / "RISKS.md").write_text(
+        render_risks(waivers, overrides, architecture, registry, scaffolds=scaffolds))
+
+
+def render_risks(
+    waivers, overrides, architecture: Architecture, registry: Registry | None = None,
+    scaffolds: list[str] | tuple[str, ...] = (),
+) -> str:
+    """The risk page as text: what a build would write to RISKS.md, which
+    `fde report` carries before any build exists. `scaffolds` names the
+    emitted modules that still raise; a brief written before emission has
+    none."""
+    flat = _flat
+
+    undecided = architecture.decisions.undecided()
     lines = ["# Risks accepted", ""]
     if not waivers and not overrides and not architecture.unrealizable and not undecided:
         lines += [
@@ -237,7 +249,7 @@ def _write_risks(
             for component, reason in sorted(architecture.unrealizable.items())
         ]
         lines.append("")
-    (out / "RISKS.md").write_text("\n".join(lines) + "\n")
+    return "\n".join(lines) + "\n"
 
 
 # --- refusals ------------------------------------------------------------

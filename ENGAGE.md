@@ -12,7 +12,11 @@ what is not on offer.
 **A decision, two weeks.** Should this be built? The baseline, the
 architecture with its alternatives, the exam, a prototype where the
 evidence supports one, and a written answer: build it, change the design,
-or don't. The first five engagements are this shape.
+or don't. The answer is the decision brief `fde report` writes off the
+record -- the problem as you stated it, what was learned and from whom,
+the design with its reasons and rejections, what it rests on, what would
+stop it, the next decision -- so it can be read by someone who never saw
+the terminal. The first five engagements are this shape.
 
 **A delivery, four to six weeks.** Everything above, plus the deployable
 system for your environment, the runbook and handover. Agreed separately,
