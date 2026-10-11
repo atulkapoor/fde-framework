@@ -18,7 +18,7 @@ agent. Both appear, every time.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 interface = "{{ interface }}"
 approach = "{{ approach }}"
@@ -48,7 +48,7 @@ def approve(actor: str, approver_role: str, action: str) -> Approval:
             f"refused, not defaulted"
         )
     approval = Approval(actor, approver_role, action,
-                        datetime.now(timezone.utc).isoformat())
+                        datetime.now(UTC).isoformat())
     APPROVED[action] = approval
     AUDIT.append({"subject": actor, "role": approver_role, "actor": "agent",
                   "action": action, "at": approval.at})
