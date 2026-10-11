@@ -95,13 +95,28 @@ without leaving the editor:
 
 ```bash
 pip install "fde-framework[mcp]"
-claude mcp add fde -- fde mcp        # or any client that speaks stdio MCP
+fde mcp --check                      # what it would serve, and from where, without serving
+claude mcp add fde -- fde mcp        # Claude Code
+```
+
+For Cursor or any other stdio client, the server is the command `fde` with
+the argument `mcp`:
+
+```json
+{ "mcpServers": { "fde": { "command": "fde", "args": ["mcp"],
+                           "env": { "FDE_WORKSPACE": "/path/to/your/engagements" } } } }
 ```
 
 It serves `triage`, `start`, `frame`, `status`, `next`, `stage`, `debt`,
 `stop_when` and `history`, each returning exactly what the terminal prints,
-refusals included. Building, implementing and deploying stay on the command
-line, where the person who runs them is accountable for them.
+refusals included. An agent is not a person, so every path it supplies must
+stay inside one workspace, the directory the server started in or
+`FDE_WORKSPACE`; a path outside it, a traversal, or a symlink that points
+out is refused in words, and engagement names are plain names. The two
+tools that write to the record, `start` and `frame`, say so and carry the
+protocol's hints so a client can ask first. Building, implementing and
+deploying are not served; they stay on the command line, where the person
+who runs them is accountable for them.
 
 > ### Five founding engagements
 > One real workflow, your real examples, a measured baseline, and someone
@@ -166,7 +181,7 @@ ladder, so nothing here can be over-read:
 
 | Claim | Status | The evidence, and where it stops |
 |---|---|---|
-| The framework is implemented | verified | 1,296 tests on three Pythons in CI; lint clean; every audit finding pinned as a check before it was fixed |
+| The framework is implemented | verified | 1,302 tests on three Pythons in CI; lint clean; every audit finding pinned as a check before it was fixed |
 | A build is reproducible | verified | byte-identical rebuild pinned by test; each public demo carries a Reproduce section and its digests |
 | The decisions generalise | partial | four shapes (extraction, freeform QA, a labelled decision, seventy-seven-way routing) on real data; one industry set; `fde kb sweep` names the shapes nothing serves |
 | The deliverable is production-reliable | unverified | no production engagement; the banking operating loop ran on a laptop and its record says so |
@@ -649,7 +664,7 @@ the same receipts the emitted `ARCHITECTURE.md` prints.
 | `fde import <eng> --file tickets.csv --input body --output queue --verified-when checked=yes` | a client export into pairs, with a report; then `fde samples` |
 | `fde bench <eng>=<project> ...` | the same figures off every record, side by side, in `BENCH.md` |
 | `fde history <eng>` | every dated entry on the record in order, one line each |
-| `fde mcp` | serve triage, start, frame, status, next, stage, debt, stop-when and history to a coding agent over stdio |
+| `fde mcp` / `fde mcp --check` | serve triage, start, frame, status, next, stage, debt, stop-when and history to a coding agent over stdio, confined to `FDE_WORKSPACE`; `--check` lists what it serves |
 | `fde outcome-contract <eng> --owner --metric --baseline --unit --target --method --window` | the eighth gate: which number this system exists to move, from what to what, measured how, by when |
 | `fde debt <eng>` | decision debt: what nobody has settled, with an owner, what it blocks, and its age |
 | `fde stop-when <eng> --when "answered_accuracy < 0.88"` | what evidence would stop the engagement; judged against the record, exit 1 and a STOP stage when triggered |

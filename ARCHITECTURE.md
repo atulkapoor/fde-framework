@@ -77,7 +77,7 @@ intake ──> fact log ──> permutation space ──> gates ──> decide �
 | `registry.py` | Loads `framework/` with located errors |
 | `graph.py` | Cross-link validation, gap detection, dead-zone sweep |
 | `cli.py` | The user surface; every failure is a sentence, never a traceback |
-| `mcp_server.py` | The conversational commands served to a coding agent over stdio, each returning what the terminal prints; nothing that builds, implements or deploys |
+| `mcp_server.py` | The conversational commands served to a coding agent over stdio, each returning what the terminal prints; every agent-supplied path confined to one workspace, symlinks resolved, names plain; the writing tools marked; nothing that builds, implements or deploys |
 
 ## `framework/` — the knowledge
 

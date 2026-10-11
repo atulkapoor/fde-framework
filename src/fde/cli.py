@@ -2336,13 +2336,21 @@ def experiment_cmd(
 
 
 @app.command("mcp")
-def mcp_cmd() -> None:
+def mcp_cmd(
+    check: Annotated[bool, typer.Option(
+        "--check", help="Build the server and list what it serves, without serving it."
+    )] = False,
+) -> None:
     """Serve the framework's conversational commands to a coding agent over
     stdio (Model Context Protocol): triage, start, frame, status, next,
-    stage, debt, stop_when, history. Add it with, for example,
-    `claude mcp add fde -- fde mcp`."""
+    stage, debt, stop_when, history. Every path the agent supplies must be
+    inside the workspace (FDE_WORKSPACE, else the current directory). Add
+    it with, for example, `claude mcp add fde -- fde mcp`."""
     try:
-        from fde.mcp_server import serve
+        from fde.mcp_server import describe, serve
+        if check:
+            typer.echo(describe())
+            return
         serve()
     except ImportError as exc:
         typer.echo(str(exc), err=True)
