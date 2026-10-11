@@ -5,7 +5,51 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
-## [0.1.44] — 2026-10-12
+## [0.1.45] — 2026-10-11
+
+A twelfth outside reading, and a coding agent driving the server for the
+first time, found three things between them: a release page that said
+nothing about what it was, a date a day ahead, and an MCP server that lost
+the agent's second call two different ways.
+
+- **The agent's second call finds the first call's work.**
+  `start(name="acme")` puts the record at engagements/acme;
+  `status(engagement="acme")` a moment later looked at `<workspace>/acme`
+  and said there was no engagement. The in-process test had passed the
+  path `start` returned, so it never asked by name. A bare name is now
+  looked for where `start` puts it, as `fde status acme` does at the
+  terminal; a path is taken as given; a name that climbs out is refused
+  before anything is looked for.
+- **Calls issued at once all come back.** Claude Code asked for `status`
+  and `next` in the same breath and the second came back "Connection
+  closed". The server runs each tool on its own thread, and the capture
+  that collects a command's output does so by swapping the process's
+  stdout; two swaps interleaved left one command printing straight onto
+  the JSON-RPC channel. Commands now run one at a time inside the server.
+  A new suite drives the server as a separate process over stdio with the
+  official client: six calls at once for three rounds, a call abandoned
+  midway, a record changed on disk between calls, and every tool's input
+  schema published. The hang reproduced before the fix and fails within
+  ninety seconds instead of hanging CI.
+- **The envelope's contract is a JSON Schema.** `fde mcp --schema` prints
+  it; every reply is validated against it; the schema's list of tools is
+  the server's; a field it does not name or a status it does not name
+  fails. The README says when the version moves: a field changing meaning
+  or going away, never one being added.
+- **A release page means verified.** It is written only after the wheel
+  PyPI serves has been installed on Python 3.11, 3.12 and 3.13, hashed
+  against the wheel the tests ran on, and walked through the first five
+  minutes. It carries the wheel and the sdist, their SHA-256, the commit,
+  the run and the install line.
+- **One date.** 0.1.44 shipped on October 11 dated October 12 in both
+  CHANGELOG and CITATION. Corrected; the release workflow now holds the
+  CHANGELOG date, CITATION's date-released and the tagged commit's own day
+  in the author's time zone to one value, and a test holds the two files
+  to each other.
+- A corrupt record is a sentence naming the file, not a traceback, through
+  the server as at the terminal; now pinned by a test.
+
+## [0.1.44] — 2026-10-11
 
 An eleventh outside reading found the README contradicting itself on its
 own test count, and asked for the published wheel to be the thing that
