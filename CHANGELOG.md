@@ -5,6 +5,62 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.47] — 2026-10-12
+
+A fifteenth outside reading, the first of the source tree, and a
+sixteenth that ran the invoice example to its harness. Between them:
+a build that refused after writing, an emitter that could leave half a
+project, a sandbox policy the agent could rewrite for the next run, an
+envelope field that assumed a failure wrote nothing -- and an exam that
+could not get past its own pipeline's door.
+
+- **A refusal writes nothing.** The locale was checked after the project
+  and the prediction records had gone to disk, and the refusal said so:
+  "refused after writing code". It is resolved before anything is
+  written now, and a test holds the output directory and the record
+  unchanged after an unknown pack.
+- **A failed build leaves nothing that looks like a build.** The emitter
+  builds in a staging directory beside the destination and moves the
+  finished tree into place whole; a writer that fails halfway takes the
+  staging directory with it. Pinned by a test that breaks a writer.
+- **The exam reaches the thing it examines.** The invoice example's text
+  pairs were refused at the emitted pipeline's own door -- the design's
+  first stage read `pages` -- so every golden case scored as an input
+  error, the adversarial layer "passed" on refusals, and the build had
+  said "wrote". Two changes. The OCR stage now takes already-recognised
+  text as input that enters after it, says so in the envelope, and the
+  harness counts those cases and prints that the reading stage went
+  unexercised: a score on text measures extraction, not OCR. And a build
+  whose golden cases cannot enter its own pipeline is refused in staging,
+  naming the case and the reason, before anything is written. Pinned by
+  a test that builds the invoice example and runs its harness, and one
+  that feeds pairs no contract reads.
+- **The sandbox policy can only narrow.** `ops/agent-policy.yaml` lives
+  inside the directory the agent writes to. It could grant `network:
+  host` with a reason of its own and add a credential to `env_allow`,
+  and the next run honoured both. Now the file names the image and
+  bounded limits (memory within 64g, cpus within 64, pids within 8192;
+  outside them the default applies and the note says so); a network or
+  a name beyond the default allowlist is a request the log shows
+  ungranted, and only `--allow-network "who: why"` and `--env-allow`
+  at the terminal grant them. Names are validated, and names that change
+  what a process loads are refused whoever asks. The file is part of the
+  implement loop's fence: rewritten, it is restored and the round says
+  so; planted where none was, it is removed. Tests for each, including
+  the planted file and a policy asking for 900g.
+- **`mutated` is measured.** The envelope said true only on a writing
+  tool's exit 0, which assumed a failure had written nothing. The
+  record's files are now hashed before and after a writing tool, so a
+  write that failed partway and left changes says true. That is a field
+  changing meaning, so `schema_version` is 2, as the policy published in
+  0.1.45 said it would be; the schema's description says what changed.
+- The sanitisation suite skips, saying why, outside a git checkout: a
+  reviewer running the tests from a source archive saw a collection
+  error where a skip was the truth.
+- Not done, and said so: splitting `emit.py` and `cli.py`. They are
+  large; they are also where every pinned finding lives, and a split
+  without a user asking for a change is churn with the same tests.
+
 ## [0.1.46] — 2026-10-12
 
 Three readings in a row asked for the same thing before anything else:
