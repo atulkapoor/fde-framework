@@ -5,6 +5,19 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+- **The pictures say what the code says.** The README banner and the
+  social-preview card had carried "seven gates" since before the eighth
+  gate shipped in 0.1.30, drawn once by hand; a fourteenth outside
+  reading found the banner contradicting the README it headed. They are
+  now drawn by `assets/brand.py` from the gate count the gates module
+  reports, each image carries its sentence in a PNG text chunk, and a
+  test holds the pictures to the code. The site's image alt text said the
+  same; corrected.
+- The demo table says what *Stage* is: the record's lifecycle stage,
+  computed from evidence, so `production` on the banking row means
+  deployed, attested and journalled -- on a laptop, as the record says --
+  not production reliability, which the claim ladder keeps unverified.
+
 ## [0.1.45] — 2026-10-11
 
 A twelfth outside reading, and a coding agent driving the server for the

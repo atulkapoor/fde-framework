@@ -300,6 +300,13 @@ drill).
 | rfc-qa | prototype | 16/23 | 30.0% on 10 | 30.0% | -- |
 | banking | production (a laptop, attested as such; stopped once by its own stop condition, cleared at the shipped 1.0-nat margin) | 23/25; does not beat the bank's baseline, on coverage | 73.8% on 3,036, abstaining 18.2% | 90.2% | 71.6% on 3,079 |
 
+*Stage* is the record's lifecycle stage, computed from its evidence by
+`fde stage`. `production` means the build was deployed and attested by
+name and the field has been journalled through it -- here on a laptop, as
+the record says -- not that production reliability is proven; the claim
+ladder above keeps that unverified until a client's production says
+otherwise.
+
 ## Two rules
 
 Every intake surface — prose, interviews, scans, sample pairs, the client's

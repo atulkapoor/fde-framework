@@ -90,9 +90,12 @@ def tracked_files() -> list[str]:
 # unless a person has reviewed it and listed it here. Each entry is a
 # reviewed decision, not an exemption category.
 REVIEWED_BINARIES = {
-    # All generated from code in this repository (Pillow scripts), reviewed
-    # visually, no embedded data. PNG rather than SVG because SVG does not
-    # render in the GitHub mobile app or through PyPI's image proxy.
+    # All generated from code in this repository (Pillow scripts beside
+    # them: assets/brand.py, assets/how-it-fits.py), reviewed visually. The
+    # only embedded data is the sentence each image prints, in a PNG text
+    # chunk, so tests/test_assets.py can hold the picture to the code. PNG
+    # rather than SVG because SVG does not render in the GitHub mobile app
+    # or through PyPI's image proxy.
     "assets/social-preview.png",
     "assets/banner-dark.png",
     "assets/banner-light.png",
