@@ -5,6 +5,31 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.44] — 2026-10-12
+
+An eleventh outside reading found the README contradicting itself on its
+own test count, and asked for the published wheel to be the thing that
+is tested. Both done, with the two small things a stranger's first five
+minutes need.
+
+- **One count, in one place.** The README stated the test count three
+  times and two of them were six releases stale. It is now stated once,
+  in the claim ladder, and the other two places say where to look.
+- **A stranger's install, every release.** The release workflow now
+  installs the published wheel, not the checkout, into a fresh
+  interpreter and walks the documented first five minutes: triage,
+  start, next, status, the MCP check, the doctor. The index lags a tag
+  by a minute, so it retries before concluding anything.
+- **`fde doctor`.** The interpreter, the package, the registry, the
+  working directory, each optional extra, and whether docker, the agent
+  and the linter are on the path -- each line a measurement, exit 1 only
+  when something the core needs is missing.
+- **The envelope is versioned.** `schema_version` on every reply, the
+  contract written in the server module, and a test that reaches all
+  four statuses, including failed.
+- The first screen links the banking run as the one case where the
+  framework told itself to stop.
+
 ## [0.1.43] — 2026-10-11
 
 A tenth outside reading, of 0.1.42, found the one place the server's
