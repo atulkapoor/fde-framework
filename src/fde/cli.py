@@ -2335,6 +2335,20 @@ def experiment_cmd(
         raise typer.Exit(1) from exc
 
 
+@app.command("mcp")
+def mcp_cmd() -> None:
+    """Serve the framework's conversational commands to a coding agent over
+    stdio (Model Context Protocol): triage, start, frame, status, next,
+    stage, debt, stop_when, history. Add it with, for example,
+    `claude mcp add fde -- fde mcp`."""
+    try:
+        from fde.mcp_server import serve
+        serve()
+    except ImportError as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(1) from exc
+
+
 @app.command("debt")
 def debt_cmd(
     root: Annotated[Path, typer.Argument(help="The engagement directory.")],
