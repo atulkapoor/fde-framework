@@ -5,6 +5,28 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.41] — 2026-10-11
+
+Four repositories with between a thousand and sixty thousand stars were
+read for what they do that this one does not. One thing they share: they
+live inside something people already run. This release is that, and the
+one-minute path that goes with it.
+
+- **The framework inside the coding agent.** `fde mcp` serves the
+  conversational commands -- `triage`, `start`, `frame`, `status`,
+  `next`, `stage`, `debt`, `stop_when`, `history` -- to any client that
+  speaks stdio MCP, so an engineer in Claude Code or Cursor can ask what
+  to learn before building without leaving the editor. Each tool is the
+  command of the same name, run in-process, returning exactly what the
+  terminal prints, refusals included. Nothing that builds, implements or
+  deploys is served; those stay with the person on the command line.
+  Optional extra `mcp`; pinned by tests that call the tools in-process,
+  and checked end to end over stdio with a real client.
+- **One minute, nothing to bring.** The README's first screen shows
+  `fde triage` on two pasted problems, output as it prints.
+- **The line under the title** says what the thing is rather than who it
+  is for: the decision before the AI build.
+
 ## [0.1.40] — 2026-09-28
 
 - **`fde kb validate` checks that every pattern's approach exists**
