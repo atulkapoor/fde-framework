@@ -99,8 +99,11 @@ def _registry() -> str:
     return os.environ.get("FDE_REGISTRY") or str(default_root())
 
 
-def run_command(args: list[str], registry: bool = True) -> str:
-    """One command, in-process, as the terminal would run it."""
+def run_command(args: list[str], registry: bool = True) -> tuple[str, str]:
+    """One command, in-process, as the terminal would run it: the text it
+    printed, and a status an agent can branch on without parsing prose --
+    ok, blocked (the command refused or a condition triggered: exit 1),
+    or failed (an exception, which is a bug to report)."""
     from typer.testing import CliRunner
 
     from fde.cli import app
@@ -109,10 +112,26 @@ def run_command(args: list[str], registry: bool = True) -> str:
     result = CliRunner().invoke(app, argv)
     text = (result.output or "").strip()
     if result.exception and not isinstance(result.exception, SystemExit):
-        return f"{text}\n\nfde: {type(result.exception).__name__}: {result.exception}".strip()
+        return (f"{text}\n\nfde: {type(result.exception).__name__}: {result.exception}".strip(),
+                "failed")
     if result.exit_code not in (0, None):
-        return f"{text}\n\n[fde exited {result.exit_code}]".strip()
-    return text or "(no output)"
+        return f"{text}\n\n[fde exited {result.exit_code}]".strip(), "blocked"
+    return text or "(no output)", "ok"
+
+
+def reply(tool: str, text: str, status: str, mutated: bool):
+    """What a tool returns: the text a person would read as the content, and
+    the fields an agent reasons over beside it -- status, whether the
+    record changed, which tool. The envelope follows the command's exit,
+    not a parse of its prose."""
+    from mcp import types
+
+    return types.CallToolResult(
+        content=[types.TextContent(type="text", text=text)],
+        structured_content={"tool": tool, "status": status, "mutated": mutated,
+                            "workspace": str(workspace())},
+        is_error=status == "failed",
+    )
 
 
 def build_server():
@@ -130,22 +149,28 @@ def build_server():
                              idempotent_hint=False, open_world_hint=False)
     server = MCPServer("fde", instructions=INSTRUCTIONS)
 
-    def guarded(fn):
-        """A tool that answers an Outside refusal in words."""
+    def guarded(fn, mutates: bool = False):
+        """A tool whose text comes from the command and whose envelope comes
+        from the exit; an Outside refusal is answered in words, status
+        `refused`, and nothing has changed."""
         def wrapped(*args, **kwargs):
             try:
-                return fn(*args, **kwargs)
+                text, status = fn(*args, **kwargs)
             except Outside as exc:
-                return f"refused: {exc}"
+                return reply(fn.__name__, f"refused: {exc}", "refused", False)
+            return reply(fn.__name__, text, status, mutates and status == "ok")
         wrapped.__name__ = fn.__name__
         wrapped.__doc__ = fn.__doc__
-        wrapped.__annotations__ = fn.__annotations__
+        wrapped.__annotations__ = {**fn.__annotations__, "return": "CallToolResult"}
         wrapped.__wrapped__ = fn
         return wrapped
 
+    def writing(fn):
+        return guarded(fn, mutates=True)
+
     @server.tool(annotations=reads)
     @guarded
-    def triage(statements: list[str]) -> str:
+    def triage(statements: list[str]):
         """Rank candidate problem statements by what each already settles about
         the architecture: how many facts it yields, how much of the decision
         space it closes, how many components it puts in scope. Decidability,
@@ -156,8 +181,8 @@ def build_server():
         return run_command(args)
 
     @server.tool(annotations=writes)
-    @guarded
-    def start(name: str, statement: str, base: str = "engagements") -> str:
+    @writing
+    def start(name: str, statement: str, base: str = "engagements"):
         """WRITES: opens an engagement at <base>/<name>/ inside the workspace,
         reads the statement into typed facts, and names the questions worth
         asking next. The name is a plain name; the base stays inside the
@@ -167,8 +192,8 @@ def build_server():
                             "--statement", statement], registry=False)
 
     @server.tool(annotations=writes)
-    @guarded
-    def frame(engagement: str, text: str) -> str:
+    @writing
+    def frame(engagement: str, text: str):
         """WRITES: reads a brief, pasted as text, into typed facts appended to
         the engagement's record, played back for correction with the
         follow-up questions. The engagement must be inside the workspace."""
@@ -176,14 +201,14 @@ def build_server():
 
     @server.tool(annotations=reads)
     @guarded
-    def status(engagement: str) -> str:
+    def status(engagement: str):
         """The engagement's gates, what is known by scope and who said it, what
         is still missing, and which roles have not been heard."""
         return run_command(["status", str(confine(engagement, "engagement"))])
 
     @server.tool(annotations=reads)
     @guarded
-    def next(engagement: str) -> str:
+    def next(engagement: str):
         """The single best next action judged from everything recorded, why,
         and -- when it is a question -- the evidence already on record and
         the decisions that turn on each candidate answer. Reads only; the
@@ -192,18 +217,18 @@ def build_server():
 
     @server.tool(annotations=reads)
     @guarded
-    def stage(engagement: str, project: str | None = None) -> str:
+    def stage(engagement: str, project: str | None = None):
         """Where the engagement stands, computed off its record: discovery,
         validation, prototype, pilot, production, adoption, retrospective,
-        or stopped -- with what would move it to the next stage. Appends a
-        transition to the record only when the stage changed."""
-        args = ["stage", str(confine(engagement, "engagement"))]
+        or stopped -- with what would move it to the next stage. Reads only:
+        a person runs `fde stage` to append the transition to the record."""
+        args = ["stage", str(confine(engagement, "engagement")), "--no-record"]
         target = confine(project, "project")
         return run_command(args + (["--project", str(target)] if target else []))
 
     @server.tool(annotations=reads)
     @guarded
-    def debt(engagement: str) -> str:
+    def debt(engagement: str):
         """Decision debt: everything the engagement rests on that nobody has
         settled -- failing gates, standing waivers, guessed or merely stated
         facts, disagreements, unsigned attestations, unheard roles, open
@@ -213,7 +238,7 @@ def build_server():
     @server.tool(annotations=reads)
     @guarded
     def stop_when(engagement: str, project: str | None = None,
-                  journal: str | None = None) -> str:
+                  journal: str | None = None):
         """Judge the engagement's stop conditions against what the record has
         measured: the scorecard, the field journal, the recorded outcomes.
         Reads only; recording a condition is for a person."""
@@ -228,7 +253,7 @@ def build_server():
 
     @server.tool(annotations=reads)
     @guarded
-    def history(engagement: str) -> str:
+    def history(engagement: str):
         """Every dated entry on the engagement's record, in order, the undated
         ones above it, one line each."""
         return run_command(["history", str(confine(engagement, "engagement"))],

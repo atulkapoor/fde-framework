@@ -109,7 +109,10 @@ the argument `mcp`:
 
 It serves `triage`, `start`, `frame`, `status`, `next`, `stage`, `debt`,
 `stop_when` and `history`, each returning exactly what the terminal prints,
-refusals included. An agent is not a person, so every path it supplies must
+refusals included, beside a small envelope an agent can branch on without
+parsing prose: `status` (ok, blocked, refused, failed), `mutated`, and the
+workspace. The envelope follows the command's exit, never a reading of
+its text. An agent is not a person, so every path it supplies must
 stay inside one workspace, the directory the server started in or
 `FDE_WORKSPACE`; a path outside it, a traversal, or a symlink that points
 out is refused in words, and engagement names are plain names. The two
@@ -181,7 +184,7 @@ ladder, so nothing here can be over-read:
 
 | Claim | Status | The evidence, and where it stops |
 |---|---|---|
-| The framework is implemented | verified | 1,302 tests on three Pythons in CI; lint clean; every audit finding pinned as a check before it was fixed |
+| The framework is implemented | verified | 1,306 tests on three Pythons in CI; lint clean; every audit finding pinned as a check before it was fixed |
 | A build is reproducible | verified | byte-identical rebuild pinned by test; each public demo carries a Reproduce section and its digests |
 | The decisions generalise | partial | four shapes (extraction, freeform QA, a labelled decision, seventy-seven-way routing) on real data; one industry set; `fde kb sweep` names the shapes nothing serves |
 | The deliverable is production-reliable | unverified | no production engagement; the banking operating loop ran on a laptop and its record says so |
@@ -654,7 +657,7 @@ the same receipts the emitted `ARCHITECTURE.md` prints.
 | `fde implement project/` | drive a coding agent until the emitted evals pass, inside guardrails |
 | `fde scorecard project/ --holdout <file>` | measure production grade: every property the deliverable can prove, with the number, in `SCORECARD.md` |
 | `fde scorecard project/ --holdout <file> --coverage-floor 0.97 --max-gap 0.08` | the engagement's own bars: the share the system must answer for the baseline row to hold (default: 1 minus the baseline's exception rate), and its limit on the golden-to-holdout gap (protocol default 20%) |
-| `fde stage <eng>` | where the engagement stands, computed from the record; transitions appended to `lifecycle.jsonl` |
+| `fde stage <eng>` | where the engagement stands, computed from the record; transitions appended to `lifecycle.jsonl` (`--no-record` to look without appending) |
 | `fde deployed <eng> --note "..."` | attest the deployment: where it runs and who put it there |
 | `fde drift <eng> --journal <log>` | the field against the exam: abstention, mix, errors, margins; opens an incident and exits 1 when it moved |
 | `fde incident <eng> list \| close <id> --note "..."` | incidents on the record; an open one holds the stage at pilot |

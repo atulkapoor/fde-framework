@@ -1914,10 +1914,14 @@ def stage_cmd(
     )] = None,
     registry_root: Annotated[Path, typer.Option("--registry")] = DEFAULT_ROOT,
     today: Annotated[str, typer.Option(help="For the record; defaults to today.")] = "",
+    no_record: Annotated[bool, typer.Option(
+        "--no-record", help="Compute and print the stage without appending a transition."
+    )] = False,
 ) -> None:
     """Where the engagement stands: discovery, validation, prototype, pilot,
     production, adoption, retrospective -- computed from the record, never
-    declared. Appends a transition to lifecycle.jsonl when the stage moved.
+    declared. Appends a transition to lifecycle.jsonl when the stage moved,
+    unless --no-record.
     """
     from fde.lifecycle import assess, record, render
 
@@ -1928,7 +1932,7 @@ def stage_cmd(
     except Exception:  # noqa: BLE001 -- an unjudgeable gate is "not judged", shown as such
         blocked = None
     lifecycle = assess(engagement, blocked, _project_of(engagement, project))
-    moved = record(engagement, lifecycle, today or None)
+    moved = None if no_record else record(engagement, lifecycle, today or None)
     typer.echo(render(lifecycle, engagement.root.name))
     if moved:
         typer.echo(f"\nrecorded: {moved['from'] or 'start'} -> {moved['stage']} "

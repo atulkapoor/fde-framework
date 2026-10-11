@@ -57,8 +57,8 @@ def test_start_status_and_next_walk_an_engagement(tmp_path, monkeypatch):
 
 
 def test_a_refusal_comes_back_as_the_command_printed_it(tmp_path):
-    text = run_command(["status", str(tmp_path / "nowhere")])
-    assert "[fde exited" in text and "nowhere" in text
+    text, status = run_command(["status", str(tmp_path / "nowhere")])
+    assert "[fde exited" in text and "nowhere" in text and status == "blocked"
 
 
 def test_the_thirty_second_resource_is_served():
@@ -150,3 +150,74 @@ def test_the_check_mode_lists_what_is_served_without_serving(tmp_path, monkeypat
     assert result.exit_code == 0, result.output
     assert f"workspace {tmp_path.resolve()}" in result.output
     assert "start      writes" in result.output and "status     reads" in result.output
+
+
+# --- the contract: what a tool says it does is what it does
+
+
+def snapshot(root):
+    import hashlib
+    return {str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in root.rglob("*") if p.is_file()}
+
+
+def test_read_only_tools_change_nothing_and_writing_tools_say_they_did(tmp_path, monkeypatch):
+    monkeypatch.setenv("FDE_WORKSPACE", str(tmp_path))
+    server = build_server()
+    result = asyncio.run(server.call_tool("start", {"name": "acme", "base": "engagements",
+                                                     "statement": "Route each message."}))
+    assert result.structured_content["mutated"] is True
+    root = tmp_path / "engagements" / "acme"
+    before = snapshot(root)
+    tools = {t.name: t for t in asyncio.run(server.list_tools())}
+    for name, arguments in (("status", {}), ("next", {}), ("stage", {}), ("debt", {}),
+                            ("stop_when", {}), ("history", {})):
+        assert tools[name].annotations.read_only_hint is True
+        result = asyncio.run(server.call_tool(name, {"engagement": "engagements/acme",
+                                                     **arguments}))
+        assert result.structured_content["mutated"] is False, name
+        assert snapshot(root) == before, f"{name} changed the record while marked read-only"
+    assert not (root / "lifecycle.jsonl").exists()  # stage previewed, nothing appended
+    result = asyncio.run(server.call_tool("frame", {"engagement": "engagements/acme",
+                                                     "text": "Five hundred PDFs a day arrive."}))
+    assert tools["frame"].annotations.read_only_hint is False
+    assert result.structured_content["mutated"] is True and snapshot(root) != before
+
+
+def test_every_reply_carries_a_status_an_agent_can_branch_on(tmp_path, monkeypatch):
+    monkeypatch.setenv("FDE_WORKSPACE", str(tmp_path))
+    server = build_server()
+    ok = asyncio.run(server.call_tool("triage", {"statements": ["Route messages.", "Read PDFs."]}))
+    assert ok.structured_content["status"] == "ok" and not ok.is_error
+    refused = asyncio.run(server.call_tool("status", {"engagement": "/etc"}))
+    assert refused.structured_content["status"] == "refused"
+    assert refused.structured_content["mutated"] is False
+    blocked = asyncio.run(server.call_tool("status", {"engagement": "engagements/nowhere"}))
+    assert blocked.structured_content["status"] == "blocked"
+    assert "[fde exited" in blocked.content[0].text
+    assert all("workspace" in r.structured_content for r in (ok, refused, blocked))
+
+
+def test_starting_an_existing_engagement_cannot_overwrite_it(tmp_path, monkeypatch):
+    monkeypatch.setenv("FDE_WORKSPACE", str(tmp_path))
+    server = build_server()
+    call(server, "start", name="acme", base="engagements", statement="Route each message.")
+    root = tmp_path / "engagements" / "acme"
+    call(server, "frame", engagement="engagements/acme", text="Five hundred PDFs a day arrive.")
+    before = snapshot(root)
+    again = asyncio.run(server.call_tool("start", {"name": "acme", "base": "engagements",
+                                                    "statement": "Something else entirely."}))
+    assert again.structured_content["status"] == "blocked"
+    assert again.structured_content["mutated"] is False
+    assert "already exists" in again.content[0].text
+    assert snapshot(root) == before
+
+
+def test_check_mode_creates_nothing(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from fde.cli import app
+
+    monkeypatch.setenv("FDE_WORKSPACE", str(tmp_path))
+    result = CliRunner().invoke(app, ["mcp", "--check"])
+    assert result.exit_code == 0 and not any(tmp_path.iterdir())
