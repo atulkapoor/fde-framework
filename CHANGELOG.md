@@ -5,6 +5,32 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.42] — 2026-10-11
+
+A ninth outside reading, of 0.1.41 on the day it shipped, found the one
+thing the new server lacked: the agent could hand it any path. True, and
+closed the same day.
+
+- **The agent's paths stay inside one workspace.** Every path a tool
+  receives -- an engagement, a base, a project, a journal -- is resolved
+  with its symlinks and must land inside the workspace, the directory
+  the server started in or `FDE_WORKSPACE`; a traversal, an absolute
+  path elsewhere, or a link inside that points outside is refused in the
+  tool's own words. Engagement names are plain names. Relative paths are
+  taken from the workspace, not from wherever the agent's cwd happens to
+  be. The command line is unchanged: a person at a terminal has their
+  own authority, and the confinement is for the agent.
+- **The writing tools say so.** `start` and `frame` are described as
+  writing and carry the protocol's read-only and destructive hints, so a
+  client can ask before they run; the other seven are marked read-only.
+- **`fde mcp --check`** builds the server and lists what it serves, from
+  which workspace and registry, without serving it: the smoke test for a
+  fresh install.
+- Pinned by adversarial tests -- traversal, absolute paths, a symlink
+  escape, bad names, a different cwd -- that assert nothing outside the
+  workspace is created, and by an escape attempt through the real server
+  over stdio.
+
 ## [0.1.41] — 2026-10-11
 
 Four repositories with between a thousand and sixty thousand stars were
