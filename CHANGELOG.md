@@ -5,6 +5,29 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.48] — 2026-10-13
+
+A seventeenth outside reading ran the support-triage example to its
+holdout and found the one evaluation that most needs to come out whole
+coming out as a traceback.
+
+- **An evaluation that abstains on everything is reported, not
+  crashed.** The example's third decision is not among the two the
+  baseline was fitted on, so its one holdout case abstains; the accuracy
+  on the answered is then None, and the harness raised formatting it as
+  a percentage -- before the report the scorecard reads was written. The
+  scorecard formatted the same figure in three rows. Now the harness
+  prints "n/a, zero cases answered", writes its report before any console
+  line on both paths, and the card's holdout, external and baseline rows
+  say "nothing answered" and hold NO with their reasons. Pinned by a unit
+  test on the card and by a test that builds the support-triage example
+  and runs its harness and its scorecard on that holdout.
+- Not changed, and said so: the worked examples ship three pairs each and
+  say that a golden set below forty measures the examples rather than the
+  system; the four public demos on real data are the benchmarks. The
+  invoice example's OCR stays unwired because wiring it is what
+  `fde implement` does, with an agent, against the holdout.
+
 ## [0.1.47] — 2026-10-12
 
 A fifteenth outside reading, the first of the source tree, and a
