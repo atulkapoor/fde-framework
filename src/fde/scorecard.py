@@ -157,8 +157,10 @@ def exam(card: Scorecard, project: Path, timeout: float, min_score: float,
             note = f"majority {majority:.1%}"
             holds = score > majority
             if layer["decision"].get("abstained"):
+                answered = layer["decision"].get("answered_accuracy")
+                shown = f"{answered:.1%}" if answered is not None else "nothing answered"
                 note += (f"; abstained {layer['decision']['abstain_rate']:.1%}, "
-                         f"{layer['decision']['answered_accuracy']:.1%} on the answered")
+                         f"{shown} on the answered")
         if name == "edge_case" and layer["cases"] < EDGE_FLOOR:
             holds = False
             note = (note + "; " if note else "") + f"fewer than {EDGE_FLOOR} cases is not a layer"
@@ -302,8 +304,9 @@ def holdout(card: Scorecard, project: Path, path: Path | None, timeout: float,
         note = f"majority {majority:.1%}"
         holds = holds and score > majority
         if decision.get("abstained"):
-            note += (f"; abstained {decision['abstain_rate']:.1%}, "
-                     f"{decision['answered_accuracy']:.1%} on the answered")
+            answered = decision.get("answered_accuracy")
+            shown = f"{answered:.1%}" if answered is not None else "nothing answered"
+            note += f"; abstained {decision['abstain_rate']:.1%}, {shown} on the answered"
     card.add("holdout", f"{score:.1%} on {cases} cases" + (f" ({note})" if note else ""), holds,
              "cases the delivery never shipped; the harness's holdout floor applies")
     card.add("holdout: sample size", f"{cases} cases",
@@ -354,8 +357,9 @@ def external(card: Scorecard, project: Path, path: Path | None, timeout: float,
         note = f"majority {decision['majority_rate']:.1%}"
         holds = holds and score > decision["majority_rate"]
         if decision.get("abstained"):
-            note += (f"; abstained {decision['abstain_rate']:.1%}, "
-                     f"{decision['answered_accuracy']:.1%} on the answered")
+            answered = decision.get("answered_accuracy")
+            shown = f"{answered:.1%}" if answered is not None else "nothing answered"
+            note += f"; abstained {decision['abstain_rate']:.1%}, {shown} on the answered"
     card.add("external exam", f"{score:.1%} on {cases} cases" + (f" ({note})" if note else ""),
              holds)
     card.add("external exam: sample size", f"{cases} cases", cases >= PROTOCOL_FLOOR,

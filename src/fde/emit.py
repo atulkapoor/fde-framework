@@ -3476,8 +3476,13 @@ def print_layer(layer):
         print(f"               majority rate {{d['majority_rate']:.1%}}, "
               f"macro-F1 {{d['macro_f1']:.3f}}")
         if d.get("abstained"):
+            # Every case abstained once: the accuracy on the answered was
+            # None, this line raised, and the report the scorecard reads was
+            # never written -- the one run that most needed a clean report.
+            answered = d.get("answered_accuracy")
+            shown = f"{{answered:.1%}}" if answered is not None else "n/a, zero cases answered"
             print(f"               abstained {{d['abstain_rate']:.1%}}; accuracy on the "
-                  f"answered {{d['answered_accuracy']:.1%}}")
+                  f"answered {{shown}}")
         for label, m in d["per_class"].items():
             print(f"                 {{label[:40]:40}} P {{m['precision']:.2f}}  "
                   f"R {{m['recall']:.2f}}  F1 {{m['f1']:.2f}}  n={{m['support']}}")
@@ -3549,6 +3554,11 @@ def main():
                      for line in Path(args.cases).read_text().splitlines()
                      if line.strip()]
             layer = run_layer("holdout", cases, predict)
+            # The machine-readable report first, whatever the console does
+            # next: a scorecard reads it, and a run that abstains on every
+            # case is the one a scorecard must see.
+            if args.report:
+                write_report(args.report, [layer], calibration)
             print_layer(layer)
             recorded = holdout_digest_on_record()
             if recorded:
@@ -3560,8 +3570,6 @@ def main():
             if calibration is not None and "agreement" not in calibration:
                 print("JUDGE UNCALIBRATED: this holdout score is not quotable until "
                       "evals/calibrate.py passes", file=sys.stderr)
-            if args.report:
-                write_report(args.report, [layer], calibration)
             if layer["cases"] == 0:
                 print("holdout file holds no cases", file=sys.stderr)
                 return 1
@@ -3594,6 +3602,8 @@ def main():
     except ModelUnconfigured as exc:
         print(f"the evaluation is judge-based and {{exc}}", file=sys.stderr)
         return 1
+    if args.report:
+        write_report(args.report, report, calibration)
 
     if JUDGED:
         print("metrics: judged comparison against the reference")
@@ -3618,8 +3628,6 @@ def main():
         print(f"note: {{count}} case(s) entered as {{note}} -- these scores measure what "
               f"follows the reading stage, not the reading; bring page-shaped cases to "
               f"exercise it", file=sys.stderr)
-    if args.report:
-        write_report(args.report, report, calibration)
 
     golden = next(layer for layer in report if layer["layer"] == "golden")
     if golden["cases"] == 0:

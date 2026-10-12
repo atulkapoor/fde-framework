@@ -337,3 +337,23 @@ def test_the_gap_limit_is_a_default_the_engagement_can_tighten(tmp_path, monkeyp
     holdout(card, project, _cases(tmp_path, 40), 10, None, golden_score=0.892, max_gap=0.08)
     row = rows_of(card)["generalisation gap"]
     assert row.holds is False and "against 8% (set by the engagement)" in row.measured
+
+
+def test_a_holdout_that_abstained_on_every_case_is_a_red_row_not_a_traceback(tmp_path,
+                                                                             monkeypatch):
+    """The accuracy on the answered is None when nothing was answered, and
+    three rows formatted it as a percentage: the card raised on the one
+    run a card most needs to describe."""
+    from fde.scorecard import Scorecard, holdout
+    _fake_layer(monkeypatch, {"score": 0.0, "decision": {"majority_rate": 1.0, "abstained": 1,
+                                                         "abstain_rate": 1.0,
+                                                         "answered_accuracy": None}})
+    project = tmp_path / "p"
+    (project / "evals").mkdir(parents=True)
+    card = Scorecard(project=str(project))
+    holdout(card, project, _cases(tmp_path, 1), 10, None, error_rate=0.06, exception_rate=0.14)
+    rows = rows_of(card)
+    assert rows["holdout"].holds is False
+    assert "abstained 100.0%, nothing answered on the answered" in rows["holdout"].measured
+    assert rows["beats the baseline error rate"].holds is False
+    assert "abstained=1" in rows["beats the baseline error rate"].measured

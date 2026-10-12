@@ -203,3 +203,45 @@ def test_the_invoice_example_reaches_its_extraction_stage_and_says_ocr_went_unex
     assert "RefusedInput" not in run.stdout + run.stderr
     assert "entered as text supplied; the OCR stage was not exercised" in run.stderr
     assert '"source": "prediction"' in run.stdout
+
+
+def test_a_holdout_the_build_abstains_on_entirely_is_reported_not_crashed(tmp_path, monkeypatch):
+    """The support-triage example's third decision is not among the two the
+    baseline was fitted on, so the holdout's one case abstains. The harness
+    once raised formatting the accuracy on the answered (None), before the
+    report the scorecard reads was written. An abstaining system is exactly
+    the one whose evaluation must come out whole."""
+    import subprocess
+    import sys
+
+    example = REPO / "examples" / "support-triage"
+    monkeypatch.chdir(tmp_path)
+    for argv in (["start", "triage", "--statement",
+                  "Decide each incoming customer complaint: refund, escalate, or reply."],
+                 ["frame", "triage", "--file", str(example / "brief.md"), "--registry", FRAMEWORK],
+                 ["samples", "triage", "--file", str(example / "pairs.jsonl")],
+                 ["baseline", "triage", "--file", str(example / "baseline.yaml")],
+                 ["data-access", "triage", "--note", "CRM replica returned 5,214 rows"],
+                 ["security-review", "triage", "--note", "infosec reviewed tool scopes"],
+                 ["waive", "triage", "client_readiness", "--reason", "triage lead named"],
+                 ["outcome-contract", "triage", "--owner", "the triage lead",
+                  "--metric", "complaint_age_at_decision", "--baseline", "26", "--unit", "hours",
+                  "--target", "8", "--method", "CRM timestamps", "--window", "60 days"]):
+        result = runner.invoke(app, argv)
+        assert result.exit_code == 0, (argv, result.output)
+    built = runner.invoke(app, ["build", "triage", "--out", "project", "--registry", FRAMEWORK])
+    assert "wrote project" in built.output, built.output
+    holdout = tmp_path / "engagements" / "triage" / "artifacts" / "holdout.jsonl"
+    report = tmp_path / "holdout-report.json"
+    run = subprocess.run([sys.executable, "evals/harness.py", "--cases", str(holdout),
+                          "--report", str(report)], cwd=tmp_path / "project",
+                         capture_output=True, text=True, timeout=300)
+    assert run.returncode == 1 and "Traceback" not in run.stderr, run.stderr
+    assert "accuracy on the answered n/a, zero cases answered" in run.stdout
+    written = json.loads(report.read_text())
+    layer = next(layer for layer in written["layers"] if layer["layer"] == "holdout")
+    assert layer["decision"]["answered_accuracy"] is None
+    card = runner.invoke(app, ["scorecard", "project", "--holdout", str(holdout)])
+    assert card.exit_code == 1, card.output
+    assert "Traceback" not in card.output
+    assert "abstained 100.0%, nothing answered on the answered" in card.output
