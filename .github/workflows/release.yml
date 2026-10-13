@@ -118,7 +118,12 @@ jobs:
       - name: The wheel the index serves is the wheel the tests ran against
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
-          pip download --no-deps --no-cache-dir --only-binary :all: -d served "fde-framework==$VERSION"
+          # The same lag as the install above: one mirror can answer the
+          # install and another, seconds later, not yet list the version.
+          for i in $(seq 1 20); do
+            pip download --no-deps --no-cache-dir --only-binary :all: -d served "fde-framework==$VERSION" && break
+            sleep 30
+          done
           sha256sum built/*.whl served/*.whl
           test "$(sha256sum built/*.whl | cut -d' ' -f1)" = "$(sha256sum served/*.whl | cut -d' ' -f1)"
       - name: The documented first five minutes

@@ -5,6 +5,11 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+- The release workflow's hash check retries its download the way the
+  install retries: one mirror answered the install and another, seconds
+  later, did not yet list the version, and the check failed on its own
+  lag rather than on the wheel.
+
 ## [0.1.49] — 2026-10-13
 
 The tools said what a coding agent *can* do; nothing said *when*. And
