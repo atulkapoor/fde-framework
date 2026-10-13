@@ -5,6 +5,41 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.49] — 2026-10-13
+
+The tools said what a coding agent *can* do; nothing said *when*. And
+the file that answers the same proposal for the fifth time did not
+exist.
+
+- **The `fde` skill.** `skills/fde/SKILL.md` tells a coding agent that
+  before it scaffolds an AI system it triages what the statement
+  settles (when there is more than one candidate), opens the engagement,
+  and asks for the next thing to learn; that it quotes the framework's
+  output rather than summarising it kinder; and that building, waiving
+  and attesting are the person's, at their terminal. It uses the MCP
+  tools when they are configured and the command line when not, and
+  stops with the install line when neither is there. Installable as a
+  Claude Code plugin (`/plugin install fde --marketplace
+  atulkapoor/fde-framework`) and through skills.sh for the rest
+  (`npx skills@latest add atulkapoor/fde-framework`); the manifests sit
+  in `.claude-plugin/`. A test holds the skill to the commands that
+  exist, the tools that are served, and the commands it forbids; the
+  plugin's version is held to the package's. Driven by Claude Code from
+  the checkout: the agent loaded the skill, skipped triage for one
+  candidate as written, opened the engagement, and relayed `next`
+  verbatim.
+- **The envelope carries the text.** That first run also found that a
+  client which shows the model a tool's structured content shows only
+  that: the agent saw every status and none of the words, and went
+  looking for them on disk. The command's text is now inside the
+  envelope as well as beside it. A field added; the version stays 2.
+- **`DECLINED.md`.** The bar an idea has to clear -- a user who hit the
+  need, or a defect reproducible from the public source -- and fifteen
+  ideas that did not, each with its reason and the release that declined
+  it. CONTRIBUTING and the README point at it. The layout is borrowed
+  from a skills repository that keeps a file per rejected idea; nothing
+  else is.
+
 ## [0.1.48] — 2026-10-13
 
 A seventeenth outside reading ran the support-triage example to its

@@ -1,0 +1,23 @@
+{
+  "name": "fde",
+  "version": "0.1.49",
+  "description": "The decision before the AI build: before an agent scaffolds an AI system, rank what the statement settles, open an engagement record, and name the next thing to learn. Refuses to build until the evidence is there; never builds, implements or deploys.",
+  "author": {
+    "name": "Atul Kapoor",
+    "url": "https://github.com/atulkapoor"
+  },
+  "homepage": "https://atulkapoor.github.io/fde-framework/",
+  "repository": "https://github.com/atulkapoor/fde-framework",
+  "license": "Apache-2.0",
+  "keywords": [
+    "forward-deployed-engineer",
+    "ai-architecture",
+    "evaluation",
+    "discovery",
+    "decision",
+    "mcp"
+  ],
+  "skills": [
+    "./skills/fde"
+  ]
+}
