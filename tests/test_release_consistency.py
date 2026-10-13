@@ -16,6 +16,10 @@ def test_pyproject_citation_and_changelog_agree_on_the_version():
     assert citation and citation.group(1) == version, "CITATION.cff lags pyproject.toml"
     latest = re.search(r"^## \[(\d+\.\d+\.\d+)\]", (REPO / "CHANGELOG.md").read_text(), re.M)
     assert latest and latest.group(1) == version, "CHANGELOG.md's newest entry lags the version"
+    import json
+
+    plugin = json.loads((REPO / ".claude-plugin" / "plugin.json").read_text())
+    assert plugin["version"] == version, ".claude-plugin/plugin.json lags pyproject.toml"
 
 
 def test_citation_and_changelog_agree_on_the_date_and_it_is_not_ahead_of_today():

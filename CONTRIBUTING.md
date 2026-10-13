@@ -38,6 +38,12 @@ express it.
 
 ## 2 · Contributions enter against a contract
 
+Features first: an idea is taken up when a person using the framework on
+a real workflow hit the need, or when an outside reading found a defect
+reproducible from the public source. [DECLINED.md](DECLINED.md) is the
+bar in full and the ideas that did not clear it, each with its reason;
+read it before filing one, and if yours is there, say what changed.
+
 The registry under `framework/` is data. Adding a stack, pattern, approach,
 ladder or case is a file — never a change to `src/`. If your contribution
 requires editing the core, that is a signal the design is missing an abstraction:

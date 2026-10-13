@@ -50,6 +50,13 @@ ALLOWED = (
     # How the framework got here: the audit passes and what each one changed,
     # moved out of the README's front page; authored, in the author's words.
     "HISTORY.md",
+    # The bar an idea has to clear and the ones that did not; authored.
+    "DECLINED.md",
+    # The skill a coding agent loads, and the plugin manifests that make it
+    # installable; authored, no client material, the tests hold the skill
+    # to the commands and tools that exist.
+    "skills/",
+    ".claude-plugin/",
     "CITATION.cff",
     ".editorconfig",
     "ARCHITECTURE.md",

@@ -68,8 +68,14 @@ ENVELOPE_SCHEMA = {
                                    "assumed a failure had written nothing.)"},
         "workspace": {"type": "string",
                       "description": "The directory every path was confined to."},
+        "text": {"type": "string",
+                 "description": "What the command printed, verbatim: the same text as the "
+                                "reply's content block. Here as well because a client that "
+                                "shows the model the structured content shows only that, "
+                                "and an agent that could see the status but not the words "
+                                "went looking for them on disk."},
     },
-    "required": ["schema_version", "tool", "status", "mutated", "workspace"],
+    "required": ["schema_version", "tool", "status", "mutated", "workspace", "text"],
     "additionalProperties": False,
 }
 
@@ -206,7 +212,7 @@ def reply(tool: str, text: str, status: str, mutated: bool):
     return types.CallToolResult(
         content=[types.TextContent(type="text", text=text)],
         structured_content={"schema_version": SCHEMA_VERSION, "tool": tool, "status": status,
-                            "mutated": mutated, "workspace": str(workspace())},
+                            "mutated": mutated, "workspace": str(workspace()), "text": text},
         is_error=status == "failed",
     )
 

@@ -1,0 +1,22 @@
+{
+  "name": "atulkapoor",
+  "owner": {
+    "name": "Atul Kapoor",
+    "url": "https://github.com/atulkapoor"
+  },
+  "description": "fde, the decision before the AI build, as an installable Claude Code plugin.",
+  "plugins": [
+    {
+      "name": "fde",
+      "source": "./",
+      "description": "The decision before the AI build: triage, an engagement record, the next thing to learn, and a refusal when the evidence is not there. Never builds.",
+      "category": "engineering",
+      "keywords": [
+        "forward-deployed-engineer",
+        "ai-architecture",
+        "evaluation",
+        "decision"
+      ]
+    }
+  ]
+}

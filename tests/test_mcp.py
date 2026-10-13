@@ -385,3 +385,18 @@ def test_mutated_is_measured_so_a_failed_write_that_left_changes_says_so(tmp_pat
     assert again.structured_content["mutated"] is False
     reading = asyncio.run(server.call_tool("status", {"engagement": "acme"}))
     assert reading.structured_content["mutated"] is False
+
+
+def test_the_envelope_carries_the_text_so_a_client_that_shows_only_it_shows_the_words(tmp_path,
+                                                                                       monkeypatch):
+    """Claude Code presents a tool's structured content to the model when
+    there is one. The first run of the skill saw every status and none of
+    the words, and went looking for them on disk."""
+    monkeypatch.setenv("FDE_WORKSPACE", str(tmp_path))
+    server = build_server()
+    opened = asyncio.run(server.call_tool("start", {
+        "name": "acme", "statement": "Route each support message to one of 77 queues."}))
+    nxt = asyncio.run(server.call_tool("next", {"engagement": "acme"}))
+    for result in (opened, nxt):
+        assert result.structured_content["text"] == result.content[0].text
+    assert nxt.structured_content["text"].startswith("next: fde ")
