@@ -135,8 +135,11 @@ never a reading of its text; `mutated` is measured, the record's files
 hashed before and after, so a write that failed partway and left changes
 says so. Its contract is a JSON Schema, `fde mcp --schema`, that every
 reply is tested against; a client pins `schema_version`, which moves
-only when a field changes meaning or goes away, never when one is added
-(it moved to 2 when `mutated` became a measurement). An engagement is named as `start` named
+when a field changes meaning or goes away, and the schema admits fields
+it does not name, so a field added keeps a client's copy valid. It moved
+to 2 when `mutated` became a measurement and to 3 when `text` became
+required -- added under a closed 2 at first, which a strict client would
+have rejected; an outside reading caught it. An engagement is named as `start` named
 it (`start(name="acme")`, then `status(engagement="acme")`), or by its
 path. An agent is not a person, so every path it supplies must stay
 inside one workspace, the directory the server started in or
@@ -246,9 +249,10 @@ data, all public with every refusal preserved.
   it routes with 18% handed to a person, scored on a 3,036-case holdout
   and the vendor's own test split.
 
-Fourteen outside readings have shaped the releases since, each finding
-pinned as a check before it was fixed; the story, pass by pass, is in
-[`HISTORY.md`](https://github.com/atulkapoor/fde-framework/blob/main/HISTORY.md).
+Outside readings have shaped every release since, each finding pinned as
+a check before it was fixed; the story, pass by pass, is in
+[`HISTORY.md`](https://github.com/atulkapoor/fde-framework/blob/main/HISTORY.md),
+which is the one place that counts them.
 
 **Built**: the pipeline exists end to end — intake (prose, documents, sample
 pairs, role-scoped interview, hardware scan) → fact log with provenance →

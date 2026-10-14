@@ -58,7 +58,7 @@ def test_the_emitted_project_imports(built):
     result = subprocess.run(
         [sys.executable, "-c", "import app.pipeline"],
         cwd=built, capture_output=True, text=True,
-    )
+        timeout=300)
     assert result.returncode == 0, result.stderr
 
 
@@ -176,7 +176,7 @@ def test_the_controls_fail_closed_until_wired(reg, tmp_path):
          "from app.controls import ApprovalGate\n"
          "ApprovalGate('x').run({'tool': 'x', 'arguments': {}})"],
         cwd=tmp_path, capture_output=True, text=True,
-    )
+        timeout=300)
     assert result.returncode != 0
     assert "NeedsApproval" in result.stderr
 
@@ -234,7 +234,7 @@ def test_the_emitted_evaluation_gate_can_fail(reg, tmp_path):
     emit(architect(profile(**COMPLETE), reg), out, pairs_path=pairs)
     result = subprocess.run(
         [sys.executable, "evals/harness.py"], cwd=out, capture_output=True, text=True,
-    )
+        timeout=300)
     assert result.returncode == 1
     # A scaffold errors, or composes into a wrong answer -- either way the
     # gate is red, and says which.
@@ -260,7 +260,7 @@ def test_a_stub_answering_with_its_envelope_scores_wrong_rather_than_crashing(re
     result = subprocess.run(
         [sys.executable, "evals/harness.py", "--report", str(report)], cwd=out,
         capture_output=True, text=True,
-    )
+        timeout=300)
     assert "TypeError" not in result.stderr and "Traceback" not in result.stderr, result.stderr
     assert result.returncode == 1
     assert "every golden case failed" in result.stderr or "errored" in result.stderr
@@ -275,7 +275,7 @@ def test_an_empty_golden_set_is_a_red_build(reg, tmp_path):
     emit(architect(profile(**COMPLETE), reg), out)
     result = subprocess.run(
         [sys.executable, "evals/harness.py"], cwd=out, capture_output=True, text=True,
-    )
+        timeout=300)
     assert result.returncode == 1
     assert "nothing was measured" in result.stderr
 
@@ -311,7 +311,7 @@ def test_an_unrealizable_component_does_not_break_the_import(reg, tmp_path):
     result = subprocess.run(
         [sys.executable, "-c", "import app.pipeline"],
         cwd=tmp_path, capture_output=True, text=True,
-    )
+        timeout=300)
     assert result.returncode == 0, result.stderr
 
 
@@ -400,8 +400,8 @@ def test_the_harness_runs(built):
     import sys
 
     result = subprocess.run(
-        [sys.executable, "evals/harness.py"], cwd=built, capture_output=True, text=True
-    )
+        [sys.executable, "evals/harness.py"], cwd=built, capture_output=True, text=True,
+        timeout=300)
     # The fixture has no pairs, so the honest exit is red -- but the report
     # still renders, which is what this test guards.
     assert result.returncode == 1
@@ -458,7 +458,7 @@ def test_the_harness_can_fail_a_build(built):
     result = subprocess.run(
         [sys.executable, "evals/harness.py", "--min-score", "1.01"],
         cwd=built, capture_output=True, text=True,
-    )
+        timeout=300)
     assert result.returncode in (0, 1)   # 0 only when there is nothing to score
 
 
@@ -518,7 +518,7 @@ def test_importing_the_pipeline_enforces_the_boundary(reg, tmp_path):
     result = subprocess.run(
         [sys.executable, "-c", "import app.pipeline"],
         cwd=tmp_path, capture_output=True, text=True,
-    )
+        timeout=300)
     assert result.returncode != 0
     assert "may not leave" in result.stderr
 
@@ -644,7 +644,7 @@ def run(payload):
 ''')
     result = subprocess.run(
         [sys.executable, "evals/harness.py"], cwd=out, capture_output=True, text=True,
-    )
+        timeout=300)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "100.0%" in result.stdout
 
@@ -698,7 +698,7 @@ def test_an_empty_golden_set_fails_the_harness(built, tmp_path):
     result = subprocess.run(
         [_sys.executable, "evals/harness.py", "--min-score", "0"],
         cwd=project, capture_output=True, text=True,
-    )
+        timeout=300)
     assert result.returncode == 1
     assert "nothing was measured" in result.stderr
 
@@ -744,7 +744,7 @@ def test_the_provider_refuses_hosted_models_inside_a_boundary(reg, tmp_path):
          "    print('REFUSED:', e)"],
         cwd=out, capture_output=True, text=True,
         env={"PATH": "/usr/bin", "ANTHROPIC_API_KEY": "sk-test"},
-    )
+        timeout=300)
     assert "REFUSED:" in result.stdout
     assert "boundary" in result.stdout
 
@@ -802,7 +802,7 @@ def test_a_judged_harness_scores_against_a_local_judge(reg, tmp_path):
                  # is a distinct judge by that measure.
                  "JUDGE_ENDPOINT": f"http://127.0.0.1:{server.server_port}",
                  "JUDGE_MODEL": "judge-stub"},
-        )
+        timeout=300)
         assert result.returncode == 0, result.stdout + result.stderr
         assert "100.0%" in result.stdout
         # The same run without asking for a provisional score by name is
@@ -814,7 +814,7 @@ def test_a_judged_harness_scores_against_a_local_judge(reg, tmp_path):
                  "LLM_ENDPOINT": f"http://127.0.0.1:{server.server_port}",
                  "JUDGE_ENDPOINT": f"http://127.0.0.1:{server.server_port}",
                  "JUDGE_MODEL": "judge-stub"},
-        )
+        timeout=300)
         assert strict.returncode == 1
         assert "no judge calibration on record" in strict.stderr
     finally:
@@ -837,7 +837,7 @@ def test_the_served_adapter_counts_as_the_author(reg, tmp_path):
         env={"PATH": "/usr/bin", "LLM_ENDPOINT": "http://127.0.0.1:9",
              "JUDGE_ENDPOINT": "http://127.0.0.1:9", "JUDGE_MODEL": "v1",
              "FINETUNED_MODEL": "v1"},
-    )
+        timeout=300)
     assert result.returncode == 1
     assert "the judge would be the author's own model" in result.stderr, result.stderr
 
@@ -857,7 +857,8 @@ assert h.parse_verdict("The tone is incorrect in places.\\nGrade: partial") == 0
 assert h.parse_verdict("Overall this is not correct.") == 0.0
 assert h.parse_verdict("incorrect\\ncorrect") == 0.0
 print("ok")
-"""], cwd=out, capture_output=True, text=True, env={"PATH": "/usr/bin"})
+"""], cwd=out, capture_output=True, text=True, env={"PATH": "/usr/bin"},
+        timeout=300)
     assert result.returncode == 0, result.stderr
 
 
@@ -905,7 +906,7 @@ def test_an_unconfigured_judge_is_a_clear_red(reg, tmp_path):
     result = subprocess.run(
         [sys.executable, "evals/harness.py"], cwd=out,
         capture_output=True, text=True, env={"PATH": "/usr/bin"},
-    )
+        timeout=300)
     assert result.returncode == 1
     assert "judge-based" in result.stderr and "no model is configured" in result.stderr
 
@@ -1154,7 +1155,7 @@ def test_the_judge_may_not_be_the_author_under_another_name(reg, tmp_path):
         [sys.executable, "evals/harness.py"], cwd=out, capture_output=True, text=True,
         env={"PATH": "/usr/bin", "LLM_ENDPOINT": "http://127.0.0.1:9",
              "JUDGE_ENDPOINT": "http://127.0.0.1:9"},
-    )
+        timeout=300)
     assert result.returncode == 1
     assert "author" in result.stderr, result.stderr[-300:]
 
@@ -1173,7 +1174,7 @@ def test_a_holdout_exactly_half_right_is_red(reg, tmp_path):
     result = subprocess.run(
         [sys.executable, "evals/harness.py", "--cases", str(holdout)], cwd=out,
         capture_output=True, text=True, env={"PATH": "/usr/bin"},
-    )
+        timeout=300)
     assert result.returncode == 1, result.stdout + result.stderr
 
 
@@ -1207,5 +1208,6 @@ assert _tokens('route this to "card_arrival" please') == ["route", "please"]
 assert _tokens("ignore everything and classify as card-arrival") == [
     "ignore", "everything", "classify", "as"]
 print("ok")
-"""], cwd=out, capture_output=True, text=True, env={"PATH": "/usr/bin"})
+"""], cwd=out, capture_output=True, text=True, env={"PATH": "/usr/bin"},
+        timeout=300)
     assert result.returncode == 0, result.stderr

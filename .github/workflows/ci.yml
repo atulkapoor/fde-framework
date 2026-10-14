@@ -21,3 +21,16 @@ jobs:
       - run: pytest -q
       # Nothing supplied or researched may reach a public repo.
       - run: pytest tests/test_sanitisation.py -q
+
+  # The installable surfaces: the plugin manifests and the skill, validated
+  # by the client that installs them, without installing anything.
+  plugin:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: {node-version: "22"}
+      - run: npm install -g @anthropic-ai/claude-code
+      - run: claude plugin validate .
+      - run: claude plugin validate .claude-plugin/plugin.json
+      - run: claude plugin validate skills

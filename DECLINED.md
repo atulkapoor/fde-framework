@@ -1,7 +1,8 @@
 # Declined, and why
 
-Seventeen outside readings have shaped this framework, and the ones
-worth the most found defects reproducible from the public source. The
+Outside readings have shaped this framework -- counted in
+[`HISTORY.md`](HISTORY.md) -- and the ones worth the most found defects
+reproducible from the public source. The
 same readings also proposed features, and several of those have been
 proposed four and five times. Each is recorded here once, with its
 reason and the release that declined it, so the next proposal of the

@@ -39,7 +39,11 @@ NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 # The envelope beside every reply, as the JSON Schema a client can validate
 # against (`fde mcp --schema` prints it). Bump the version when a field
 # changes meaning or goes away; adding a field keeps the version.
-SCHEMA_VERSION = 2  # 2: `mutated` is measured off the disk, so it can be true on a failure
+# 2: `mutated` measured off the disk. 3: `text` required, and the schema admits
+# fields it does not name, so that adding one keeps the version from here on;
+# 0.1.49 added `text` under a closed version 2, which a strict client would
+# have rejected, and an outside reading said so.
+SCHEMA_VERSION = 3
 STATUSES = ("ok", "blocked", "refused", "failed")
 TOOLS = ("triage", "start", "frame", "status", "next", "stage", "debt", "stop_when", "history")
 ENVELOPE_SCHEMA = {
@@ -48,7 +52,11 @@ ENVELOPE_SCHEMA = {
     "title": f"fde MCP reply envelope, version {SCHEMA_VERSION}",
     "description": "The structured content beside the text of every tool reply. The text "
                    "is what the command printed; the envelope is what an agent branches on "
-                   "without parsing prose. It follows the command's exit, not its wording.",
+                   "without parsing prose. It follows the command's exit, not its wording. "
+                   "Versioning: a field changing meaning or going away bumps "
+                   "schema_version; a field added does not, and this schema admits fields "
+                   "it does not name so a client on this version keeps validating when one "
+                   "is added.",
     "type": "object",
     "properties": {
         "schema_version": {"const": SCHEMA_VERSION,
@@ -76,7 +84,7 @@ ENVELOPE_SCHEMA = {
                                 "went looking for them on disk."},
     },
     "required": ["schema_version", "tool", "status", "mutated", "workspace", "text"],
-    "additionalProperties": False,
+    "additionalProperties": True,
 }
 
 THIRTY_SECONDS = """\

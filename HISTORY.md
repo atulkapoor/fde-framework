@@ -34,14 +34,20 @@ fitness rows -- the generalisation gap, an external exam a memoriser cannot
 pass, the engagement's own error-rate bar -- and gave the routed decision
 an abstain path and a reason on every answer.
 
-Eleven further readings, of the source and of the published package,
-followed between 0.1.28 and 0.1.45: an engagement record that carries the
+Eighteen readings so far, through 0.1.49; this is the one place that
+counts them, and the README says so. Eleven of them, of the source and
+of the published package, came between 0.1.28 and 0.1.45: an engagement record that carries the
 lifecycle past the build, decision debt, stop conditions, forecasts, a
 sandbox for the coding agent, an experiment protocol, the framework
 served inside a coding agent over MCP and then confined, tested as a
 product and driven by a real client, a release workflow that installs the
-published wheel before it writes the release page. Each is a dated entry
-in the changelog with the finding it answered.
+published wheel before it writes the release page. Seven more, from
+0.1.46 to 0.1.49, ran the worked examples to their harnesses and read the
+source tree: a decision brief, a record that reads the build it deployed,
+an exam that reaches the stage it examines, a sandbox policy that can
+only narrow, an evaluation that abstains and still reports, a skill for
+the coding agent. Each is a dated entry in the changelog with the finding
+it answered.
 
 ## What the suite holds every emission to
 

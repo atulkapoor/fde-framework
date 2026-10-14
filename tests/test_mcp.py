@@ -345,14 +345,16 @@ def test_the_schema_is_published_and_is_what_every_reply_follows(tmp_path, monke
     monkeypatch.setenv("FDE_WORKSPACE", str(tmp_path))
     server = build_server()
     assert {t.name for t in asyncio.run(server.list_tools())} == set(TOOLS)
-    # And an envelope with a field it does not name, or a status it does not
-    # name, fails validation: a client can trust the schema to be the contract.
+    # A status it does not name fails; a field it does not name passes, so a
+    # client holding this version's schema keeps validating when a field is
+    # added -- the policy the README states, made true by the schema itself.
     good = asyncio.run(server.call_tool("triage", {"statements": ["Route."]})).structured_content
     jsonschema.validate(good, published)
-    with pytest.raises(jsonschema.ValidationError):
-        jsonschema.validate({**good, "extra": 1}, published)
+    jsonschema.validate({**good, "added_later": 1}, published)
     with pytest.raises(jsonschema.ValidationError):
         jsonschema.validate({**good, "status": "done"}, published)
+    with pytest.raises(jsonschema.ValidationError):
+        jsonschema.validate({k: v for k, v in good.items() if k != "text"}, published)
 
 
 def test_mutated_is_measured_so_a_failed_write_that_left_changes_says_so(tmp_path, monkeypatch):
@@ -363,7 +365,7 @@ def test_mutated_is_measured_so_a_failed_write_that_left_changes_says_so(tmp_pat
     from fde import mcp_server
     from fde.mcp_server import SCHEMA_VERSION
 
-    assert SCHEMA_VERSION == 2
+    assert SCHEMA_VERSION == 3
     monkeypatch.setenv("FDE_WORKSPACE", str(tmp_path))
     server = build_server()
     opened = asyncio.run(server.call_tool("start", {
