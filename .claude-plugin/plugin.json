@@ -1,6 +1,6 @@
 {
   "name": "fde",
-  "version": "0.1.49",
+  "version": "0.1.50",
   "description": "The decision before the AI build: before an agent scaffolds an AI system, rank what the statement settles, open an engagement record, and name the next thing to learn. Refuses to build until the evidence is there; never builds, implements or deploys.",
   "author": {
     "name": "Atul Kapoor",

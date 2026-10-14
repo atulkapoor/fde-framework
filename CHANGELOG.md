@@ -5,10 +5,41 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.50] — 2026-10-14
+
+An eighteenth outside reading, of the 0.1.49 source, confirmed the
+abstaining evaluation fixed and caught the envelope breaking the policy
+it was published under.
+
+- **The envelope is version 3, and admits fields it does not name.**
+  0.1.49 added `text` as a required field under a closed version 2; a
+  client validating against its copy of that schema would have rejected
+  every reply. The version moves to 3, and from here the schema admits
+  fields it does not name, so the policy the README states -- a field
+  added keeps the version, a field changing meaning moves it -- is made
+  true by the schema itself. A test validates a reply with a field added
+  later against the published schema, and fails one without `text`.
+- **A hung harness fails instead of stalling.** The reading saw the
+  emit suite stall in one process on a test that passes alone, in an
+  environment missing a declared dependency; not reproduced here or in
+  CI, where that file runs whole on three Pythons every release. But
+  twenty of its twenty-one harness subprocesses had no timeout, so any
+  hang anywhere would have been a stalled suite with no diagnosis. Each
+  has five minutes now.
+- **One place counts the readings.** The README said fourteen while the
+  changelog had reached seventeen. `HISTORY.md` carries the count; the
+  README and `DECLINED.md` point at it.
+- **CI validates the installable surfaces.** A job runs the client's own
+  validator over the plugin manifests and the skill on every push.
 - The release workflow's hash check retries its download the way the
   install retries: one mirror answered the install and another, seconds
   later, did not yet list the version, and the check failed on its own
   lag rather than on the wheel.
+- Asked for and already there, said so: the unified acceptance command
+  is `fde scorecard <project> --holdout <file>`, which runs the harness,
+  the recorded holdout and every fitness row and exits 1 on any that
+  fails. Asked for and declined, in `DECLINED.md`: larger worked
+  examples, the invoice example's OCR wired by hand.
 
 ## [0.1.49] — 2026-10-13
 
