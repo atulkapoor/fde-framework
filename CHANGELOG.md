@@ -5,6 +5,46 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.51] — 2026-10-17
+
+A deep reading of a skills repository that reached a quarter of a
+million people with text alone, and a nineteenth outside reading of
+the 0.1.50 source. From the first, two small things; from the second,
+the strip that keeps a build from being read as a system.
+
+- **The skill says whose act each thing is.** Its guards were four
+  prohibitions; a ban drags the banned act into the agent's context. They
+  are now statements of who acts -- a build is the person's, an
+  attestation is a signature, the record writes itself, a refusal is the
+  answer -- and every step ends on what done looks like. Driven from
+  Claude Code with a request to "build the project for me": the agent
+  opened the engagement, quoted `next`, named the four gates with their
+  owners, built nothing, and said the build was the person's act.
+- **"It's working if."** The README's first screen now says what a
+  stranger sees in their own run when the framework is doing its job --
+  the first thing named is not a model; a build refused with the remedy
+  beside the gate and nothing written; a card that says which exam a
+  number came from; a stop on a condition written down beforehand; a
+  brief that says what the terminal said.
+- **The brief opens at a glance.** Five lines under the title, each read
+  off the record: decided, built, implemented, evaluated, outcome. A
+  design decided is not a build; a build with scaffolds is not an
+  implementation; a green exam is not an outcome; the strip says each on
+  its own line and none implies the next. Tested on a fresh record and
+  on one with a build, a scaffold, a holdout row and an outcome.
+- **The release page carries the test counts.** Passed, failed and
+  skipped stated separately, skips grouped by reason so a missing tool
+  reads as a missing tool, and a link to the same commit's CI run on
+  three Pythons.
+- Seen in that Claude Code run and recorded, not fixed: `frame` read two
+  facts from a one-line statement and left the monthly volume, the AWS
+  hosting and the data residency it also carried as open questions.
+- Declined again, per `DECLINED.md`: a corpus for the retrieval example;
+  splitting `emit.py`. The suite stall the reading saw lands on a test
+  that points two endpoints at a closed port; the emitted client makes
+  two bounded attempts, and that file runs whole on three Pythons every
+  release.
+
 ## [0.1.50] — 2026-10-14
 
 An eighteenth outside reading, of the 0.1.49 source, confirmed the
