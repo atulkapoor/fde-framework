@@ -5,6 +5,33 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.52] — 2026-10-17
+
+The finding 0.1.51 recorded and did not fix: a coding agent handed the
+framework "about 9,000 a month, and customer data stays in our AWS
+account", and the record kept one fact of the four it carried.
+
+- **A stated rate is read into the dimension's period.** `arrival_rate`
+  is per day and nothing read a period: "9,000 a month" went nowhere. A
+  rate dimension now declares its period in the registry; a number with
+  a period beside it is a rate, whatever the noun ("9,000 invoices a
+  month" is a flow, not a corpus of 9,000), and only a rate dimension may
+  claim it. A weekly, monthly or yearly figure is read into the day as
+  the framework's own arithmetic -- inferred, so a person's answer
+  outranks it -- with the arithmetic kept beside the value and shown in
+  the playback: "300 (read from 9,000 a month, at 30 days to the month;
+  confirm the per-day figure)". A daily figure is read verbatim, as
+  before. Facts carry a `note` for exactly this.
+- **Two phrasings the registry did not know.** "Customer data stays in
+  our AWS account" now reads as data that cannot leave, and as hosting in
+  the customer's VPC; "in our AWS VPC", "our GCP project", "our Azure
+  subscription" and their kin read the same way. Content changes, in the
+  dimension files, as recognition is meant to be.
+- That one-line statement now reads four facts: text in, 300 a day,
+  cannot leave, customer VPC. The flow nouns a support desk uses --
+  emails, messages, conversations, enquiries -- are the rate's cue words
+  too.
+
 ## [0.1.51] — 2026-10-17
 
 A deep reading of a skills repository that reached a quarter of a
