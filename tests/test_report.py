@@ -78,3 +78,37 @@ def test_the_brief_carries_the_contract_the_waivers_and_a_triggered_stop(tmp_pat
     assert "- **baseline**: 26 h" in text
     assert "### Gates waived" in text and "the support lead is named" in text
     assert "STOP  answered_accuracy < 0.88" in text and "0.866" in text
+
+
+def test_the_brief_opens_with_five_statuses_none_implying_the_next(tmp_path):
+    """A design decided is not a build; a build is not an implementation; a
+    green exam is not an outcome. The strip says each on its own line."""
+    start_engagement(tmp_path, "acme", statement=STATEMENT)
+    eng = load_engagement(tmp_path / "acme")
+    result = runner.invoke(app, ["report", str(eng.root), "--today", "2026-10-17"])
+    assert result.exit_code == 0, result.output
+    text = (eng.root / "artifacts" / "REPORT.md").read_text()
+    glance = text[text.index("## At a glance"):text.index("## The problem as stated")]
+    assert "- **decided**: " in glance and "undecided: " in glance
+    assert "- **built**: not built" in glance
+    assert "- **implemented**: not built" in glance
+    assert "- **evaluated**: not scored" in glance
+    assert "- **outcome**: none recorded: the business impact is not measured" in glance
+    # A build on record with one scaffold left, a holdout row, and an outcome.
+    project = tmp_path / "project"
+    (project / "app" / "components").mkdir(parents=True)
+    (project / "app" / "components" / "perception.py").write_text(
+        "SCAFFOLD = True  # fde: the contract is decided, the body is not\n")
+    (project / "app" / "components" / "representation.py").write_text("def run(p): return p\n")
+    (project / "scorecard.json").write_text(json.dumps({"rows": [
+        {"property": "holdout", "holds": True, "measured": "73.8% on 3036 cases"}]}))
+    (eng.root / ".last-out").write_text(str(project))
+    (eng.root / "outcomes.jsonl").write_text(
+        json.dumps({"metric": "adoption", "value": 0.6}) + "\n")
+    runner.invoke(app, ["report", str(eng.root), "--today", "2026-10-17"])
+    text = (eng.root / "artifacts" / "REPORT.md").read_text()
+    glance = text[text.index("## At a glance"):text.index("## The problem as stated")]
+    assert f"- **built**: `{project}`" in glance
+    assert "- **implemented**: 1 component(s) still scaffolds: perception" in glance
+    assert "- **evaluated**: holdout 73.8% on 3036 cases (holds)" in glance
+    assert "- **outcome**: 1 outcome(s) recorded" in glance

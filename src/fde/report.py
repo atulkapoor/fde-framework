@@ -100,12 +100,61 @@ def contract(root: Path) -> dict:
     return loaded if isinstance(loaded, dict) else {}
 
 
+def at_a_glance(engagement, architecture, project: Path | None) -> str:
+    """Five stages, five statuses, each read off the record: decided, built,
+    implemented, evaluated, outcome. One line each, at the top, so a
+    design that was decided is never read as built, a build as
+    implemented, a green exam as a measured outcome. An outside reading
+    asked for exactly this strip after three worked examples that build,
+    and say so, and work nowhere."""
+    import json
+
+    from fde.emit import SCAFFOLD_MARK
+
+    if architecture is None:
+        decided = "no design yet"
+    else:
+        undecided = architecture.decisions.undecided()
+        decided = f"{len(architecture.decisions.decided())} component(s) decided" + (
+            f"; {len(undecided)} undecided: {', '.join(undecided)}" if undecided
+            else "; nothing undecided")
+    built = f"`{project}`" if project else "not built: nothing on record from `fde build`"
+    components = project / "app" / "components" if project else None
+    if components and components.is_dir():
+        mark = SCAFFOLD_MARK.split("  #")[0]
+        scaffolds = sorted(p.stem for p in components.glob("*.py") if mark in p.read_text())
+        implemented = (f"{len(scaffolds)} component(s) still scaffolds: {', '.join(scaffolds)}"
+                       if scaffolds else "no scaffolds remain")
+    else:
+        implemented = "not built" if not project else "the build has no app/components to read"
+    card = project / "scorecard.json" if project else None
+    if card and card.exists():
+        try:
+            rows = {r["property"]: r for r in json.loads(card.read_text()).get("rows", [])}
+        except (ValueError, KeyError, TypeError):
+            rows = {}
+        holdout = rows.get("holdout")
+        verdict = "holds" if holdout and holdout.get("holds") else "does not hold"
+        evaluated = (f"holdout {holdout.get('measured')} ({verdict})" if holdout
+                     else "a scorecard on record with no holdout row")
+    else:
+        evaluated = "not scored: `fde scorecard <project> --holdout <file>`"
+    outcomes = engagement.root / "outcomes.jsonl"
+    recorded = ([line for line in outcomes.read_text().splitlines() if line.strip()]
+                if outcomes.exists() else [])
+    outcome = (f"{len(recorded)} outcome(s) recorded" if recorded
+               else "none recorded: the business impact is not measured")
+    return "\n".join([f"- **decided**: {decided}", f"- **built**: {built}",
+                      f"- **implemented**: {implemented}", f"- **evaluated**: {evaluated}",
+                      f"- **outcome**: {outcome}"])
+
+
 def render_report(engagement, registry, registry_root: Path, today: str = "") -> str:
     """The brief, as text. `engagement` is a loaded engagement, `registry`
     a loaded registry; `registry_root` is passed to the commands the brief
     quotes, so they read the same corpus."""
     from fde.architect import architect as build_architecture
-    from fde.cli import _overrides, _reuse
+    from fde.cli import _overrides, _project_of, _reuse
     from fde.emit import render_architecture, render_risks
 
     root = engagement.root
@@ -200,4 +249,8 @@ def render_report(engagement, registry, registry_root: Path, today: str = "") ->
             "on it.",
             quoted(capture(["next", *at, *reg])))
 
+    # The strip goes under the title, computed last because it reads the
+    # design built above.
+    out.insert(2, "## At a glance\n\nFive stages, five statuses, none implying the next.\n\n"
+                  + at_a_glance(engagement, architecture, _project_of(engagement, None)) + "\n")
     return "\n".join(out).rstrip() + "\n"

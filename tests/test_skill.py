@@ -43,14 +43,18 @@ def test_every_command_the_skill_names_exists_and_every_tool_is_served():
     assert set(tools) == set(TOOLS), "the skill names every served tool and no other"
 
 
-def test_the_skill_forbids_exactly_the_commands_that_write_a_project():
+def test_the_skill_puts_building_and_signing_in_the_persons_hands():
+    """Stated as whose act each thing is, not as a prohibition: a ban drags
+    the banned act into context; a hand-over names who acts."""
     text = SKILL.read_text()
-    forbidden = text[text.index("## What never to do"):text.index("## One exchange")]
+    theirs = text[text.index("## Whose act each thing is"):text.index("## One exchange")]
     for command in ("fde build", "fde implement", "fde waive"):
-        assert command in forbidden, command
-    allowed = text[text.index("## What to do, in order"):text.index("## What never to do")]
+        assert command in theirs, command
+    assert "yours to run" in theirs and "Never" not in theirs
+    steps = text[text.index("## What to do, in order"):text.index("## Whose act each thing is")]
     for command in ("fde build", "fde implement", "fde waive"):
-        assert command not in allowed, f"{command} appears as something to do"
+        assert command not in steps, f"{command} appears as something to do"
+    assert " ".join(steps.split()).count("Done when") == 6, "every step ends on done"
 
 
 def test_the_manifests_point_at_the_skill_and_agree_on_the_name():

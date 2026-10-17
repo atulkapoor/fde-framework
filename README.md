@@ -93,6 +93,19 @@ and the baseline comes after `fde start`. A candidate ranked low is
 under-described, not unworthy.
 ```
 
+**It's working if**, in your own run, you see these and not their opposites:
+
+- the first thing it names is not a model: a connection that returned
+  real rows, a baseline someone measured, a person who owns the number;
+- a build is refused, the remedy printed beside the gate, and nothing is
+  written where the build would have gone;
+- every number on a card says which exam it came from, and whether that
+  exam was in-sample;
+- the record says *stop* on a condition someone wrote down beforehand,
+  and the stage says so until a person answers it;
+- the brief a stranger reads says what the terminal said, in the same
+  words.
+
 **Inside your coding agent.** The same commands are an MCP server, so an
 engineer in Claude Code or Cursor can ask what to learn before building
 without leaving the editor:
@@ -218,7 +231,7 @@ ladder, so nothing here can be over-read:
 
 | Claim | Status | The evidence, and where it stops |
 |---|---|---|
-| The framework is implemented | verified | 1,336 tests on three Pythons in CI; lint clean; every audit finding pinned as a check before it was fixed; every release installed from the published wheel into a fresh interpreter and walked through the first five minutes |
+| The framework is implemented | verified | 1,337 tests on three Pythons in CI; lint clean; every audit finding pinned as a check before it was fixed; every release installed from the published wheel into a fresh interpreter and walked through the first five minutes |
 | A build is reproducible | verified | byte-identical rebuild pinned by test; each public demo carries a Reproduce section and its digests |
 | The decisions generalise | partial | four shapes (extraction, freeform QA, a labelled decision, seventy-seven-way routing) on real data; one industry set; `fde kb sweep` names the shapes nothing serves |
 | The deliverable is production-reliable | unverified | no production engagement; the banking operating loop ran on a laptop and its record says so |
@@ -659,7 +672,7 @@ the same receipts the emitted `ARCHITECTURE.md` prints.
 | `fde reuse <eng> <stack>` | record what the client already operates, so reuse can beat adoption |
 | `fde locale <eng> eu-gdpr` | jurisdiction pack: presets plus obligations emitted as COMPLIANCE.md |
 | `fde architect <eng>` | the design, rationale and rejections |
-| `fde report <eng> [--out brief.md]` | the decision brief: the problem as stated, the stage, what is known and who said it, the outcome contract, the design with its reasons and rejections, what it rests on, the debt, the stop conditions, the next decision -- one Markdown file, before any build |
+| `fde report <eng> [--out brief.md]` | the decision brief: five statuses at a glance (decided, built, implemented, evaluated, outcome), the problem as stated, the stage, what is known and who said it, the outcome contract, the design with its reasons and rejections, what it rests on, the debt, the stop conditions, the next decision -- one Markdown file, before any build |
 | `fde build <eng> --out project` | emit; refuses while gates block |
 | `fde implement project/` | drive a coding agent until the emitted evals pass, inside guardrails |
 | `fde scorecard project/ --holdout <file>` | measure production grade: every property the deliverable can prove, with the number, in `SCORECARD.md` |
