@@ -20,6 +20,22 @@ recognises:
     - cannot leave the client
     - cannot leave our
     - must stay on-premise
+    - stays in our
+    - stay in our
+    - stays within our
+    - stay within our
+    - stays inside our
+    - remains in our
+    - remain in our
+    - must stay in
+    - has to stay in
+    - never leaves our
+    - does not leave our
+    - doesn't leave our
+    - kept in our
+    - kept within our
+    - stays in the client
+    - stays in their
     - must stay on prem
     - no data leaves
   may_leave:

@@ -558,3 +558,62 @@ def test_a_crlf_wrapped_phrase_still_reads_and_spans_still_index(reg):
     assert d["data_residency"].value == "cannot_leave"
     for f in facts:
         assert brief[f.span[0]:f.span[1]].strip()
+
+
+# --- a stated rate is read into the dimension's period; a stated place is a place
+
+
+def test_a_monthly_rate_is_read_per_day_at_inferred_strength_with_the_arithmetic(reg):
+    """A coding agent handed "about 9,000 a month" to the framework and the
+    record kept none of it: arrival_rate is per day, and nothing read a
+    period. The figure is now read into the day, as the framework's own
+    arithmetic -- inferred, so a person's answer outranks it -- with the
+    arithmetic kept beside the value."""
+    facts = parse_prose("We get about 9,000 support emails a month.", reg)
+    rate = next(f for f in facts if f.dimension == "arrival_rate")
+    assert rate.value == 300 and rate.provenance is Provenance.INFERRED
+    assert rate.note == ("read from 9,000 a month, at 30 days to the month; "
+                         "confirm the per-day figure")
+    assert "9,000 a month" in restate(facts, reg) and "300" in restate(facts, reg)
+
+
+def test_a_daily_rate_is_read_verbatim_and_a_weekly_one_divided(reg):
+    daily = dims(parse_prose("Around 600 requests a day at the peak.", reg))
+    assert daily["arrival_rate"] == 600
+    verbatim = next(f for f in parse_prose("Around 600 requests a day.", reg)
+                    if f.dimension == "arrival_rate")
+    assert verbatim.provenance is Provenance.ARTIFACT and verbatim.note is None
+    weekly = next(f for f in parse_prose("We handle 1,400 tickets per week.", reg)
+                  if f.dimension == "arrival_rate")
+    assert weekly.value == 200 and weekly.provenance is Provenance.INFERRED
+
+
+def test_a_period_makes_a_number_a_rate_whatever_the_noun(reg):
+    """"9,000 invoices a month" is a flow, not a corpus of 9,000; the period
+    decides, and the stock dimension does not claim the number."""
+    d = dims(parse_prose("We receive 9,000 invoices a month.", reg))
+    assert d["arrival_rate"] == 300
+    assert "corpus_size" not in d
+
+
+def test_a_stock_without_a_period_is_still_a_stock(reg):
+    d = dims(parse_prose("The archive holds 200,000 invoices.", reg))
+    assert d["corpus_size"] == 200_000 and "arrival_rate" not in d
+
+
+def test_data_that_stays_in_our_account_cannot_leave_and_the_account_is_the_vpc(reg):
+    d = dims(parse_prose("Customer data stays in our AWS account.", reg))
+    assert d["data_residency"] == "cannot_leave"
+    assert d["hosting"] == "customer-vpc"
+    d = dims(parse_prose("The service will run in our AWS VPC.", reg))
+    assert d["hosting"] == "customer-vpc"
+
+
+def test_the_one_line_statement_a_coding_agent_sent_now_reads_three_more_facts(reg):
+    statement = ("Route our support emails to the right team; about 9,000 a month, and "
+                 "customer data stays in our AWS account.")
+    d = dims(parse_prose(statement, reg))
+    assert d["arrival_rate"] == 300
+    assert d["data_residency"] == "cannot_leave"
+    assert d["hosting"] == "customer-vpc"
+    assert d["input_format"] == "text"

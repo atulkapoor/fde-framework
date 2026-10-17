@@ -79,6 +79,9 @@ class Session:
                             ("kind", str(f.kind)),
                             ("span", list(f.span) if f.span else None),
                             ("source", f.source),
+                            # how the value was read when not verbatim: the
+                            # arithmetic behind a converted rate, kept with it.
+                            ("note", f.note),
                             # additive is resolution semantics: dropping it on
                             # write would collapse three modalities into the
                             # last one the moment the session is re-read.

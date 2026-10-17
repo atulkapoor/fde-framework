@@ -55,6 +55,19 @@ TO_MS = {
 # How far either side of a number to look for the word that identifies it.
 NEAR = 40
 
+# A period beside a number makes it a rate: "9,000 a month" is a flow, not a
+# stock, whatever the noun. The figure is read into the dimension's own period
+# (a day) by the factor here, at inferred strength -- it is the framework's
+# arithmetic, so an interview answer outranks it -- with the arithmetic kept
+# beside the value. A month is thirty days here and the note says so; the
+# working-day rate is for a person to confirm.
+PERIODS = re.compile(
+    r"\b(?:(?:per|a|each|every)\s+(?P<unit>day|week|month|year)|(?P<adv>daily|weekly|monthly|yearly|annually))\b",
+    re.I,
+)
+PER_DAY = {"day": 1.0, "daily": 1.0, "week": 1 / 7, "weekly": 1 / 7, "month": 1 / 30,
+           "monthly": 1 / 30, "year": 1 / 365, "yearly": 1 / 365, "annually": 1 / 365}
+
 # Sentence ends. Crude, and enough: the point is only to stop a number in one
 # sentence borrowing a word from the next.
 SENTENCE = re.compile(r"(?<=[.!?])\s+")
@@ -140,17 +153,28 @@ def _read_quantities(registry: Registry, text: str, source: str | None) -> list[
     # Confined to a sentence: a number in one sentence must not borrow the word
     # that names it from the next.
     candidates: list[tuple[int, str, re.Match]] = []
+    periods: dict[tuple[int, int], re.Match] = {}
     for start, sentence in _sentences(text):
         if RANGE.search(sentence):
             continue  # one quantity written as two numbers; ask rather than guess
         lowered = sentence.lower()
         for match in NUMBER.finditer(sentence):
-            for dimension in quantitative:
+            shifted = _shifted(match, start, text)
+            period = _period_after(lowered, match)
+            if period is not None:
+                # A number with a period beside it is a rate, and only a rate
+                # dimension may claim it -- "9,000 invoices a month" is an
+                # arrival rate, not a corpus of 9,000.
+                periods[shifted.span()] = period
+                claimants = [d for d in quantitative if d.period]
+            else:
+                claimants = quantitative
+            for dimension in claimants:
                 distance = _nearest_word_distance(lowered, match, _near_words(dimension))
+                if distance is None and period is not None:
+                    distance = period.start() - match.end()
                 if distance is not None:
-                    candidates.append(
-                        (distance, dimension.id, _shifted(match, start, text))
-                    )
+                    candidates.append((distance, dimension.id, shifted))
 
     facts: list[Fact] = []
     claimed_numbers: set[tuple[int, int]] = set()
@@ -178,8 +202,48 @@ def _read_quantities(registry: Registry, text: str, source: str | None) -> list[
             continue
         claimed_numbers.add(match.span())
         claimed_dimensions.add(dimension_id)
+        period = periods.get(match.span())
+        if dimension.period and period is not None:
+            facts.append(_rate_fact(dimension, match, period, source))
+            continue
         facts.append(_fact(dimension, _scaled(match), match.span(), source))
     return facts
+
+
+def _period_after(lowered: str, match: re.Match) -> re.Match | None:
+    """The period cue following a number, within the window: "a month" in
+    "9,000 support emails a month"."""
+    window = lowered[match.end(): match.end() + NEAR]
+    found = PERIODS.search(window)
+    if found is None:
+        return None
+    # Re-anchor to the sentence, so distances compare with the words'.
+    return PERIODS.search(lowered, match.end() + found.start())
+
+
+def _rate_fact(dimension: Dimension, match: re.Match, period: re.Match, source: str | None) -> Fact:
+    """A stated rate read into the dimension's period. Verbatim when the
+    periods agree; otherwise converted, at inferred strength, with the
+    arithmetic beside it."""
+    stated = _scaled(match)
+    unit = (period.group("unit") or period.group("adv")).lower()
+    factor = PER_DAY[unit]
+    if dimension.period == "day" and factor == 1.0:
+        return _fact(dimension, stated, match.span(), source)
+    value = max(1, round(stated * factor))
+    days = {1 / 7: "7", 1 / 30: "30", 1 / 365: "365"}[factor]
+    return Fact(
+        dimension.id,
+        value,
+        Provenance.INFERRED,  # the framework's arithmetic, not the client's words
+        kind=dimension.kind or DimensionKind.REQUIREMENT,
+        span=match.span(),
+        source=source,
+        additive=dimension.multi_valued,
+        note=f"read from {_render(stated)} {period.group(0)}, at {days} days to the "
+             f"{unit if unit in ('week', 'month', 'year') else 'period'}; confirm the "
+             f"per-{dimension.period} figure",
+    )
 
 
 def _sentences(text: str) -> list[tuple[int, str]]:
@@ -347,7 +411,8 @@ def restate(facts: list[Fact], registry: Registry) -> str:
     for fact in facts:
         dimension = registry.dimensions.get(fact.dimension)
         label = (dimension.asks if dimension and dimension.asks else fact.dimension).rstrip("?")
-        lines.append(f"  - {label}: {_render(fact.value)}")
+        shown = _render(fact.value) + (f"   ({fact.note})" if fact.note else "")
+        lines.append(f"  - {label}: {shown}")
     lines.append("\nCorrect anything wrong before we go further.")
     return "\n".join(lines)
 

@@ -5,8 +5,9 @@ scope: data
 kind: requirement
 weight: 1.0
 asks: "How many requests arrive per day, in the busiest month?"
+period: day
 recognises_near:
-  [requests, queries, calls, transactions, invocations, per day, a day, daily]
+  [requests, queries, calls, transactions, invocations, emails, messages, conversations, chats, enquiries, inquiries, submissions, orders, applications, events, per day, a day, daily]
 ask_role: ['admin', 'eval_owner']
 ---
 Flow, where corpus_size is stock. A half-million-document archive served four

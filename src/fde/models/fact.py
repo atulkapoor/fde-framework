@@ -26,6 +26,9 @@ class Fact(BaseModel, frozen=True):
     # Where this came from, so a claim can be traced back to the sentence that made it.
     span: tuple[int, int] | None = None
     source: str | None = None
+    # How the value was read when it was not read verbatim: "9,000 a month,
+    # at 30 days" beside a per-day figure. Shown wherever the value is.
+    note: str | None = None
 
     # Stamped at creation, where the registry is in hand: this fact's
     # dimension holds peers, not rivals, so another value beside it is an

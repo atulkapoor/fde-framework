@@ -138,6 +138,10 @@ class Dimension(BaseModel):
     # teaching the framework a new phrasing is a content change, not a code one.
     recognises: dict[str, list[str]] = Field(default_factory=dict)  # value -> phrases
     recognises_near: list[str] = Field(default_factory=list)  # words that name a quantity
+    # A count that is a rate names the period it is per ("day"). A brief that
+    # states the same rate per week or per month is read into this period,
+    # at inferred strength, with the arithmetic shown.
+    period: str | None = None
 
     # value -> the broader value it is a more precise statement of. Scanned
     # documents are documents; saying both is one answer, not two.

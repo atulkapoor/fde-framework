@@ -36,7 +36,7 @@ intake ──> fact log ──> permutation space ──> gates ──> decide �
 | `models/fact.py`, `models/profile.py` | One fact; the profile that resolves facts, keeps disagreements as findings |
 | `models/schema.py` | Pydantic models for every registry kind |
 | `models/respondent.py` | The five roles: sponsor, eval_owner, user, admin, skeptic |
-| `intake/prose.py` | Deterministic prose → facts; refuses ambiguity rather than guessing |
+| `intake/prose.py` | Deterministic prose → facts; refuses ambiguity rather than guessing; a count that is a rate declares its period, a stated weekly or monthly figure is read into it at inferred strength with the arithmetic kept as the fact's note |
 | `intake/documents.py` | PDF/docx → text, refusal by name |
 | `intake/samples.py` | Sample pairs → contract, metrics, golden set; settles only the shape |
 | `intake/interview.py` | Role-scoped question ordering by decision divergence |

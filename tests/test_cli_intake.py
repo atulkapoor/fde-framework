@@ -292,3 +292,23 @@ def test_frame_retains_the_brief_beside_its_facts(tmp_path):
     briefs = list((root / "artifacts" / "briefs").glob("*.txt"))
     assert len(briefs) == 1
     assert BRIEF in briefs[0].read_text()
+
+
+def test_status_marks_the_frameworks_own_arithmetic_as_inferred(tmp_path):
+    """A per-day rate read from a monthly figure is the framework's
+    arithmetic; status says so beside the value, with the arithmetic."""
+    from typer.testing import CliRunner
+
+    from fde.cli import app
+
+    runner = CliRunner()
+    base = tmp_path / "engagements"
+    opened = runner.invoke(app, ["start", "acme", "--base", str(base), "--statement",
+                                 "Route our support emails to the right team; about 9,000 a "
+                                 "month, and customer data stays in our AWS account."])
+    assert opened.exit_code == 0, opened.output
+    assert "300   (read from 9,000 a month" in opened.output
+    status = runner.invoke(app, ["status", str(base / "acme")])
+    assert "arrival_rate = 300   [system, inferred: read from 9,000 a month" in status.output
+    assert "data_residency = cannot_leave   [system]" in status.output
+    assert "hosting = customer-vpc   [system]" in status.output

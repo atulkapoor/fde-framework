@@ -327,7 +327,13 @@ def _who(fact) -> str:
     """
     role = str(fact.respondent.role)
     name = fact.respondent.name
-    return f"{name}, {role}" if name else role
+    who = f"{name}, {role}" if name else role
+    # The framework's own arithmetic is marked as such wherever the fact
+    # shows: "300 [system, inferred: read from 9,000 a month ...]" is not
+    # a client's figure, and a reader must not take it for one.
+    if str(fact.provenance) == "inferred":
+        return f"{who}, inferred" + (f": {fact.note}" if fact.note else "")
+    return who
 
 
 @app.command("frame")
