@@ -5,6 +5,39 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.53] — 2026-10-20
+
+The four items that were mine on the pending list, closed.
+
+- **The command line reads `FDE_REGISTRY`.** The MCP server did; the
+  command line beside it said "no registry here" from a scratch
+  directory. One resolution now, for both: the variable when set and a
+  directory, then a checkout's `framework/`, then the packaged copy.
+- **One more discovery question: can a task's outcome be checked
+  automatically?** `reward_verifiable`, asked of the evaluation owner,
+  because "we have tests" from an engineer usually means the code does.
+  The answer decides whether the design of an agent's harness is a
+  decision made from facts or a search run against the tasks -- and
+  whether a recent line of work that moves an evolved harness into a
+  small model's weights is available at all. One decision acts on it
+  today, because the registry refuses a question nothing acts on: a
+  judged evaluation is avoided where the outcome can be checked, since a
+  judge in front of a checker is a weaker instrument standing in for a
+  comparison. The harness-search and distillation paths wait for
+  production evidence. Twenty-eight dimensions; the diagram is redrawn
+  from the count.
+- **Retrieval evaluation says whether the model sees the evidence.**
+  Recall@K said a document surfaced. The reasoning step shows the model
+  eight; a document at rank nine is retrieved and never read, and "high
+  recall, wrong answers" begins exactly there. The emitted evaluator now
+  prints the first relevant hit's rank (mean reciprocal rank, worst
+  rank), the share of relevant ids inside what the reasoning step shows,
+  and names the cases whose evidence sits in the back half of it. Where
+  the build has no evidence cap it says the row was not measured rather
+  than assuming. Tests put a document at rank nine behind a cap of eight.
+- **The site's two long cards** carried the whole audit narrative the
+  README gave up in 0.1.46; they now summarise and point at HISTORY.md.
+
 ## [0.1.52] — 2026-10-17
 
 The finding 0.1.51 recorded and did not fix: a coding agent handed the
