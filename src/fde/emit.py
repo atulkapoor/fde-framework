@@ -2975,6 +2975,18 @@ def resolve_retriever():
     )
 
 
+def evidence_cap():
+    """How many retrieved documents the reasoning step shows the model, read
+    off the emitted component (MAX_EVIDENCE); None when there is no such
+    step or it states no cap."""
+    try:
+        from app.components import reasoning
+    except Exception:  # noqa: BLE001 -- no reasoning step is a plain None
+        return None
+    cap = getattr(reasoning, "MAX_EVIDENCE", None)
+    return cap if isinstance(cap, int) and cap > 0 else None
+
+
 def surfaced_ids(result):
     """Ids from a ranked result list, or None when the shape is not one.
 
@@ -3013,6 +3025,8 @@ def main():
     errors = 0
     recalls = {k: [] for k in KS}
     misses = []
+    first_ranks, reaches, buried = [], [], []
+    cap = evidence_cap()
     for case in cases:
         raw = case.get("relevant")
         if not isinstance(raw, list) or not raw:
@@ -3040,11 +3054,40 @@ def main():
         absent = [r for r in relevant if r not in set(got[: max(KS)])]
         if absent:
             misses.append({"id": case.get("id"), "missing": absent})
+        # Where the evidence sits, not only whether it surfaced: the first
+        # relevant hit's rank (1 is the top), and how many of the relevant
+        # ids fall inside what the reasoning step will actually show.
+        ranks = [got.index(r) + 1 for r in relevant if r in got]
+        first_ranks.append(min(ranks) if ranks else None)
+        if cap is not None:
+            shown = [r for r in relevant if r in set(got[:cap])]
+            reaches.append(len(shown) / len(relevant))
+            if shown and all(got.index(r) + 1 > cap / 2 for r in shown):
+                buried.append(case.get("id"))
 
     for k in KS:
         scored = recalls[k]
         mean = sum(scored) / len(scored) if scored else 0.0
         print(f"  recall@{k:<3} {len(scored):>4} cases  {mean:.1%}")
+    # Recall says the document was retrieved. These say whether the model
+    # sees it: a document at rank 9 behind an evidence cap of 8 is retrieved
+    # and never read, and "high recall, wrong answers" starts here.
+    found = [r for r in first_ranks if r is not None]
+    if first_ranks:
+        mrr = sum(1 / r for r in found) / len(first_ranks)
+        print(f"  first relevant   {len(found):>4} cases  mean reciprocal rank {mrr:.2f}"
+              + (f"; worst rank {max(found)}" if found else ""))
+    if cap is None:
+        print("  reaches the model: not measured (no MAX_EVIDENCE on app/components/reasoning;"
+              " every retrieved document is assumed shown)")
+    elif reaches:
+        print(f"  reaches the model {len(reaches):>4} cases  "
+              f"{sum(reaches) / len(reaches):.1%} of relevant ids inside the top {cap} the "
+              f"reasoning step shows")
+        if buried:
+            print(f"    buried in the back half of what is shown: {', '.join(map(str, buried))}"
+                  " -- retrieved and read last, where a long context loses it",
+                  file=sys.stderr)
     for miss in misses[:10]:
         print(f"    {miss}", file=sys.stderr)
 

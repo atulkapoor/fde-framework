@@ -280,3 +280,22 @@ def test_a_registry_with_no_approaches_yet_is_not_told_its_patterns_are_orphans(
     write(tmp_path, "patterns", "ghost-orchestration", PATTERN_SERVING % "ghost")
     errs = validate_links(load_registry(tmp_path))
     assert not any("unknown approach" in e.message for e in errs), errs
+
+
+def test_fde_registry_names_the_corpus_from_any_directory(tmp_path, monkeypatch):
+    """The MCP server read FDE_REGISTRY; the command line did not, and said
+    "no registry here" from a scratch directory while the server beside it
+    found the corpus. One resolution, for both."""
+    from pathlib import Path
+
+    from fde.registry import default_root
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("FDE_REGISTRY", raising=False)
+    assert default_root() != Path("/nowhere")
+    corpus = tmp_path / "corpus"
+    corpus.mkdir()
+    monkeypatch.setenv("FDE_REGISTRY", str(corpus))
+    assert default_root() == corpus
+    monkeypatch.setenv("FDE_REGISTRY", str(tmp_path / "missing"))
+    assert default_root() != tmp_path / "missing"  # a name that is not a directory is ignored

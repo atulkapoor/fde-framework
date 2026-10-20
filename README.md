@@ -231,7 +231,7 @@ ladder, so nothing here can be over-read:
 
 | Claim | Status | The evidence, and where it stops |
 |---|---|---|
-| The framework is implemented | verified | 1,344 tests on three Pythons in CI; lint clean; every audit finding pinned as a check before it was fixed; every release installed from the published wheel into a fresh interpreter and walked through the first five minutes |
+| The framework is implemented | verified | 1,347 tests on three Pythons in CI; lint clean; every audit finding pinned as a check before it was fixed; every release installed from the published wheel into a fresh interpreter and walked through the first five minutes |
 | A build is reproducible | verified | byte-identical rebuild pinned by test; each public demo carries a Reproduce section and its digests |
 | The decisions generalise | partial | four shapes (extraction, freeform QA, a labelled decision, seventy-seven-way routing) on real data; one industry set; `fde kb sweep` names the shapes nothing serves |
 | The deliverable is production-reliable | unverified | no production engagement; the banking operating loop ran on a laptop and its record says so |
@@ -437,7 +437,7 @@ project/
 │   └── llm.py            #   the one model touchpoint — when a decision needs a model (boundary-gated)
 ├── evals/                # golden / edge / adversarial sets from the client's own pairs
 │   ├── harness.py        #   fails CI until implemented; judge-based when the evaluation decided judged
-│   ├── retrieval.py      #   recall@10/50 of the retrieval layer alone — when retrieval answers ranked queries
+│   ├── retrieval.py      #   recall@10/50, the first relevant hit's rank, and how much of it the reasoning step shows — when retrieval answers ranked queries
 │   ├── acceptance.md     #   blind UAT protocol for the client's own judges, with the exam record
 │   ├── manifest.json     #   split seed, holdout share, SHA-256 of every eval file and the holdout
 │   └── load.py           #   p95 against the stated budget (when one was stated)

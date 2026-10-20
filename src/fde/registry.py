@@ -11,6 +11,7 @@ your own typo.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -79,6 +80,13 @@ def default_root() -> Path:
     edits, not the packaged snapshot. Public because library callers need
     the same resolution the CLI uses.
     """
+    # Named outright wins: FDE_REGISTRY is how the MCP server and a developer
+    # in another directory say which corpus they mean. The command line
+    # once ignored it and read "no registry here" from a scratch directory
+    # while the server beside it read the variable.
+    named = os.environ.get("FDE_REGISTRY")
+    if named and Path(named).is_dir():
+        return Path(named)
     local = Path("framework")
     if local.is_dir():
         return local

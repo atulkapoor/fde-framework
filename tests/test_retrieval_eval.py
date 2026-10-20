@@ -246,3 +246,43 @@ def test_a_path_contract_retrieval_gets_no_recall_gate(reg, tmp_path):
     # The evidence step itself stays: there is still a retrieval layer to
     # inspect, just not one a recall number can grade.
     assert "recall, not reasoning" in diagnosis
+
+
+def test_a_document_retrieved_behind_the_evidence_cap_is_reported_as_never_read(
+    reg, tmp_path_factory,
+):
+    """High recall, wrong answers: recall@10 says the document surfaced; the
+    reasoning step shows the model eight. A document at rank 9 is retrieved
+    and never read, and the evaluator now says so beside the recall."""
+    out = build(reg, tmp_path_factory.mktemp("cap"))
+    (out / "evals" / "retrieval_cases.jsonl").write_text(
+        json.dumps({"id": "c1", "query": "alpha", "relevant": ["doc-9"]}) + "\n"
+        + json.dumps({"id": "c2", "query": "beta", "relevant": ["doc-1"]}) + "\n"
+    )
+    (out / "app" / "components" / "retrieval.py").write_text(
+        "def run(query, top_k=8):\n"
+        "    return [{'id': f'doc-{i}'} for i in range(1, 11)]\n"
+    )
+    (out / "app" / "components" / "reasoning.py").write_text("MAX_EVIDENCE = 8\n")
+    result = run_eval(out)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "recall@10     2 cases  100.0%" in result.stdout
+    assert "mean reciprocal rank 0.56" in result.stdout and "worst rank 9" in result.stdout
+    assert "reaches the model    2 cases  50.0% of relevant ids inside the top 8" in result.stdout
+    (out / "app" / "components" / "reasoning.py").write_text("ANSWERS = True\n")
+    result = run_eval(out)
+    assert "reaches the model: not measured (no MAX_EVIDENCE" in result.stdout
+
+
+def test_evidence_shown_last_is_named_as_buried(reg, tmp_path_factory):
+    out = build(reg, tmp_path_factory.mktemp("buried"))
+    (out / "evals" / "retrieval_cases.jsonl").write_text(
+        json.dumps({"id": "c1", "query": "alpha", "relevant": ["doc-7"]}) + "\n")
+    (out / "app" / "components" / "retrieval.py").write_text(
+        "def run(query, top_k=8):\n"
+        "    return [{'id': f'doc-{i}'} for i in range(1, 11)]\n"
+    )
+    (out / "app" / "components" / "reasoning.py").write_text("MAX_EVIDENCE = 8\n")
+    result = run_eval(out)
+    assert "reaches the model    1 cases  100.0%" in result.stdout
+    assert "buried in the back half of what is shown: c1" in result.stderr
