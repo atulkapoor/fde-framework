@@ -1,5 +1,10 @@
 # Worked example: policy Q&A over documents
 
+> A walkthrough of the framework on three synthetic pairs: it shows the
+> commands, the refusals and the record, not a reference implementation
+> and not evidence of a client outcome. The four public demos on real
+> data are where the numbers are.
+
 A freeform-answer engagement, start to build, using the three files in this
 directory. Everything below is a real transcript — a synthetic engagement
 with made-up policies, in the shape of a common one: support engineers

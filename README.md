@@ -231,7 +231,7 @@ ladder, so nothing here can be over-read:
 
 | Claim | Status | The evidence, and where it stops |
 |---|---|---|
-| The framework is implemented | verified | 1,347 tests on three Pythons in CI; lint clean; every audit finding pinned as a check before it was fixed; every release installed from the published wheel into a fresh interpreter and walked through the first five minutes |
+| The framework is implemented | verified | 1,352 tests on three Pythons in CI; lint clean; every audit finding pinned as a check before it was fixed; every release installed from the published wheel into a fresh interpreter and walked through the first five minutes |
 | A build is reproducible | verified | byte-identical rebuild pinned by test; each public demo carries a Reproduce section and its digests |
 | The decisions generalise | partial | four shapes (extraction, freeform QA, a labelled decision, seventy-seven-way routing) on real data; one industry set; `fde kb sweep` names the shapes nothing serves |
 | The deliverable is production-reliable | unverified | no production engagement; the banking operating loop ran on a laptop and its record says so |

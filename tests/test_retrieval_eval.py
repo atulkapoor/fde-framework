@@ -269,6 +269,7 @@ def test_a_document_retrieved_behind_the_evidence_cap_is_reported_as_never_read(
     assert "recall@10     2 cases  100.0%" in result.stdout
     assert "mean reciprocal rank 0.56" in result.stdout and "worst rank 9" in result.stdout
     assert "reaches the model    2 cases  50.0% of relevant ids inside the top 8" in result.stdout
+    assert "retrieved, never read: c1" in result.stderr
     (out / "app" / "components" / "reasoning.py").write_text("ANSWERS = True\n")
     result = run_eval(out)
     assert "reaches the model: not measured (no MAX_EVIDENCE" in result.stdout

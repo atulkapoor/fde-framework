@@ -67,6 +67,15 @@ PERIODS = re.compile(
 )
 PER_DAY = {"day": 1.0, "daily": 1.0, "week": 1 / 7, "weekly": 1 / 7, "month": 1 / 30,
            "monthly": 1 / 30, "year": 1 / 365, "yearly": 1 / 365, "annually": 1 / 365}
+# "9,000 documents updated monthly" is a stock with a schedule, not a flow of
+# 300 a day, and an outside reading caught the parser saying otherwise. A
+# period cue makes a rate only when nothing but the counted noun stands
+# between the number and the cue: a verb form in between ("updated",
+# "reviewed", "is refreshed") is a schedule on the stock, and the number
+# falls back to the ordinary reading. Conservative on purpose: "invoices
+# processed a month" is read as a stock and asked about, which is a question
+# in the interview rather than a flow guessed thirty times too small.
+SCHEDULE_BREAK = re.compile(r"\b(?:\w+ed|is|are|was|were|being|gets?)\b", re.I)
 
 # Sentence ends. Crude, and enough: the point is only to stop a number in one
 # sentence borrowing a word from the next.
@@ -217,6 +226,9 @@ def _period_after(lowered: str, match: re.Match) -> re.Match | None:
     found = PERIODS.search(window)
     if found is None:
         return None
+    between = window[: found.start()]
+    if SCHEDULE_BREAK.search(between) or len(between.split()) > 3:
+        return None  # a schedule on a stock, or too far from the number to be its period
     # Re-anchor to the sentence, so distances compare with the words'.
     return PERIODS.search(lowered, match.end() + found.start())
 
@@ -230,7 +242,11 @@ def _rate_fact(dimension: Dimension, match: re.Match, period: re.Match, source: 
     factor = PER_DAY[unit]
     if dimension.period == "day" and factor == 1.0:
         return _fact(dimension, stated, match.span(), source)
-    value = max(1, round(stated * factor))
+    # Low volumes stay low: one a month is 0.03 a day, not one a day. The
+    # figure is a float when the arithmetic leaves a fraction, an int when
+    # it does not, and never rounded up to something it is not.
+    exact = stated * factor
+    value = int(exact) if float(exact).is_integer() else round(exact, 2)
     days = {1 / 7: "7", 1 / 30: "30", 1 / 365: "365"}[factor]
     return Fact(
         dimension.id,

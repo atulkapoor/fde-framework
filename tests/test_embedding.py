@@ -96,3 +96,19 @@ def test_an_embedding_store_inherits_the_residency_of_its_source(reg):
     )
     assert "embedding" in graph.components
     assert "governance" in graph.components
+
+
+def test_a_verifiable_reward_takes_the_judge_out_of_the_evaluation(reg):
+    """A task whose outcome can be checked automatically is scored by the
+    check; a judge in front of a checker is a weaker instrument standing in
+    for a comparison. The one decision the new question acts on today."""
+    judged = decide_component("evaluation", dict(output_shape="freeform"), reg)
+    assert judged.approach == "judged"
+    checked = decide_component(
+        "evaluation", dict(output_shape="freeform", reward_verifiable="yes"), reg
+    )
+    assert checked.approach != "judged", checked
+    still = decide_component(
+        "evaluation", dict(output_shape="freeform", reward_verifiable="no"), reg
+    )
+    assert still.approach == "judged"

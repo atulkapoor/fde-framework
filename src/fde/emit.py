@@ -3025,7 +3025,7 @@ def main():
     errors = 0
     recalls = {k: [] for k in KS}
     misses = []
-    first_ranks, reaches, buried = [], [], []
+    first_ranks, reaches, buried, never_read = [], [], [], []
     cap = evidence_cap()
     for case in cases:
         raw = case.get("relevant")
@@ -3064,6 +3064,8 @@ def main():
             reaches.append(len(shown) / len(relevant))
             if shown and all(got.index(r) + 1 > cap / 2 for r in shown):
                 buried.append(case.get("id"))
+            if ranks and not shown:
+                never_read.append(case.get("id"))
 
     for k in KS:
         scored = recalls[k]
@@ -3084,6 +3086,10 @@ def main():
         print(f"  reaches the model {len(reaches):>4} cases  "
               f"{sum(reaches) / len(reaches):.1%} of relevant ids inside the top {cap} the "
               f"reasoning step shows")
+        if never_read:
+            print(f"    retrieved, never read: {', '.join(map(str, never_read))} -- every "
+                  f"relevant id sits beyond the top {cap}; recall counts it, the model never "
+                  "sees it", file=sys.stderr)
         if buried:
             print(f"    buried in the back half of what is shown: {', '.join(map(str, buried))}"
                   " -- retrieved and read last, where a long context loses it",

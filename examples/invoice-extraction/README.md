@@ -1,5 +1,10 @@
 # Worked example: invoice extraction
 
+> A walkthrough of the framework on three synthetic pairs: it shows the
+> commands, the refusals and the record, not a reference implementation
+> and not evidence of a client outcome. The four public demos on real
+> data are where the numbers are.
+
 A complete engagement, start to build, using the three files in this
 directory. Everything below is a real transcript — a synthetic engagement
 whose shape is assembled from publicly documented production deployments

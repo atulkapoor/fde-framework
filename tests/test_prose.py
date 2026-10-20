@@ -617,3 +617,37 @@ def test_the_one_line_statement_a_coding_agent_sent_now_reads_three_more_facts(r
     assert d["data_residency"] == "cannot_leave"
     assert d["hosting"] == "customer-vpc"
     assert d["input_format"] == "text"
+
+
+# --- a period after a stock is a schedule, not a flow; low rates stay low
+
+
+def test_a_stock_with_an_update_schedule_is_a_stock_and_the_schedule_is_churn(reg):
+    """"9,000 documents updated monthly" read as 300 a day until an outside
+    reading showed it: the period cue made a rate of whatever number stood
+    before it. A verb form between the number and the cue is a schedule on
+    the stock, and the stock stays a stock."""
+    d = dims(parse_prose("We have 9,000 documents updated monthly.", reg))
+    assert d["corpus_size"] == 9_000 and "arrival_rate" not in d
+    assert d["corpus_churn"] == "periodic"
+    d = dims(parse_prose("The archive has 9,000 documents, and is reviewed monthly.", reg))
+    assert d["corpus_size"] == 9_000 and "arrival_rate" not in d
+
+
+def test_a_low_monthly_rate_is_a_fraction_per_day_not_one(reg):
+    rate = next(f for f in parse_prose("We process 1 invoice per month.", reg)
+                if f.dimension == "arrival_rate")
+    assert rate.value == 0.03 and rate.provenance is Provenance.INFERRED
+    assert "1 per month" in rate.note
+
+
+def test_a_flow_and_a_schedule_in_one_sentence_are_two_facts(reg):
+    d = dims(parse_prose("About 40 claims a week, reviewed monthly.", reg))
+    assert d["arrival_rate"] == 5.71 and d["corpus_churn"] == "periodic"
+
+
+def test_a_verb_between_the_number_and_the_period_declines_the_rate(reg):
+    """"9,000 invoices processed a month" is read as a stock and asked about:
+    a question in the interview, not a flow guessed thirty times too small."""
+    d = dims(parse_prose("9,000 invoices processed a month.", reg))
+    assert d["corpus_size"] == 9_000 and "arrival_rate" not in d

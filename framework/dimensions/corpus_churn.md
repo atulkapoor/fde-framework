@@ -9,8 +9,8 @@ ask_role: [admin, user]
 values: [static, periodic, continuous]
 recognises:
   static: [historical archive, frozen corpus, fixed set of documents, one-time snapshot, corpus is static, closed cases]
-  periodic: [refreshed monthly, monthly refresh, refreshed weekly, quarterly refresh, batch refresh, re-indexed every]
-  continuous: [updated continuously, constantly changing, changes daily, keeps changing, new documents arrive daily, updated throughout the day, live document feed]
+  periodic: [refreshed monthly, monthly refresh, refreshed weekly, quarterly refresh, batch refresh, re-indexed every, updated monthly, updated weekly, updated quarterly, updated annually, reviewed monthly, reviewed weekly, reviewed quarterly, refreshed quarterly, refreshed annually]
+  continuous: [updated continuously, constantly changing, changes daily, keeps changing, new documents arrive daily, updated throughout the day, live document feed, updated daily, refreshed daily]
 ---
 `corpus_size` is stock and `arrival_rate` is the flow of questions; this is
 how fast the stock itself turns over. Nobody volunteers it, because no demo
