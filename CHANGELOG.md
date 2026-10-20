@@ -5,6 +5,41 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.54] — 2026-10-20
+
+A twentieth outside reading, of the 0.1.53 source, reproduced the one
+thing a discovery parser must never do: change the meaning of a client's
+number. Carried since 0.1.52; fixed the day it was shown.
+
+- **A period after a stock is a schedule, not a flow.** "9,000 documents
+  updated monthly" read as 300 a day: the period cue made a rate of
+  whatever number stood before it. Now a period makes a rate only when
+  nothing but the counted noun stands between the number and the cue; a
+  verb form in between ("updated", "reviewed", "is refreshed") is a
+  schedule on the stock, the stock stays a stock, and the schedule is
+  read where it belongs -- `corpus_churn` now recognises "updated
+  monthly", "reviewed quarterly" and their kin. Conservative on purpose:
+  "9,000 invoices processed a month" is read as a stock and asked about
+  in the interview rather than guessed thirty times too small.
+- **Low rates stay low.** One a month was rounded up to one a day; it is
+  0.03 a day now, a fraction where the arithmetic leaves one, the note
+  beside it as before.
+- **Four regressions pinned:** a stock with an update schedule, a low
+  monthly rate, a flow and a schedule in one sentence, a verb between the
+  number and its period.
+- **The verifiable-reward question has its integration test:** a freeform
+  shape with an automatic pass/fail is not judged; without one, it is.
+- **The retrieval evaluator names the cases the model never reads:**
+  every relevant id beyond the evidence cap, listed by id, beside the
+  aggregate.
+- The three worked examples open with what they are: walkthroughs on
+  synthetic pairs, not reference implementations and not evidence of a
+  client outcome; the demos on real data are where the numbers are.
+- Asked for and already there, said so: the release page carries each
+  release's own test counts and skip reasons and links the same commit's
+  three-Python CI run. The reading's environment could not run the suite;
+  CI can, and does.
+
 ## [0.1.53] — 2026-10-20
 
 The four items that were mine on the pending list, closed.
