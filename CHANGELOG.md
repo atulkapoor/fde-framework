@@ -5,6 +5,31 @@ the project is pre-release, so everything sits under 0.1.0 until the first tag.
 
 ## [Unreleased]
 
+## [0.1.55] — 2026-10-21
+
+A twenty-first outside reading, of the public release page, named the
+false negative 0.1.54 chose on purpose and asked for the consequence of
+each open question to be visible in the brief. Both were right.
+
+- **Flow verbs keep the rate.** 0.1.54 read "9,000 invoices processed a
+  month" as a stock, to be sure of never reading "9,000 documents
+  updated monthly" as a flow again. A closed list of verbs that describe
+  the counted things moving -- processed, received, handled, raised,
+  logged, routed and their kin -- now keeps the period; the open "-ed"
+  remains the schedule case. Both sentences have their test, side by
+  side.
+- **The brief says which open questions change a decision.** `fde next`
+  said what turns on the next question; the brief said it for none of
+  the others. Each unanswered assumption now carries the decisions that
+  turn on it, or is named as one that would only narrow the space: the
+  first kind is worth a meeting, the second is not.
+- Already there, said so: the published wheel is installed on three
+  Pythons and walked through the first five minutes before every release
+  page is written; the worked examples run intake to harness in the
+  suite; the MCP server is driven by the official client over stdio in
+  the suite and by Claude Code by hand. Asked for and declined, in
+  `DECLINED.md`: a benchmark of decisions authored by the author alone.
+
 ## [0.1.54] — 2026-10-20
 
 A twentieth outside reading, of the 0.1.53 source, reproduced the one
