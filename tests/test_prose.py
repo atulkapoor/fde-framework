@@ -646,8 +646,23 @@ def test_a_flow_and_a_schedule_in_one_sentence_are_two_facts(reg):
     assert d["arrival_rate"] == 5.71 and d["corpus_churn"] == "periodic"
 
 
-def test_a_verb_between_the_number_and_the_period_declines_the_rate(reg):
-    """"9,000 invoices processed a month" is read as a stock and asked about:
-    a question in the interview, not a flow guessed thirty times too small."""
+def test_a_schedule_verb_between_the_number_and_the_period_declines_the_rate(reg):
+    """"9,000 records refreshed a month" is a stock with a schedule, read as a
+    stock and asked about: a question in the interview, not a flow guessed
+    thirty times too small."""
+    d = dims(parse_prose("9,000 records refreshed a month.", reg))
+    assert d["corpus_size"] == 9_000 and "arrival_rate" not in d
+    d = dims(parse_prose("9,000 records archived every month.", reg))
+    assert d["corpus_size"] == 9_000 and "arrival_rate" not in d
+
+
+def test_a_flow_verb_between_the_number_and_the_period_keeps_the_rate(reg):
+    """"9,000 invoices processed a month" is the flow it says; the verb names
+    the things moving, not the stock being maintained. A closed list of flow
+    verbs keeps the rate; the open "-ed" is the stock case."""
     d = dims(parse_prose("9,000 invoices processed a month.", reg))
+    assert d["arrival_rate"] == 300 and "corpus_size" not in d
+    d = dims(parse_prose("About 1,400 tickets raised per week.", reg))
+    assert d["arrival_rate"] == 200
+    d = dims(parse_prose("We have 9,000 documents updated monthly.", reg))
     assert d["corpus_size"] == 9_000 and "arrival_rate" not in d

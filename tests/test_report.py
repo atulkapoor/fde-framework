@@ -112,3 +112,19 @@ def test_the_brief_opens_with_five_statuses_none_implying_the_next(tmp_path):
     assert "- **implemented**: 1 component(s) still scaffolds: perception" in glance
     assert "- **evaluated**: holdout 73.8% on 3036 cases (holds)" in glance
     assert "- **outcome**: 1 outcome(s) recorded" in glance
+
+
+def test_the_brief_says_which_open_questions_change_a_decision(tmp_path):
+    """`fde next` said what turns on the next question; the brief said it
+    for none of the others. Now each unanswered assumption carries the
+    decisions that turn on it, or is named as one that only narrows."""
+    start_engagement(tmp_path, "acme", statement=STATEMENT)
+    result = runner.invoke(app, ["report", str(tmp_path / "acme"), "--today", "2026-10-21"])
+    assert result.exit_code == 0, result.output
+    text = (tmp_path / "acme" / "artifacts" / "REPORT.md").read_text()
+    block = text[text.index("## What each unanswered assumption decides"):
+                 text.index("## Decision debt")]
+    assert "turns on " in block or "decides which approaches exist" in block
+    assert "narrows the space, not the build" in block
+    # The dimension the design most obviously waits on is named as decisive.
+    assert "**output_shape**" in block

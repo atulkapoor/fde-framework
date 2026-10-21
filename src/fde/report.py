@@ -149,6 +149,42 @@ def at_a_glance(engagement, architecture, project: Path | None) -> str:
                       f"- **outcome**: {outcome}"])
 
 
+def what_turns_on(engagement, registry, architecture) -> str:
+    """Each unanswered assumption with the decisions that turn on it, so a
+    reader can tell an open question that would change the build from one
+    that would only narrow the space. The record held this all along --
+    `fde next` says it for the next question -- and a reader of the brief
+    had it for none of the others."""
+    from fde.impact import decision_impact
+    from fde.space import Space
+
+    if architecture is None or not architecture.assumptions:
+        return "No unanswered assumptions: every dimension the design reads is on the record."
+    try:
+        space = Space.from_registry(registry).apply(engagement.profile)
+    except Exception as exc:  # noqa: BLE001 -- the brief reports, it does not fail
+        return f"Not computed: {exc}"
+    decisive, narrowing = [], []
+    for line in architecture.assumptions:
+        dimension = line.split(":", 1)[0].strip()
+        try:
+            impact = decision_impact(dimension, engagement.profile, registry, space)
+        except Exception:  # noqa: BLE001
+            narrowing.append(dimension)
+            continue
+        if not impact.explorable:
+            decisive.append(f"- **{dimension}**: decides which approaches exist at all")
+        elif impact.differing:
+            decisive.append(f"- **{dimension}**: turns on {', '.join(impact.differing)}")
+        else:
+            narrowing.append(dimension)
+    out = decisive or ["- none of the open questions changes a decision yet"]
+    if narrowing:
+        out.append(f"- narrows the space, not the build ({len(narrowing)}): "
+                   + ", ".join(narrowing))
+    return "\n".join(out)
+
+
 def render_report(engagement, registry, registry_root: Path, today: str = "") -> str:
     """The brief, as text. `engagement` is a loaded engagement, `registry`
     a loaded registry; `registry_root` is passed to the commands the brief
@@ -228,6 +264,11 @@ def render_report(engagement, registry, registry_root: Path, today: str = "") ->
                 "answered, and the facts the governance follows from. A build writes "
                 "this same page as RISKS.md.",
                 demote(render_risks(waivers, [], architecture, registry)))
+        section("What each unanswered assumption decides",
+                "An open question that would change the build, against one that would "
+                "only narrow the space: the first kind is worth a meeting, the second is "
+                "not.",
+                what_turns_on(engagement, registry, architecture))
 
     section("Decision debt",
             "Everything the engagement rests on that nobody has settled, each with an "

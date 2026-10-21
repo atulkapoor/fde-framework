@@ -76,6 +76,14 @@ PER_DAY = {"day": 1.0, "daily": 1.0, "week": 1 / 7, "weekly": 1 / 7, "month": 1 
 # processed a month" is read as a stock and asked about, which is a question
 # in the interview rather than a flow guessed thirty times too small.
 SCHEDULE_BREAK = re.compile(r"\b(?:\w+ed|is|are|was|were|being|gets?)\b", re.I)
+# The verbs that describe the counted things moving, not the stock being
+# maintained: "invoices processed a month" is a flow and keeps its period.
+# A closed list, because the open one ("\w+ed") is the stock case.
+FLOW_VERBS = re.compile(
+    r"\b(?:processed|received|handled|sent|submitted|raised|logged|filed|created|opened|"
+    r"answered|resolved|routed|triaged|reviewed by|arriving|arrive|arrives|incoming|coming in)\b",
+    re.I,
+)
 
 # Sentence ends. Crude, and enough: the point is only to stop a number in one
 # sentence borrowing a word from the next.
@@ -227,8 +235,10 @@ def _period_after(lowered: str, match: re.Match) -> re.Match | None:
     if found is None:
         return None
     between = window[: found.start()]
-    if SCHEDULE_BREAK.search(between) or len(between.split()) > 3:
-        return None  # a schedule on a stock, or too far from the number to be its period
+    if len(between.split()) > 3:
+        return None  # too far from the number to be its period
+    if SCHEDULE_BREAK.search(FLOW_VERBS.sub(" ", between)):
+        return None  # a schedule on a stock ("updated monthly"), not the flow's period
     # Re-anchor to the sentence, so distances compare with the words'.
     return PERIODS.search(lowered, match.end() + found.start())
 
